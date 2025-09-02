@@ -671,6 +671,8 @@ async function initialize() {
   // 6️⃣ Render extras
   renderFavorites();
   renderRecentlyWatched();
+  updateFavoriteIcons();
+  updateAllChannelItems();
 
   // 7️⃣ Focus first channel if available
       if (lastFocusedElement && lastFocusedElement.isConnected) {
@@ -678,6 +680,7 @@ async function initialize() {
   } else if (allChannelItems.length > 0) {
     allChannelItems[0].focus();
   }
+
 }
 
 
@@ -870,5 +873,6 @@ async function loadYouTubeFeeds() {
   // Render channels (avoid duplicates)
   renderChannels(allChannels);
   updateFavoriteIcons();
+      renderRecentlyWatched();
   updateAllChannelItems();
 }
