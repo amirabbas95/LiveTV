@@ -242,6 +242,7 @@ function closeModal() {
     currentVideoElement.remove();
   }
   updateAllChannelItems();
+    
   if (lastFocusedElement && lastFocusedElement.isConnected) {
     lastFocusedElement.focus();
   } else if (allChannelItems.length > 0) {
@@ -329,6 +330,23 @@ function saveRecentlyWatched(channel) {
   renderRecentlyWatched();
 }
 
+function saveRecentlyWatchedCard(name, url, image, description, number) {
+  let recent = JSON.parse(localStorage.getItem(recentlyWatchedKey) || "[]");
+  recent = recent.filter((item) => item.url !== url);
+  recent.unshift({
+    name,
+    url,
+    image,
+    description,
+      number
+  });
+
+  if (recent.length > MAX_RECENT) {
+    recent.pop();
+  }
+  localStorage.setItem(recentlyWatchedKey, JSON.stringify(recent));
+  renderRecentlyWatched();
+}
 
 function toggleFavorite(url, name, image, description, number, event) {
   if (event) event.stopPropagation();
@@ -684,37 +702,32 @@ async function initialize() {
 }
 
 
-
 document.addEventListener("keydown", (event) => {
+  // --- Backspace retry when fullscreen ---
   if (event.key === "Backspace" && document.fullscreenElement) {
     event.preventDefault();
-    // Updated to use the new retryStream function
     if (playerInstance) {
       const currentUrl = playerInstance.currentSrc();
       const channel = allChannels.find((c) => c.url === currentUrl);
-      if (channel) {
-        retryStream(channel.url, channel.name);
-      }
+      if (channel) retryStream(channel.url, channel.name);
     }
     return;
   }
+
   const isModalOpen = modal.style.display === "flex";
   let focusedElement = document.activeElement;
-  let focusedIndex = allChannelItems.findIndex(
-    (item) => item === focusedElement
-  );
+  let focusedIndex = allChannelItems.findIndex((item) => item === focusedElement);
 
+  // =========================
+  // --- MODAL IS OPEN ---
+  // =========================
   if (isModalOpen) {
     if (event.key === "Backspace" || event.key === " ") {
       event.preventDefault();
-      console.log("Manual retry triggered by Backspace key.");
-      // Updated to use the new retryStream function
       if (playerInstance) {
         const currentUrl = playerInstance.currentSrc();
         const channel = allChannels.find((c) => c.url === currentUrl);
-        if (channel) {
-          retryStream(channel.url, channel.name);
-        }
+        if (channel) retryStream(channel.url, channel.name);
       }
     } else if (event.key === "Escape" || event.key === "ArrowLeft") {
       event.preventDefault();
@@ -725,87 +738,85 @@ document.addEventListener("keydown", (event) => {
     } else if (event.key === "Enter") {
       event.preventDefault();
       toggleFullscreen();
-    } else if (
-      ["ArrowUp", "ArrowDown", "PageUp", "PageDown"].includes(event.key)
-    ) {
+    } else if (["ArrowUp", "ArrowDown", "PageUp", "PageDown"].includes(event.key)) {
       event.preventDefault();
-      if (!lastFocusedElement || allChannelItems.length === 0) {
-        return;
-      }
+      if (!lastFocusedElement || allChannelItems.length === 0) return;
+
       const currentChannelIndex = allChannelItems.findIndex(
         (item) => item === lastFocusedElement
       );
-      if (currentChannelIndex === -1) {
-        return;
-      }
+      if (currentChannelIndex === -1) return;
+
       let newIndex = currentChannelIndex;
       if (event.key === "ArrowDown" || event.key === "PageDown") {
         newIndex = (currentChannelIndex + 1) % allChannelItems.length;
       } else if (event.key === "ArrowUp" || event.key === "PageUp") {
-        newIndex =
-          (currentChannelIndex - 1 + allChannelItems.length) %
-          allChannelItems.length;
+        newIndex = (currentChannelIndex - 1 + allChannelItems.length) % allChannelItems.length;
       }
-      const newChannelCard = allChannelItems[newIndex];
-      const newUrl = newChannelCard.dataset.url;
-      const newName = newChannelCard.dataset.name;
-      const newImage = newChannelCard.dataset.image;
-      const newDescription = newChannelCard.dataset.description;
-      const newNumber = newChannelCard.dataset.number;
-      selectChannel(newUrl, newName, newImage, newDescription, newNumber);
 
-saveRecentlyWatched(newChannelCard);
-        
+      const newChannelCard = allChannelItems[newIndex];
+      const { url, name, image, description, number } = newChannelCard.dataset;
+
+      newChannelCard.scrollIntoView({ behavior: "smooth", block: "center" });
+
+      selectChannel(url, name, image, description, number);
+      saveRecentlyWatchedCard(name, url, image, description, number);
+
       lastFocusedElement = newChannelCard;
     }
+
+  // =========================
+  // --- MODAL IS CLOSED ---
+  // =========================
   } else {
     if (["ArrowLeft", "ArrowRight"].includes(event.key)) {
       event.preventDefault();
-      if (focusedIndex === -1) {
-        if (allChannelItems.length > 0) {
-          allChannelItems[0].focus();
-        }
+      if (focusedIndex === -1 && allChannelItems.length > 0) {
+        allChannelItems[0].focus();
+        allChannelItems[0].scrollIntoView({ behavior: "smooth", block: "center" });
       } else {
         let newIndex = focusedIndex;
         if (event.key === "ArrowRight") {
           newIndex = (focusedIndex + 1) % allChannelItems.length;
         } else if (event.key === "ArrowLeft") {
-          newIndex =
-            (focusedIndex - 1 + allChannelItems.length) %
-            allChannelItems.length;
+          newIndex = (focusedIndex - 1 + allChannelItems.length) % allChannelItems.length;
         }
-        allChannelItems[newIndex].focus();
+        const newCard = allChannelItems[newIndex];
+        newCard.focus();
+        newCard.scrollIntoView({ behavior: "smooth", block: "center" });
       }
+
     } else if (["ArrowUp", "ArrowDown"].includes(event.key)) {
       event.preventDefault();
-      if (focusedIndex === -1) {
-        if (allChannelItems.length > 0) {
-          allChannelItems[0].focus();
-        }
+      if (focusedIndex === -1 && allChannelItems.length > 0) {
+        allChannelItems[0].focus();
+        allChannelItems[0].scrollIntoView({ behavior: "smooth", block: "center" });
       } else {
         let newIndex = focusedIndex;
         if (event.key === "ArrowDown") {
           newIndex = (focusedIndex + 5) % allChannelItems.length;
         } else if (event.key === "ArrowUp") {
-          newIndex =
-            (focusedIndex - 5 + allChannelItems.length) %
-            allChannelItems.length;
+          newIndex = (focusedIndex - 5 + allChannelItems.length) % allChannelItems.length;
         }
-        allChannelItems[newIndex].focus();
+        const newCard = allChannelItems[newIndex];
+        newCard.focus();
+        newCard.scrollIntoView({ behavior: "smooth", block: "center" });
       }
+
     } else if (event.key === "Enter" && focusedIndex !== -1) {
       event.preventDefault();
       const card = allChannelItems[focusedIndex];
-      const url = card.dataset.url;
-      const name = card.dataset.name;
-      const image = card.dataset.image;
-      const description = card.dataset.description;
-      const number = card.dataset.number;
+      const { url, name, image, description, number } = card.dataset;
+
+      card.scrollIntoView({ behavior: "smooth", block: "center" });
+
       selectChannel(url, name, image, description, number);
-      saveRecentlyWatched(channel);
+      saveRecentlyWatchedCard(name, url, image, description, number);
     }
   }
 });
+
+
 
 window.addEventListener("DOMContentLoaded", async () => {
   await initialize();
