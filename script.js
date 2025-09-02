@@ -171,12 +171,12 @@ const channelInfoOverlay = document.getElementById("channel-info-overlay");
   // Show overlay with a delay
   overlayTimeoutShow = setTimeout(() => {
     channelInfoOverlay.classList.add("show");
-  }, 600);
+  }, 300);
 
   // Auto-hide after 10s
   overlayTimeoutHide = setTimeout(() => {
     channelInfoOverlay.classList.remove("show");
-  }, 10000);
+  }, 6000);
 }
 
 // Start tracking watch time

@@ -24,7 +24,7 @@
   text-align: center;
   min-width: 50px;
   color: #ffcc00;
-  background-color: rgba(0, 0, 0, 0.95);
+  background-color: rgba(0, 0, 0, 0.75);
   font-size: 2.5rem;
   padding: 10px 15px;
   border-radius: 8px;
@@ -44,7 +44,7 @@
   display: flex;
   align-items: center;
   padding: 20px;
-  background: linear-gradient(to top, rgba(0, 0, 0, 0.8), rgba(0, 0, 0, 0));
+  background-color: rgba(0, 0, 0, 0.50);
   color: white;
   box-sizing: border-box;
   pointer-events: none; /* Allows clicks to pass through to the player */
@@ -666,3 +666,9 @@ h4 {
     background: #cc0000;
     color: #fff;
   }
+
+#channelListPreview {
+  scroll-behavior: smooth; /* enables smooth scrolling */
+  overflow-y: auto;
+  max-height: 600px; /* adjust as needed */
+}
