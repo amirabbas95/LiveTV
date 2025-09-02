@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="icon" href="favicon.png" type="image/png" sizes="32x32">
+<link rel="manifest" href="/manifest.json">
+
+  <title>Live TV Player</title>
+
+  <link href="https://unpkg.com/video.js@8.23.4/dist/video-js.min.css" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+
+  <link rel="stylesheet" href="styles.css">
+
+</head>
+
+<body>
+
+  <header class="main-header">
+    <div class="header-content">
+      <img src="logo.svg" alt="logo" class="logo">
+      <h1>LiveTV Player</h1>
+    </div>
+
+          <!-- Navigation Menu -->
+<nav class="menu">
+  <ul>
+    <li><a href="admin.html">⚙️ Admin</a></li>
+  </ul>
+</nav>
+  </header>
+
+  <main>
+
+    <div class="container">
+      <p style="text-align: center; color: #b0b0b0;">Press **Left/Right** to navigate, **Enter** to play, **Enter** for fullscreen, and **Left** to close.</p>
+
+      <div id="channel-number-overlay">
+      </div>
+      <div id="recentlyWatched" class="section">
+        <h2>Recently Watched</h2>
+        <div class="content-grid" id="recentlyWatchedGrid"></div>
+      </div>
+
+      <div id="favorites" class="section">
+        <h2>Favorites</h2>
+        <div class="content-grid" id="favoritesGrid"></div>
+      </div>
+
+      <div id="channels" class="section">
+        <div class="sort-container">
+          <div class="sort-controls">
+            <label for="sortChannels">Sort by:</label>
+            <select id="sortChannels" class="sort-dropdown">
+              <option value="none">None</option>
+              <option value="asc">Name (A-Z)</option>
+              <option value="desc">Name (Z-A)</option>
+              <option value="watchTime">Watch Time</option>
+            </select>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </main>
+
+  <div id="videoModal" class="modal">
+    <span class="closeModal">&times;</span>
+    <div class="modal-content">
+      <div id="player-container">
+        <div id="player"></div>
+        <div class="liveInlineBar"><span class="live_span">Live</span></div>
+        <p id="video-quality" style="align-items: right;"></p>
+        <button id="retryButton" class="vjs-retry-button">
+          <span class="vjs-icon-retry"></span> Retry
+        </button>
+        <div id="channel-info-overlay" class="channel-info-overlay">
+          <img id="content-image" alt="Content Image">
+          <div class="text-block">
+            <h2>
+              <span id="channel-number"></span>
+              <span id="video-title"></span>
+            </h2>
+            <p id="channel-description"></p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <footer class="main-footer">
+    <p>&copy; 2025 All Rights Reserved.</p>
+  </footer>
+
+  <script src="https://vjs.zencdn.net/8.23.4/video.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/videojs-youtube@3.0.1/dist/Youtube.min.js"></script>
+
+  <script src="script.js"></script>
+  <script src="feeds.js"></script>
+
+</body>
+
+</html>

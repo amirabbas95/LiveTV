@@ -1,0 +1,668 @@
+/* CSS Variables for easy theming */
+:root {
+  --bg-color-dark: #121212;
+  --bg-color-medium: #1f1f1f;
+  --text-color-light: #e0e0e0;
+  --text-color-muted: #a0a0a0;
+  --accent-color: #007bff;
+  --border-radius-sm: 8px;
+  --spacing-unit: 1rem;
+}
+
+/* Basic styling for the header */
+.main-header {
+  background-color: var(--bg-color-dark);
+  color: var(--text-color-light);
+  padding: 20px;
+  text-align: center;
+  border-bottom: 2px solid #333;
+}
+
+#channel-number-overlay {
+  position: fixed;
+  font-weight: bold;
+  text-align: center;
+  min-width: 50px;
+  color: #ffcc00;
+  background-color: rgba(0, 0, 0, 0.95);
+  font-size: 2.5rem;
+  padding: 10px 15px;
+  border-radius: 8px;
+  display: none;
+  top: 20px;
+  right: 20px;
+  z-index: 9999;
+  float: left;
+}
+
+/* Style for the overlay content */
+.channel-info-overlay {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  padding: 20px;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.8), rgba(0, 0, 0, 0));
+  color: white;
+  box-sizing: border-box;
+  pointer-events: none; /* Allows clicks to pass through to the player */
+  transform: translateY(100%); /* Start position: below the screen */
+  transition: transform 0.5s ease-out, opacity 0.5s ease-out;
+  opacity: 0;
+  z-index: 3;
+}
+
+.channel-info-overlay.show {
+  transform: translateY(0); /* End position: visible at the bottom */
+  opacity: 1;
+}
+
+.channel-info-overlay img {
+  width: 80px;
+  height: 80px;
+  object-fit: cover;
+  border-radius: 8px;
+  margin-right: 15px;
+}
+
+.channel-info-overlay .text-block {
+  display: flex;
+  flex-direction: column;
+}
+
+.channel-info-overlay h2,
+.channel-info-overlay p {
+  margin: 0;
+  text-shadow: 1px 1px 3px rgba(0, 0, 0, 0.5);
+}
+
+.channel-info-overlay h2 {
+  font-size: 2em;
+}
+
+/* Styles for the new retry button position */
+.vjs-retry-button {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: rgba(0, 0, 0, 0.5);
+  color: white;
+  border: 1px solid white;
+  padding: 10px 20px;
+  border-radius: 5px;
+  cursor: pointer;
+  font-weight: bold;
+  background: #fff;
+  z-index: 4; /* Ensure it's on top of the player */
+}
+
+.main-header h1 {
+  font-size: 2.5rem;
+  font-weight: 700;
+  color: var(--text-color-light);
+  margin-bottom: calc(2 * var(--spacing-unit));
+  text-align: center;
+}
+
+/* Basic styling for the footer */
+.main-footer {
+  background-color: #121212;
+  color: var(--text-color-muted);
+  padding: 20px;
+  text-align: center;
+  border-top: 2px solid #333;
+  margin-top: 40px; /* Adds some space between the content and the footer */
+}
+
+main {
+  flex: 1; /* This ensures the main content takes up all available vertical space */
+}
+
+/* Styling for the header content container */
+.header-content {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start; /* Centers the content horizontally */
+}
+
+/* Styling for the logo image */
+.logo {
+  height: 50px; /* Set a fixed height for the logo */
+  width: auto; /* Maintain the logo's aspect ratio */
+  margin-right: 20px; /* Add some space between the logo and the title */
+}
+
+body {
+  font-family: "Inter", sans-serif;
+  background-color: var(--bg-color-dark);
+  color: var(--text-color-light);
+  margin: 0;
+  padding: calc(2 * var(--spacing-unit));
+  line-height: 1.6;
+}
+
+.container {
+  max-width: 1200px; /* fixed max width */
+  padding: 0 1rem; /* keep padding inside container */
+  margin: 0 auto; /* center container */
+  box-sizing: border-box;
+}
+
+h2 {
+  text-align: left;
+  color: var(--text-color-light);
+}
+
+h4 {
+  font-size: 0.9rem;
+  color: var(--text-color-light);
+  padding: 5px;
+  margin: 0px;
+}
+
+.section {
+  margin-top: 40px;
+  margin-bottom: 40px;
+}
+
+.content-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(80px, 120px));
+  gap: 20px;
+}
+
+.content-card {
+  background-color: var(--bg-color-medium);
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+  transition: transform 0.2s, box-shadow 0.2s;
+  cursor: pointer;
+  text-decoration: none;
+  color: inherit;
+  outline: 2px solid transparent;
+  position: relative;
+}
+
+.content-card:hover,
+.content-card:focus {
+  transform: translateY(-5px);
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.5);
+  outline-color: var(--accent-color);
+}
+
+.content-card img {
+  width: 120px;
+  height: 120px;
+  object-fit: cover;
+  display: block;
+  background-color: var(--bg-color-medium);
+}
+
+.content-info {
+  padding: 15px;
+  text-align: center;
+}
+
+.content-info h3 {
+  margin: 0;
+  font-size: 1.2em;
+  color: var(--text-color-light);
+}
+
+.content-info p {
+  margin: 5px 0 0;
+  font-size: 0.9em;
+  color: var(--text-color-muted);
+}
+
+/* Modal for video playback */
+.modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.75);
+  backdrop-filter: blur(3px);
+  display: none;
+  justify-content: center;
+  align-items: center;
+  flex-direction: column;
+  z-index: 1000;
+  padding: var(--spacing-unit);
+  box-sizing: border-box;
+}
+
+.modal-content {
+  background-color: var(--bg-color-dark);
+  border-radius: var(--border-radius-sm);
+  width: 95%;
+  max-width: 1000px;
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.7);
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.closeModal {
+  position: absolute;
+  top: 15px;
+  right: 20px;
+  font-size: 2.5rem;
+  color: var(--text-color-light);
+  cursor: pointer;
+  z-index: 1010;
+  line-height: 1;
+}
+
+.closeModal:hover,
+.closeModal:focus {
+  text-decoration: none;
+  cursor: pointer;
+  color: var(--accent-color); /* Highlight on hover */
+}
+
+#player-container {
+  width: 100%;
+  /* Maintain 16:9 aspect ratio for video */
+  padding-top: 56.25%; /* 9 / 16 * 100 */
+  position: relative;
+  background-color: #000; /* Black background for video area */
+}
+
+#player,
+.video-js {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+}
+
+#channel-info {
+  text-align: center;
+  background-color: var(--bg-color-medium);
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+}
+#content-image {
+  width: 60px; /* Slightly smaller image */
+  height: 60px;
+  border-radius: 50%;
+  margin-top: 10px;
+  object-fit: cover;
+  border: 2px solid var(--accent-color); /* Highlight image border */
+  box-shadow: 0 0 10px rgba(0, 123, 255, 0.5); /* Glowing effect */
+}
+#video-title {
+  font-size: 1.5rem;
+  font-weight: 700;
+  margin: 0;
+  color: var(--text-color-light);
+  line-height: 1.2;
+}
+#video-quality {
+  position: absolute;
+  top: 10px; /* Adjust as needed */
+  right: 10px; /* Adjust as needed */
+  background-color: rgba(0, 123, 255, 0.502); /* Semi-transparent background */
+  color: var(--text-color-light);
+  font-size: 1rem;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-weight: 600;
+  z-index: 10; /* Ensure it's on top of the player */
+  position: absolute;
+  border-radius: 2px;
+}
+
+#channel-number {
+  color: #ffcc00;
+
+  font-size: 1.5rem;
+  font-weight: 700;
+  margin: 0;
+  line-height: 1.2;
+}
+
+.text-block {
+  flex-grow: 1;
+  text-align: left;
+  margin-left: var(--spacing-unit);
+}
+
+#channel-description {
+  font-size: 0.8rem;
+  color: var(--text-color-muted);
+  margin: 0;
+  line-height: 1.2;
+}
+
+/* Responsive Adjustments */
+@media (max-width: 768px) {
+  h1 {
+    font-size: 2rem;
+  }
+  .grid {
+    grid-template-columns: repeat(
+      auto-fill,
+      minmax(140px, 1fr)
+    ); /* More columns on smaller tablets */
+    gap: var(--spacing-unit);
+  }
+  .channel-card h3 {
+    font-size: 1rem;
+  }
+  .channel-card p {
+    font-size: 0.8rem;
+  }
+  .modal-content {
+    width: 98%; /* Fuller width on small screens */
+  }
+  #video-title {
+    font-size: 1.5rem;
+  }
+  #content-image {
+    width: 60px;
+    height: 60px;
+  }
+}
+
+@media (max-width: 480px) {
+  body {
+    padding: var(--spacing-unit);
+  }
+  h1 {
+    font-size: 1.8rem;
+  }
+  .grid {
+    grid-template-columns: repeat(
+      auto-fill,
+      minmax(120px, 1fr)
+    ); /* Even smaller min width for phones */
+  }
+  .channel-card img {
+    height: 90px;
+  }
+  .channel-card .info {
+    padding: calc(0.75 * var(--spacing-unit));
+  }
+  #closeModal {
+    position: absolute;
+    top: 15px;
+    right: 20px;
+    font-size: 2.5rem;
+    color: var(--text-color-light);
+    cursor: pointer;
+    z-index: 1010;
+    line-height: 1;
+  }
+  #channel-info {
+    padding: var(--spacing-unit);
+  }
+  #video-title {
+    font-size: 1.3rem;
+  }
+  #video-quality,
+  #channel-description {
+    font-size: 0.85rem;
+  }
+}
+
+/* Additional styles for channel lists to fit the new design */
+.channel-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 20px;
+}
+
+.channel-item {
+  text-align: center;
+}
+
+.favorite-icon {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  font-size: 1.2em;
+  color: #555;
+  transition: color 0.2s;
+}
+
+.favorite-icon.active {
+  color: gold;
+}
+
+/* New styles for the sort dropdown */
+.sort-container {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20px;
+  padding: 0 20px;
+}
+
+.sort-container label,
+.sort-container h2 {
+  margin: 0;
+  color: #ffffff;
+}
+
+.sort-dropdown {
+  background-color: #333;
+  color: #ffffff;
+  border: 1px solid #555;
+  padding: 8px 12px;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.live_span {
+  background-color: #ed1d24;
+  float: left;
+  margin: 0px;
+  color: #ffffff;
+  font-size: 14px;
+  line-height: 20px;
+  width: 50px;
+  text-align: center;
+  -webkit-box-shadow: 0px 4px 10px 0px rgba(0, 0, 0, 0.45);
+  -moz-box-shadow: 0px 4px 10px 0px rgba(0, 0, 0, 0.45);
+  box-shadow: 0px 4px 10px 0px rgba(0, 0, 0, 0.45);
+  -webkit-border-radius: 2px;
+  -moz-border-radius: 2px;
+  border-radius: 2px;
+  position: absolute;
+  padding-left: 6px;
+  z-index: 10;
+  text-transform: uppercase;
+  top: 10px;
+  left: 10px;
+}
+
+.live_span:before {
+  content: "";
+  position: absolute;
+  width: 6px;
+  height: 6px;
+  background-color: #ffffff;
+  -webkit-border-radius: 10px;
+  -moz-border-radius: 10px;
+  border-radius: 10px;
+  left: 6px;
+  top: 7px;
+}
+
+/* Adjust position for fullscreen if needed */
+.video-js.vjs-fullscreen .live_span {
+  top: 20px;
+  left: 20px;
+  font-size: 1rem;
+}
+
+#retryButton {
+  background-color: #333;
+  color: #fff;
+  border: 1px solid #555;
+  padding: 8px 12px;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 14px;
+  display: none;
+  /* Initially hide the button */
+  transition: background-color 0.2s;
+}
+
+.vjs-retry-button {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 15; /* Highest z-index to be on top of everything */
+  /* ... rest of your styling */
+  background-color: #fff;
+  color: #fff;
+  border: 1px solid #555;
+  padding: 8px 12px;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 14px;
+  display: none;
+  /* Initially hide the button */
+  transition: background-color 0.2s;
+}
+
+/* You might need to add a font-based icon or use an SVG for the icon part */
+#vjs-retry-button::before {
+  content: "↻";
+  /* A simple unicode retry symbol */
+  margin-right: 5px;
+}
+
+#retryButton:hover {
+  background-color: #555;
+}
+
+/* You might need to add a font-based icon or use an SVG for the icon part */
+#retryButton::before {
+  content: "↻";
+  /* A simple unicode retry symbol */
+  margin-right: 5px;
+}
+
+.episode-card {
+  background-color: #1e1e1e;
+  border-radius: 8px;
+  overflow: hidden;
+  display: flex;
+  gap: 10px;
+  cursor: pointer;
+  padding: 10px;
+  transition: background-color 0.2s;
+}
+
+.episode-card:hover {
+  background-color: #292929;
+}
+
+.episode-thumb {
+  width: 120px;
+  height: 70px;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+.episode-info {
+  flex-grow: 1;
+  color: #e0e0e0;
+}
+
+.episode-info h4 {
+  margin: 0;
+  font-size: 1em;
+  color: #fff;
+}
+
+.episode-info p {
+  margin: 5px 0 0;
+  font-size: 0.85em;
+  color: #bbb;
+}
+
+.breadcrumb {
+  margin-bottom: 20px;
+  font-size: 0.9em;
+  color: #aaa;
+}
+
+.breadcrumb a {
+  color: #fff;
+  text-decoration: none;
+}
+
+.breadcrumb a:hover {
+  text-decoration: underline;
+}
+
+.play-overlay {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 2em;
+  color: white;
+  background: rgba(0, 0, 0, 0.75);
+  padding: 5px 10px;
+  border-radius: 50%;
+}
+
+.thumb-wrapper {
+  position: relative;
+  display: inline-block;
+}
+
+.channel-number {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  background: rgba(0, 0, 0, 0.75);
+  color: var(--text-color-light);
+  font-size: 13px;
+  font-weight: bold;
+  padding: 2px 6px;
+  border-radius: 6px;
+}
+
+
+  .menu {
+    background: #111;
+    padding: 10px 20px;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+  }
+  .menu ul {
+    margin: 0;
+    padding: 0;
+    display: flex;
+    list-style: none;
+    justify-content: space-around;
+  }
+  .menu li a {
+    color: #ccc;
+    text-decoration: none;
+    font-size: 16px;
+    padding: 8px 15px;
+    border-radius: 6px;
+    transition: 0.3s;
+  }
+  .menu li a:hover {
+    background: #cc0000;
+    color: #fff;
+  }
+  .menu li a.active {
+    background: #cc0000;
+    color: #fff;
+  }
