@@ -650,6 +650,13 @@ function updateAllChannelItems() {
 
 // Main initialize function
 async function initialize() {
+  const contentGrid = document.querySelector(".content-grid");
+  const loadingElement = document.getElementById("loading-spinner"); // Assume you have an element with this ID for your animation
+
+  // 1. Show the loading animation and hide the grid
+  if (contentGrid) contentGrid.style.display = "none";
+  if (loadingElement) loadingElement.style.display = "block";
+
   // Modal controls
   document.querySelector(".closeModal").addEventListener("click", closeModal);
   document.getElementById("videoModal").addEventListener("click", (event) => {
@@ -659,7 +666,7 @@ async function initialize() {
   // Sorting dropdown
   document.getElementById("sortChannels").addEventListener("change", handleSortChange);
 
-  // 1️⃣ Load allChannels from localStorage if available
+  // 2. Perform all the loading tasks
   let savedChannels = localStorage.getItem("allChannelsData");
   if (savedChannels) {
     try {
@@ -670,35 +677,33 @@ async function initialize() {
     }
   }
 
-  // 2️⃣ Load feeds from YouTube (will update allChannels without duplicates)
   await loadYouTubeFeeds();
 
-  // 3️⃣ Assign fixed numbers once
   allChannels.forEach((ch, i) => {
     if (!ch.number) ch.number = i + 1;
   });
 
-  // 4️⃣ Load watch time if applicable
   loadWatchTime?.();
 
-  // 5️⃣ Apply saved sort (or fallback to "none")
   const savedSort = localStorage.getItem("defaultSortMethod") || "none";
   sortChannelsAndRender(savedSort);
   document.getElementById("sortChannels").value = savedSort;
 
-  // 6️⃣ Render extras
   renderFavorites();
   renderRecentlyWatched();
   updateFavoriteIcons();
   updateAllChannelItems();
 
-  // 7️⃣ Focus first channel if available
-      if (lastFocusedElement && lastFocusedElement.isConnected) {
+  // 3. Hide the loading animation and show the grid
+  if (loadingElement) loadingElement.style.display = "none";
+  if (contentGrid) contentGrid.style.display = "grid"; // Or "flex", or whatever your original display property is
+
+  // 4. Focus first channel if available
+  if (lastFocusedElement && lastFocusedElement.isConnected) {
     lastFocusedElement.focus();
   } else if (allChannelItems.length > 0) {
     allChannelItems[0].focus();
   }
-
 }
 
 function getGridColumns() {
@@ -716,8 +721,6 @@ function getGridColumns() {
 
   return Math.max(1, Math.floor(gridWidth / cardWidth));
 }
-
-let navigationInterval = null;
 
 document.addEventListener("keydown", (event) => {
   const GRID_COLUMNS = getGridColumns();
@@ -740,93 +743,81 @@ document.addEventListener("keydown", (event) => {
   // =========================
   // --- MODAL IS OPEN (keep your version) ---
   // =========================
-if (isModalOpen) {
-  if (event.key === "Backspace" || event.key === " ") {
-    event.preventDefault();
-    if (playerInstance) {
-      const currentUrl = playerInstance.currentSrc();
-      const channel = allChannels.find((c) => c.url === currentUrl);
-      if (channel) retryStream(channel.url, channel.name);
-    }
+  if (isModalOpen) {
+    if (event.key === "Backspace" || event.key === " ") {
+      event.preventDefault();
+      if (playerInstance) {
+        const currentUrl = playerInstance.currentSrc();
+        const channel = allChannels.find((c) => c.url === currentUrl);
+        if (channel) retryStream(channel.url, channel.name);
+      }
+    } else if (event.key === "Escape" || event.key === "ArrowLeft") {
+      event.preventDefault();
+      closeModal();
+    } else if (event.key === "ArrowRight") {
+      event.preventDefault();
+      showChannelInfoOverlay();
+    } else if (event.key === "Enter") {
+      event.preventDefault();
+      toggleFullscreen();
+    } else if (["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End"].includes(event.key)) {
+      event.preventDefault();
+      if (!lastFocusedElement || allChannelItems.length === 0) return;
 
-  } else if (event.key === "Escape" || event.key === "ArrowLeft") {
-    event.preventDefault();
-    closeModal();
+      const currentChannelIndex = allChannelItems.findIndex(
+        (item) => item === lastFocusedElement
+      );
+      if (currentChannelIndex === -1) return;
 
-  } else if (event.key === "ArrowRight") {
-    event.preventDefault();
-    showChannelInfoOverlay();
-
-  } else if (event.key === "Enter") {
-    event.preventDefault();
-    toggleFullscreen();
-
-  } else if (["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End"].includes(event.key)) {
-    event.preventDefault();
-    if (!lastFocusedElement || allChannelItems.length === 0) return;
-
-    const currentChannelIndex = allChannelItems.findIndex(
-      (item) => item === lastFocusedElement
-    );
-    if (currentChannelIndex === -1) return;
-
-    let newIndex = currentChannelIndex;
-    if (event.key === "ArrowDown" || event.key === "PageDown") {
-      newIndex = (currentChannelIndex + 1) % allChannelItems.length;
-    } else if (event.key === "ArrowUp" || event.key === "PageUp") {
-      newIndex = (currentChannelIndex - 1 + allChannelItems.length) % allChannelItems.length;
-    } else if (event.key === "Home") {
-      newIndex = 0;
-    } else if (event.key === "End") {
-      newIndex = allChannelItems.length - 1;
-    }
-
-    const newChannelCard = allChannelItems[newIndex];
-    const { url, name, image, description, number } = newChannelCard.dataset;
-
-    newChannelCard.scrollIntoView({ behavior: "smooth", block: "center" });
-
-    selectChannel(url, name, image, description, number);
-    saveRecentlyWatchedCard(name, url, image, description, number);
-
-    lastFocusedElement = newChannelCard;
-  }
-
-  // =========================
-  // --- MODAL IS CLOSED (grid navigation) ---
-  // =========================
-  } else {
-    if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)) {
-      if (!navigationInterval) {
-        const step = () => {
-          if (allChannelItems.length === 0) return;
-
-          if (focusedIndex === -1) {
-            allChannelItems[0].focus();
-            allChannelItems[0].scrollIntoView({ behavior: "smooth", block: "center" });
-            focusedIndex = 0;
-            return;
-          }
-
-          let newIndex = focusedIndex;
-          if (event.key === "ArrowRight") newIndex = (focusedIndex + 1) % allChannelItems.length;
-          else if (event.key === "ArrowLeft") newIndex = (focusedIndex - 1 + allChannelItems.length) % allChannelItems.length;
-          else if (event.key === "ArrowDown") newIndex = Math.min(focusedIndex + GRID_COLUMNS, allChannelItems.length - 1);
-          else if (event.key === "ArrowUp") newIndex = Math.max(focusedIndex - GRID_COLUMNS, 0);
-
-          const newCard = allChannelItems[newIndex];
-          newCard.focus();
-          newCard.scrollIntoView({ behavior: "smooth", block: "center" });
-
-          focusedIndex = newIndex;
-        };
-
-        step(); // run immediately
-        navigationInterval = setInterval(step, 200); // repeat while held
+      let newIndex = currentChannelIndex;
+      if (event.key === "ArrowDown" || event.key === "PageDown") {
+        newIndex = (currentChannelIndex + 1) % allChannelItems.length;
+      } else if (event.key === "ArrowUp" || event.key === "PageUp") {
+        newIndex = (currentChannelIndex - 1 + allChannelItems.length) % allChannelItems.length;
+      } else if (event.key === "Home") {
+        newIndex = 0;
+      } else if (event.key === "End") {
+        newIndex = allChannelItems.length - 1;
       }
 
-      event.preventDefault();
+      const newChannelCard = allChannelItems[newIndex];
+      const { url, name, image, description, number } = newChannelCard.dataset;
 
+      newChannelCard.scrollIntoView({ behavior: "smooth", block: "center" });
+
+      selectChannel(url, name, image, description, number);
+      saveRecentlyWatchedCard(name, url, image, description, number);
+
+      lastFocusedElement = newChannelCard;
+    }
+
+    // =========================
+    // --- MODAL IS CLOSED (grid navigation) ---
+    // =========================
+  } else {
+    if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)) {
+      if (allChannelItems.length === 0) return;
+
+      if (focusedIndex === -1) {
+        allChannelItems[0].focus();
+        allChannelItems[0].scrollIntoView({ behavior: "smooth", block: "center" });
+        focusedIndex = 0;
+        return;
+      }
+
+      let newIndex = focusedIndex;
+      if (event.key === "ArrowRight") newIndex = (focusedIndex + 1) % allChannelItems.length;
+      else if (event.key === "ArrowLeft") newIndex = (focusedIndex - 1 + allChannelItems.length) % allChannelItems.length;
+      else if (event.key === "ArrowDown") newIndex = Math.min(focusedIndex + GRID_COLUMNS, allChannelItems.length - 1);
+      else if (event.key === "ArrowUp") newIndex = Math.max(focusedIndex - GRID_COLUMNS, 0);
+
+      const newCard = allChannelItems[newIndex];
+      newCard.focus();
+      newCard.scrollIntoView({ behavior: "smooth", block: "center" });
+
+      focusedIndex = newIndex;
+
+      event.preventDefault();
     } else if (["PageUp", "PageDown", "Home", "End"].includes(event.key)) {
       event.preventDefault();
       if (focusedIndex === -1 && allChannelItems.length > 0) {
@@ -834,10 +825,18 @@ if (isModalOpen) {
         allChannelItems[0].scrollIntoView({ behavior: "smooth", block: "center" });
       } else {
         let newIndex = focusedIndex;
-        if (event.key === "PageDown") newIndex = Math.min(focusedIndex + GRID_COLUMNS * 2, allChannelItems.length - 1);
-        else if (event.key === "PageUp") newIndex = Math.max(focusedIndex - GRID_COLUMNS * 2, 0);
-        else if (event.key === "Home") newIndex = 0;
-        else if (event.key === "End") newIndex = allChannelItems.length - 1;
+        
+        // --- Category-based navigation for PageUp/PageDown ---
+        if (event.key === "PageUp") {
+            newIndex = Math.max(focusedIndex - GRID_COLUMNS, 0);
+        } else if (event.key === "PageDown") {
+            newIndex = Math.min(focusedIndex + GRID_COLUMNS, allChannelItems.length - 1);
+
+        } else if (event.key === "Home") {
+          newIndex = 0;
+        } else if (event.key === "End") {
+          newIndex = allChannelItems.length - 1;
+        }
 
         const newCard = allChannelItems[newIndex];
         newCard.focus();
@@ -859,22 +858,6 @@ if (isModalOpen) {
   }
 });
 
-// --- Stop continuous navigation on keyup ---
-document.addEventListener("keyup", () => {
-  if (navigationInterval) {
-    clearInterval(navigationInterval);
-    navigationInterval = null;
-  }
-});
-
-
-// --- Stop continuous navigation on keyup ---
-document.addEventListener("keyup", () => {
-  if (navigationInterval) {
-    clearInterval(navigationInterval);
-    navigationInterval = null;
-  }
-});
 
 
 

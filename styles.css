@@ -174,24 +174,34 @@ h4 {
   gap: 20px;
 }
 
+/* Base styles for the content card */
 .content-card {
   background-color: var(--bg-color-medium);
   border-radius: 8px;
   overflow: hidden;
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
-  transition: transform 0.2s, box-shadow 0.2s;
+  /* Increased base shadow for more presence */
+  box-shadow: 0 6px 12px rgba(0, 0, 0, 0.4);
+  transition: transform 0.3s ease, box-shadow 0.3s ease, outline-color 0.3s ease;
   cursor: pointer;
   text-decoration: none;
   color: inherit;
+  /* Use a subtle, solid outline by default */
   outline: 2px solid transparent;
   position: relative;
 }
 
+/* Styles for when the card is hovered or focused */
 .content-card:hover,
 .content-card:focus {
-  transform: translateY(-5px);
-  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.5);
-  outline-color: var(--accent-color);
+  /* Lift the card further for a more dramatic effect */
+  transform: translateY(-8px);
+  /* Added a double-layer shadow for a "glowing" effect */
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.6),
+              0 0 15px var(--accent-color);
+  /* Made the outline thicker and more prominent */
+  outline: 4px solid var(--accent-color);
+  /* The bold red background color remains for high contrast */
+  /*background-color: #FFA500;*/
 }
 
 .content-card img {
@@ -671,4 +681,24 @@ h4 {
   scroll-behavior: smooth; /* enables smooth scrolling */
   overflow-y: auto;
   max-height: 600px; /* adjust as needed */
+}
+
+
+#loading-spinner {
+  border: 8px solid #f3f3f3; /* Light grey */
+  border-top: 8px solid #3498db; /* Blue */
+  border-radius: 50%;
+  width: 60px;
+  height: 60px;
+  animation: spin 1s linear infinite;
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  display: none; /* Initially hidden */
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
 }
