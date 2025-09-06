@@ -2,7 +2,7 @@
   "name": "Live TV Player",
   "short_name": "TVPlayer",
   "description": "Watch live channels, series, and more",
-  "start_url": "/index.html",
+  "start_url": "index.html",
   "display": "standalone",
   "background_color": "#000000",
   "theme_color": "#CC0000",
