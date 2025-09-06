@@ -151,13 +151,13 @@ body {
   box-sizing: border-box;
 }
 
-h2 {
+#h2 {
   text-align: left;
   color: var(--text-color-light);
 }
 
-h4 {
-  font-size: 0.9rem;
+#h4 {
+  font-size: 1em;
   color: var(--text-color-light);
   padding: 5px;
   margin: 0px;
@@ -237,8 +237,8 @@ h4 {
   width: 100%;
   height: 100%;
   background-color: rgba(0, 0, 0, 0.75);
-  backdrop-filter: blur(3px);
-  display: none;
+  backdrop-filter: blur(3px) brightness(0.8) saturate(1.5);  
+    display: none;
   justify-content: center;
   align-items: center;
   flex-direction: column;
@@ -283,6 +283,18 @@ h4 {
   padding-top: 56.25%; /* 9 / 16 * 100 */
   position: relative;
   background-color: #000; /* Black background for video area */
+}
+
+#player-backdrop {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  filter: blur(60px) brightness(0.7) saturate(1.3);
+  transform: scale(1.2); /* make blur spread out */
+  z-index: 0;
 }
 
 #player,

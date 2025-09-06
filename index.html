@@ -6,7 +6,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
 <link rel="icon" href="favicon.png" type="image/png" sizes="32x32">
-<link rel="manifest" href="/manifest.json">
 
   <title>Live TV Player</title>
 
@@ -73,6 +72,7 @@
     <span class="closeModal">&times;</span>
     <div class="modal-content">
       <div id="player-container">
+   <video id="player-backdrop" muted playsinline></video>        
         <div id="player"></div>
         <div class="liveInlineBar"><span class="live_span">Live</span></div>
         <button id="retryButton" class="vjs-retry-button">
