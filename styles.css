@@ -1,15 +1,107 @@
-/* CSS Variables for easy theming */
+/*
+    ======================================
+    Table of Contents
+    ======================================
+    1. CSS Variables
+    2. Global/Base Styles
+    3. Layouts & Containers
+    4. Header
+    5. Footer
+    6. Content Grid & Cards
+    7. Sort & Filter Controls
+    8. Modals & Video Player
+    9. Overlays & UI Elements
+    10. Media Queries (Responsiveness)
+*/
+
+/* ====================================== 
+    1. CSS Variables 
+====================================== */
 :root {
   --bg-color-dark: #121212;
   --bg-color-medium: #1f1f1f;
   --text-color-light: #e0e0e0;
   --text-color-muted: #a0a0a0;
   --accent-color: #007bff;
-  --border-radius-sm: 8px;
+  --border-radius-sm: 10px;
   --spacing-unit: 1rem;
+  --color-gray-800: #424242;
+  --color-green-800: #276749;
 }
 
-/* Basic styling for the header */
+/* ====================================== 
+    2. Global/Base Styles 
+====================================== */
+body {
+  font-family: "Inter", sans-serif;
+  background-color: var(--bg-color-dark);
+  color: var(--text-color-light);
+  margin: 0;
+  padding: var(--spacing-unit);
+  line-height: 1.6;
+}
+
+h1 {
+  font-size: 2.5rem;
+  font-weight: 700;
+  color: var(--text-color-light);
+  margin: 0;
+  text-align: center;
+}
+
+h2 {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--text-color-light);
+  margin: 0;
+  line-height: 1.2;
+  margin-top: 40px;
+  margin-bottom: 20px;
+}
+
+h3 {
+  font-size: 1.2em;
+  margin: 0;
+  color: var(--text-color-light);
+}
+
+h4 {
+  font-size: 0.9rem;
+  color: var(--text-color-light);
+  padding: 5px;
+  margin: 0px;
+  padding: 5px;
+  text-align: center;
+}
+
+p {
+  margin: 5px 0 0;
+  font-size: 0.9em;
+  color: var(--text-color-muted);
+}
+
+/* ====================================== 
+    3. Layouts & Containers 
+====================================== */
+.container {
+  max-width: 1200px;
+  padding: 0 1rem;
+  margin: 0 auto;
+  box-sizing: border-box;
+}
+
+main {
+  flex: 1;
+}
+
+.section {
+  margin-top: 40px;
+  margin-bottom: 40px;
+}
+
+/* ====================================== 
+    4. Header 
+====================================== */
 .main-header {
   background-color: var(--bg-color-dark);
   color: var(--text-color-light);
@@ -18,198 +110,105 @@
   border-bottom: 2px solid #333;
 }
 
-#channel-number-overlay {
-  position: fixed;
-  font-weight: bold;
-  text-align: center;
-  min-width: 50px;
-  color: #ffcc00;
-  background-color: rgba(0, 0, 0, 0.75);
-  font-size: 2.5rem;
-  padding: 10px 15px;
-  border-radius: 8px;
-  display: none;
-  top: 20px;
-  right: 20px;
-  z-index: 9999;
-  float: left;
+.main-header h1 {
+  font-size: clamp(1.4rem, 1.1rem + 1.5vw, 2.2rem);
+  margin: 0;
 }
 
-/* Style for the overlay content */
-.channel-info-overlay {
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  width: 100%;
+
+.header-content {
   display: flex;
   align-items: center;
-  padding: 20px;
-  background-color: rgba(0, 0, 0, 0.50);
-  color: white;
-  box-sizing: border-box;
-  pointer-events: none; /* Allows clicks to pass through to the player */
-  transform: translateY(100%); /* Start position: below the screen */
-  transition: transform 0.5s ease-out, opacity 0.5s ease-out;
-  opacity: 0;
-  z-index: 3;
+  justify-content: flex-start;
+  flex-wrap: wrap;
+  /* Changed from center to flex-start */
 }
 
-.channel-info-overlay.show {
-  transform: translateY(0); /* End position: visible at the bottom */
-  opacity: 1;
+.logo {
+  height: 50px;
+  width: auto;
+  margin-right: 20px;
 }
 
-.channel-info-overlay img {
-  width: 80px;
-  height: 80px;
-  object-fit: cover;
-  border-radius: 8px;
-  margin-right: 15px;
-}
 
-.channel-info-overlay .text-block {
-  display: flex;
-  flex-direction: column;
-}
 
-.channel-info-overlay h2,
-.channel-info-overlay p {
-  margin: 0;
-  text-shadow: 1px 1px 3px rgba(0, 0, 0, 0.5);
-}
-
-.channel-info-overlay h2 {
-  font-size: 2em;
-}
-
-/* Styles for the new retry button position */
-.vjs-retry-button {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  background: rgba(0, 0, 0, 0.5);
-  color: white;
-  border: 1px solid white;
-  padding: 10px 20px;
-  border-radius: 5px;
-  cursor: pointer;
-  font-weight: bold;
-  background: #fff;
-  z-index: 4; /* Ensure it's on top of the player */
-}
-
-.main-header h1 {
-  font-size: 2.5rem;
-  font-weight: 700;
-  color: var(--text-color-light);
-  margin-bottom: calc(2 * var(--spacing-unit));
-  text-align: center;
-}
-
-/* Basic styling for the footer */
+/* ====================================== 
+    5. Footer 
+====================================== */
 .main-footer {
   background-color: #121212;
   color: var(--text-color-muted);
   padding: 20px;
   text-align: center;
   border-top: 2px solid #333;
-  margin-top: 40px; /* Adds some space between the content and the footer */
-}
-
-main {
-  flex: 1; /* This ensures the main content takes up all available vertical space */
-}
-
-/* Styling for the header content container */
-.header-content {
-  display: flex;
-  align-items: center;
-  justify-content: flex-start; /* Centers the content horizontally */
-}
-
-/* Styling for the logo image */
-.logo {
-  height: 50px; /* Set a fixed height for the logo */
-  width: auto; /* Maintain the logo's aspect ratio */
-  margin-right: 20px; /* Add some space between the logo and the title */
-}
-
-body {
-  font-family: "Inter", sans-serif;
-  background-color: var(--bg-color-dark);
-  color: var(--text-color-light);
-  margin: 0;
-  padding: calc(2 * var(--spacing-unit));
-  line-height: 1.6;
-}
-
-.container {
-  max-width: 1200px; /* fixed max width */
-  padding: 0 1rem; /* keep padding inside container */
-  margin: 0 auto; /* center container */
-  box-sizing: border-box;
-}
-
-#h2 {
-  text-align: left;
-  color: var(--text-color-light);
-}
-
-#h4 {
-  font-size: 1em;
-  color: var(--text-color-light);
-  padding: 5px;
-  margin: 0px;
-}
-
-.section {
   margin-top: 40px;
-  margin-bottom: 40px;
 }
 
+/* ====================================== 
+    6. Content Grid & Cards 
+====================================== */
 .content-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(80px, 120px));
+  grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
   gap: 20px;
+  /* This sets both horizontal and vertical space between items */
 }
 
-/* Base styles for the content card */
 .content-card {
-  background-color: var(--bg-color-medium);
-  border-radius: 8px;
+
+  --s: 100px;
+  /* the size of the image */
+  --b: 4px;
+  /* the border thickness*/
+  --g: 10px;
+  /* the gap */
+
   overflow: hidden;
-  /* Increased base shadow for more presence */
   box-shadow: 0 6px 12px rgba(0, 0, 0, 0.4);
   transition: transform 0.3s ease, box-shadow 0.3s ease, outline-color 0.3s ease;
   cursor: pointer;
   text-decoration: none;
   color: inherit;
-  /* Use a subtle, solid outline by default */
+  border-radius: 50%;
   outline: 2px solid transparent;
   position: relative;
+  background-color: var(--bg-color-medium);
+
+  /* === Fix for extra space === */
+  width: 100px;
+  /* Set a fixed width */
+  height: 100px;
+  /* Set a fixed height */
+
 }
 
-/* Styles for when the card is hovered or focused */
 .content-card:hover,
 .content-card:focus {
-  /* Lift the card further for a more dramatic effect */
-  transform: translateY(-8px);
-  /* Added a double-layer shadow for a "glowing" effect */
-  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.6),
-              0 0 15px var(--accent-color);
-  /* Made the outline thicker and more prominent */
-  outline: 4px solid var(--accent-color);
-  /* The bold red background color remains for high contrast */
-  /*background-color: #FFA500;*/
+  transform: translateY(-2px);
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.6), 0 0 15px var(--accent-color);
+  outline: var(--b) solid var(--accent-color);
+
+
 }
 
 .content-card img {
-  width: 120px;
-  height: 120px;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 1/1;
   object-fit: cover;
+  border-radius: 50%;
   display: block;
+
   background-color: var(--bg-color-medium);
+}
+
+.content-card img ::before {
+  height: 100% !important;
+  /* width: 100%; */
+  position: absolute !important;
+  z-index: 2;
+  top: 0;
+  right: -3px;
 }
 
 .content-info {
@@ -217,19 +216,125 @@ body {
   text-align: center;
 }
 
-.content-info h3 {
-  margin: 0;
-  font-size: 1.2em;
+.thumb-wrapper {
+  position: relative;
+  display: inline-block;
+}
+
+.channel-number {
+  position: absolute;
+  top: 10px;
+  left: 8px;
+  background: rgba(0, 0, 0, 0.75);
   color: var(--text-color-light);
+  font-size: 0.8rem;
+  font-weight: bold;
+  padding: 2px 4px;
+  border-radius: 6px;
 }
 
-.content-info p {
-  margin: 5px 0 0;
-  font-size: 0.9em;
-  color: var(--text-color-muted);
+.favorite-icon {
+  position: absolute;
+  top: 10px;
+  right: 8px;
+  font-size: 1rem;
+  color: #777;
+  transition: opacity 0.3s ease, color 0.3s ease;
+  opacity: 0;
+  padding: 2px 4px;
+  z-index: 2;
 }
 
-/* Modal for video playback */
+/* Show the favorite icon on hover */
+.content-card:hover .favorite-icon {
+  opacity: 1;
+  /* Make it visible */
+}
+
+.favorite-icon.active {
+  color: gold;
+  opacity: 1;
+}
+
+#channelListPreview {
+  scroll-behavior: smooth;
+  overflow-y: auto;
+  max-height: 600px;
+}
+
+.category-title {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--text-color-light);
+  margin-top: 40px;
+  margin-bottom: 20px;
+}
+
+.channel-name {
+  font-size: 0.8rem;
+  color: var(--text-color-light);
+  padding: 5px;
+  margin: 0px;
+}
+
+.hide-channel-btn {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  background-color: rgba(255, 0, 0, 0.7);
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-size: 0.8rem;
+  cursor: pointer;
+  z-index: 2;
+  /* Ensure it's on top of the image */
+  opacity: 0;
+  /* Hide by default */
+  transition: opacity 0.3s;
+}
+
+.content-card:hover .hide-channel-btn {
+  opacity: 1;
+  /* Show button on hover */
+}
+
+/* ====================================== 
+    7. Sort & Filter Controls 
+====================================== */
+.sort-container {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.sort-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.875rem;
+  color: #a0aec0;
+}
+
+.sort-dropdown {
+  background-color: var(--bg-color-medium);
+  color: #cbd5e0;
+  border-radius: 0.375rem;
+  padding: 0.25rem 0.5rem;
+  border: none;
+  outline: none;
+}
+
+.sort-dropdown:focus {
+  outline: 2px solid var(--accent-color);
+  outline-offset: 2px;
+}
+
+/* ====================================== 
+    8. Modals & Video Player 
+====================================== */
 .modal {
   position: fixed;
   top: 0;
@@ -237,8 +342,8 @@ body {
   width: 100%;
   height: 100%;
   background-color: rgba(0, 0, 0, 0.75);
-  backdrop-filter: blur(3px) brightness(0.8) saturate(1.5);  
-    display: none;
+  backdrop-filter: blur(3px) brightness(0.7) saturate(1.3);
+  display: none;
   justify-content: center;
   align-items: center;
   flex-direction: column;
@@ -267,35 +372,23 @@ body {
   color: var(--text-color-light);
   cursor: pointer;
   z-index: 1010;
+    transition: opacity 0.3s ease, color 0.3s ease;
+  opacity: 0;
   line-height: 1;
 }
 
 .closeModal:hover,
 .closeModal:focus {
-  text-decoration: none;
-  cursor: pointer;
-  color: var(--accent-color); /* Highlight on hover */
+  opacity: 1;
 }
 
 #player-container {
   width: 100%;
-  /* Maintain 16:9 aspect ratio for video */
-  padding-top: 56.25%; /* 9 / 16 * 100 */
+  padding-top: 56.25%;
   position: relative;
-  background-color: #000; /* Black background for video area */
+  background-color: #000;
 }
 
-#player-backdrop {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  filter: blur(60px) brightness(0.7) saturate(1.3);
-  transform: scale(1.2); /* make blur spread out */
-  z-index: 0;
-}
 
 #player,
 .video-js {
@@ -311,15 +404,17 @@ body {
   background-color: var(--bg-color-medium);
   border-top: 1px solid rgba(255, 255, 255, 0.05);
 }
+
 #content-image {
-  width: 60px; /* Slightly smaller image */
-  height: 60px;
+  width: 4rem;
+  height: 4rem;
   border-radius: 50%;
   margin-top: 10px;
   object-fit: cover;
-  border: 2px solid var(--accent-color); /* Highlight image border */
-  box-shadow: 0 0 10px rgba(0, 123, 255, 0.5); /* Glowing effect */
+  border: 2px solid var(--accent-color);
+  box-shadow: 0 0 10px var(--accent-color);
 }
+
 #video-title {
   font-size: 1.5rem;
   font-weight: 700;
@@ -327,34 +422,13 @@ body {
   color: var(--text-color-light);
   line-height: 1.2;
 }
-#video-quality {
-  position: absolute;
-  top: 10px; /* Adjust as needed */
-  right: 10px; /* Adjust as needed */
-  background-color: rgba(0, 123, 255, 0.502); /* Semi-transparent background */
-  color: var(--text-color-light);
-  font-size: 1rem;
-  padding: 4px 8px;
-  border-radius: 4px;
-  font-weight: 600;
-  z-index: 10; /* Ensure it's on top of the player */
-  position: absolute;
-  border-radius: 2px;
-}
 
 #channel-number {
   color: #ffcc00;
-
   font-size: 1.5rem;
   font-weight: 700;
   margin: 0;
   line-height: 1.2;
-}
-
-.text-block {
-  flex-grow: 1;
-  text-align: left;
-  margin-left: var(--spacing-unit);
 }
 
 #channel-description {
@@ -364,179 +438,200 @@ body {
   line-height: 1.2;
 }
 
-/* Responsive Adjustments */
-@media (max-width: 768px) {
-  h1 {
-    font-size: 2rem;
-  }
-  .grid {
-    grid-template-columns: repeat(
-      auto-fill,
-      minmax(140px, 1fr)
-    ); /* More columns on smaller tablets */
-    gap: var(--spacing-unit);
-  }
-  .channel-card h3 {
-    font-size: 1rem;
-  }
-  .channel-card p {
-    font-size: 0.8rem;
-  }
-  .modal-content {
-    width: 98%; /* Fuller width on small screens */
-  }
-  #video-title {
-    font-size: 1.5rem;
-  }
-  #content-image {
-    width: 60px;
-    height: 60px;
-  }
+/* ====================================== 
+    9. Overlays & UI Elements 
+====================================== */
+#channel-number-overlay {
+  position: fixed;
+  font-weight: bold;
+  text-align: center;
+  min-width: 50px;
+  color: #ffcc00;
+  background-color: rgba(0, 0, 0, 0.75);
+  font-size: 2.5rem;
+  padding: 10px 15px;
+  border-radius: var(--border-radius-sm);
+  display: none;
+  top: 20px;
+  right: 20px;
+  z-index: 1000;
 }
 
-@media (max-width: 480px) {
-  body {
-    padding: var(--spacing-unit);
-  }
-  h1 {
-    font-size: 1.8rem;
-  }
-  .grid {
-    grid-template-columns: repeat(
-      auto-fill,
-      minmax(120px, 1fr)
-    ); /* Even smaller min width for phones */
-  }
-  .channel-card img {
-    height: 90px;
-  }
-  .channel-card .info {
-    padding: calc(0.75 * var(--spacing-unit));
-  }
-  #closeModal {
-    position: absolute;
-    top: 15px;
-    right: 20px;
-    font-size: 2.5rem;
-    color: var(--text-color-light);
-    cursor: pointer;
-    z-index: 1010;
-    line-height: 1;
-  }
-  #channel-info {
-    padding: var(--spacing-unit);
-  }
-  #video-title {
-    font-size: 1.3rem;
-  }
-  #video-quality,
-  #channel-description {
-    font-size: 0.85rem;
-  }
+.recent-overlay {
+  position: absolute;
+  bottom: 20%;
+  left: 50%;
+  transform: translateX(-50%);
+  background-color: rgba(0, 0, 0, 0.75);
+  padding: 12px;
+  border-radius: 12px;
+  display: none; /* hidden by default */
+  z-index: 4;
 }
 
-/* Additional styles for channel lists to fit the new design */
-.channel-grid {
+.recent-overlay.show {
+  display: flex;
+}
+
+#recentChannelsGrid {
+  display: flex;         /* or grid */
+  gap: 16px;             /* ✅ creates spacing */
+  flex-wrap: wrap;       /* allows wrapping to next row */
+  justify-content: center;
+  padding: 8px;
+}
+
+
+.recent-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-  gap: 20px;
+  grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+  gap: 16px; /* same spacing as main grid */
+  padding: 8px;
+  max-height: 300px; /* keep overlay compact */
+  overflow-y: auto;
 }
 
-.channel-item {
+.recent-item {
+  --s: 70px;   /* smaller than main channels */
+  --b: 3px;
+  --g: 8px;
+
+  overflow: hidden;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.4);
+  transition: transform 0.3s ease, box-shadow 0.3s ease, outline-color 0.3s ease;
+  cursor: pointer;
+  text-decoration: none;
+  color: inherit;
+  border-radius: 50%;
+  outline: 2px solid transparent;
+  position: relative;
+  background-color: var(--bg-color-medium);
+
+  width: 70px;
+  height: 70px;
   text-align: center;
 }
 
-.favorite-icon {
+.recent-item img {
+  width: 100%;
+  height: auto;
+  aspect-ratio: 1/1;
+  object-fit: cover;
+  border-radius: 50%;
+  display: block;
+  background-color: var(--bg-color-medium);
+}
+
+.recent-item:focus,
+.recent-item:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.6), 0 0 10px var(--accent-color);
+  outline: var(--b) solid var(--accent-color);
+}
+
+
+
+
+.channel-info-overlay {
   position: absolute;
-  top: 5px;
-  right: 5px;
-  font-size: 1.2em;
-  color: #555;
-  transition: color 0.2s;
-}
-
-.favorite-icon.active {
-  color: gold;
-}
-
-/* New styles for the sort dropdown */
-.sort-container {
+  bottom: 0;
+  left: 0;
+  width: 100%;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  margin-bottom: 20px;
-  padding: 0 20px;
+  padding: 20px;
+  background-color: rgba(0, 0, 0, 0.5);
+  color: white;
+  box-sizing: border-box;
+  pointer-events: none;
+  transform: translateY(100%);
+  transition: transform 0.5s ease-out, opacity 0.5s ease-out;
+  opacity: 0;
+  z-index: 3;
 }
 
-.sort-container label,
-.sort-container h2 {
+.channel-info-overlay.show {
+  transform: translateY(0);
+  opacity: 1;
+}
+
+.channel-info-overlay img {
+  width: 120px;
+  height: 120px;
+  object-fit: cover;
+  border-radius: var(--border-radius-sm);
+  margin-right: 15px;
+}
+
+.channel-info-overlay .text-block {
+  display: flex;
+  flex-direction: column;
+}
+
+.channel-info-overlay h2,
+.channel-info-overlay p {
   margin: 0;
-  color: #ffffff;
+  text-shadow: 1px 1px 3px rgba(0, 0, 0, 0.5);
 }
 
-.sort-dropdown {
-  background-color: #333;
-  color: #ffffff;
-  border: 1px solid #555;
-  padding: 8px 12px;
-  border-radius: 5px;
-  cursor: pointer;
+.text-block {
+  flex-grow: 1;
+  text-align: left;
+  margin-left: var(--spacing-unit);
 }
 
-.live_span {
-  background-color: #ed1d24;
-  float: left;
-  margin: 0px;
-  color: #ffffff;
-  font-size: 14px;
-  line-height: 20px;
-  width: 50px;
+#video-quality {
+  font-size: 0.875rem;
+  line-height: 1.2;
+  margin: 0;
+  color: var(--text-color-light);
+  background-color: var(--color-green-800);
   text-align: center;
-  -webkit-box-shadow: 0px 4px 10px 0px rgba(0, 0, 0, 0.45);
-  -moz-box-shadow: 0px 4px 10px 0px rgba(0, 0, 0, 0.45);
-  box-shadow: 0px 4px 10px 0px rgba(0, 0, 0, 0.45);
-  -webkit-border-radius: 2px;
-  -moz-border-radius: 2px;
-  border-radius: 2px;
-  position: absolute;
-  padding-left: 6px;
-  z-index: 10;
+  border-radius: var(--border-radius-sm);
+  padding-left: 8px;
+  padding-right: 8px;
   text-transform: uppercase;
-  top: 10px;
-  left: 10px;
 }
 
-.live_span:before {
-  content: "";
-  position: absolute;
-  width: 6px;
-  height: 6px;
-  background-color: #ffffff;
-  -webkit-border-radius: 10px;
-  -moz-border-radius: 10px;
-  border-radius: 10px;
-  left: 6px;
-  top: 7px;
+
+#live_span {
+  font-size: 0.875rem;
+  line-height: 1.2;
+  margin: 0;
+  color: var(--text-color-light);
+  background-color: #dc2626;
+  text-align: center;
+  border-radius: var(--border-radius-sm);
+  padding-left: 8px;
+  padding-right: 8px;
+  text-transform: uppercase;
 }
 
-/* Adjust position for fullscreen if needed */
-.video-js.vjs-fullscreen .live_span {
-  top: 20px;
-  left: 20px;
-  font-size: 1rem;
-}
 
-#retryButton {
-  background-color: #333;
-  color: #fff;
-  border: 1px solid #555;
-  padding: 8px 12px;
-  border-radius: 5px;
-  cursor: pointer;
-  font-size: 14px;
+
+#loading-spinner {
+  border: 8px solid #f3f3f3;
+  border-top: 8px solid var(--accent-color);
+  border-radius: 50%;
+  width: 60px;
+  height: 60px;
+  animation: spin 1s linear infinite;
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
   display: none;
-  /* Initially hide the button */
-  transition: background-color 0.2s;
+}
+
+
+@keyframes spin {
+  0% {
+    transform: rotate(0deg);
+  }
+
+  100% {
+    transform: rotate(360deg);
+  }
 }
 
 .vjs-retry-button {
@@ -544,90 +639,14 @@ body {
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  z-index: 15; /* Highest z-index to be on top of everything */
-  /* ... rest of your styling */
-  background-color: #fff;
-  color: #fff;
-  border: 1px solid #555;
-  padding: 8px 12px;
+  background: rgba(0, 0, 0, 0.5);
+  color: white;
+  border: 1px solid white;
+  padding: 10px 20px;
   border-radius: 5px;
   cursor: pointer;
-  font-size: 14px;
-  display: none;
-  /* Initially hide the button */
-  transition: background-color 0.2s;
-}
-
-/* You might need to add a font-based icon or use an SVG for the icon part */
-#vjs-retry-button::before {
-  content: "↻";
-  /* A simple unicode retry symbol */
-  margin-right: 5px;
-}
-
-#retryButton:hover {
-  background-color: #555;
-}
-
-/* You might need to add a font-based icon or use an SVG for the icon part */
-#retryButton::before {
-  content: "↻";
-  /* A simple unicode retry symbol */
-  margin-right: 5px;
-}
-
-.episode-card {
-  background-color: #1e1e1e;
-  border-radius: 8px;
-  overflow: hidden;
-  display: flex;
-  gap: 10px;
-  cursor: pointer;
-  padding: 10px;
-  transition: background-color 0.2s;
-}
-
-.episode-card:hover {
-  background-color: #292929;
-}
-
-.episode-thumb {
-  width: 120px;
-  height: 70px;
-  object-fit: cover;
-  flex-shrink: 0;
-}
-
-.episode-info {
-  flex-grow: 1;
-  color: #e0e0e0;
-}
-
-.episode-info h4 {
-  margin: 0;
-  font-size: 1em;
-  color: #fff;
-}
-
-.episode-info p {
-  margin: 5px 0 0;
-  font-size: 0.85em;
-  color: #bbb;
-}
-
-.breadcrumb {
-  margin-bottom: 20px;
-  font-size: 0.9em;
-  color: #aaa;
-}
-
-.breadcrumb a {
-  color: #fff;
-  text-decoration: none;
-}
-
-.breadcrumb a:hover {
-  text-decoration: underline;
+  font-weight: bold;
+  z-index: 4;
 }
 
 .play-overlay {
@@ -642,75 +661,152 @@ body {
   border-radius: 50%;
 }
 
-.thumb-wrapper {
-  position: relative;
-  display: inline-block;
+.menu {
+  background: #111;
+  padding: 10px 20px;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3);
 }
 
-.channel-number {
-  position: absolute;
-  top: 6px;
-  left: 6px;
-  background: rgba(0, 0, 0, 0.75);
-  color: var(--text-color-light);
-  font-size: 13px;
-  font-weight: bold;
-  padding: 2px 6px;
+.menu ul {
+  margin: 0;
+  padding: 0;
+  display: flex;
+  list-style: none;
+  justify-content: space-around;
+}
+
+.menu li a {
+  color: #ccc;
+  text-decoration: none;
+  font-size: 16px;
+  padding: 8px 15px;
   border-radius: 6px;
+  transition: 0.3s;
 }
 
+.menu li a:hover {
+  background: var(--accent-color);
+  color: #fff;
+}
 
-  .menu {
-    background: #111;
-    padding: 10px 20px;
-    box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+.menu li a.active {
+  background: var(--accent-color);
+  color: #fff;
+}
+
+/* ====================================== 
+    10. Media Queries (Responsiveness) 
+====================================== */
+/* Fullscreen */
+.video-js.vjs-fullscreen .live_span {
+  margin: 0;
+}
+
+/* Reduced motion preference */
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
   }
-  .menu ul {
-    margin: 0;
-    padding: 0;
-    display: flex;
-    list-style: none;
-    justify-content: space-around;
+}
+
+/* Mobile: stack overlay vertically and center text */
+@media (max-width: 560px) {
+  .channel-info-overlay {
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 12px;
+    gap: 8px;
+    text-align: center;
   }
+
+  .channel-info-overlay .text-block {
+    pointer-events: auto;
+    text-align: center;
+    width: 100%;
+  }
+
+  .channel-info-overlay .text-block h2,
+  .channel-info-overlay .text-block p {
+    white-space: normal;
+  }
+
+  .channel-info-overlay img {
+    width: 60px;
+    height: 60px;
+  }
+}
+
+/* General Tablet & Mobile Styles */
+@media (max-width: 768px) {
+  h1 {
+    font-size: 2rem;
+  }
+
+  body {
+    padding: 0.75rem;
+  }
+
+  .content-grid {
+    grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+    gap: 12px;
+  }
+
+  .modal-content {
+    width: 98%;
+  }
+
+  .channel-info-overlay img {
+    width: 60px;
+    height: 60px;
+  }
+
+  .logo {
+    height: 40px;
+  }
+}
+
+/* Small Phones */
+@media (max-width: 480px) {
+  body {
+    padding: var(--spacing-unit);
+  }
+
+  h1 {
+    font-size: 1.8rem;
+  }
+
+  .content-grid {
+    grid-template-columns: repeat(auto-fill, minmax(90px, 1fr));
+    gap: 8px;
+  }
+
+  .content-info h3 {
+    font-size: 0.9rem;
+  }
+
+  .content-info p {
+    font-size: 0.75rem;
+  }
+
+  .logo {
+    height: 38px;
+  }
+
   .menu li a {
-    color: #ccc;
-    text-decoration: none;
-    font-size: 16px;
-    padding: 8px 15px;
-    border-radius: 6px;
-    transition: 0.3s;
-  }
-  .menu li a:hover {
-    background: #cc0000;
-    color: #fff;
-  }
-  .menu li a.active {
-    background: #cc0000;
-    color: #fff;
+    font-size: 12px;
+    padding: 6px 10px;
   }
 
-#channelListPreview {
-  scroll-behavior: smooth; /* enables smooth scrolling */
-  overflow-y: auto;
-  max-height: 600px; /* adjust as needed */
-}
+  #video-title {
+    font-size: 1.3rem;
+  }
 
+  #video-quality,
+  #channel-description {
+    font-size: 0.5rem;
+  }
 
-#loading-spinner {
-  border: 8px solid #f3f3f3; /* Light grey */
-  border-top: 8px solid #3498db; /* Blue */
-  border-radius: 50%;
-  width: 60px;
-  height: 60px;
-  animation: spin 1s linear infinite;
-  position: fixed;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  display: none; /* Initially hidden */
-}
-
-@keyframes spin {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
 }

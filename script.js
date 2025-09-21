@@ -1,6 +1,6 @@
 let retryButton = null;
 let retryTimeoutId = null;
-const MAX_RECENT = 16;
+const MAX_RECENT = 18;
 const favoritesKey = "favorites";
 const recentlyWatchedKey = "recentlyWatched";
 let allChannelItems = [];
@@ -15,6 +15,7 @@ let watchStartTime = 0;
 let currentVideoUrl = "";
 let overlayTimeoutShow;
 let overlayTimeoutHide;
+let isRecentOverlayActive = false;
 
 // Function to extract YouTube ID
 function extractYouTubeID(url) {
@@ -35,6 +36,7 @@ function selectChannel(url, name, image, description, number) {
   const channelInfoElement = document.getElementById("channel-description");
 
   lastFocusedElement = document.activeElement;
+
 
   // ✅ show channel number if available
   const numberEl = document.getElementById("channel-number");
@@ -66,6 +68,7 @@ function selectChannel(url, name, image, description, number) {
   newVideoEl.setAttribute("data-setup", "{}");
   videoContainer.appendChild(newVideoEl);
 
+
   // Update overlay info
   imageElement.src = image || "";
   videoTitleElement.textContent = name || "Unknown Channel";
@@ -73,7 +76,7 @@ function selectChannel(url, name, image, description, number) {
   document.getElementById("video-quality").textContent = "";
 
   // Animate the overlay
-showChannelInfoOverlay();
+  showChannelInfoOverlay();
 
   let source;
   let techOrder;
@@ -102,6 +105,8 @@ showChannelInfoOverlay();
       ytControls: true,
       playerVars: {
         autoplay: 1,
+        playsinline: 1,
+        controls: 1,
         mute: 1,
         rel: 0,
         modestbranding: 1
@@ -110,9 +115,13 @@ showChannelInfoOverlay();
   });
 
   playerInstance.ready(function () {
+
+
     playerInstance.play().catch((e) => {
       console.warn("Autoplay blocked:", e);
     });
+
+
 
     playerInstance.on("loadedmetadata", updateQualityDisplay);
 
@@ -150,13 +159,12 @@ showChannelInfoOverlay();
   addRetryListeners();
   retryCount = 0;
 
-    startWatching(url);
- 
+  startWatching(url);
+
 }
 
 function showChannelInfoOverlay() {
-  const modal = document.getElementById("videoModal");
-const channelInfoOverlay = document.getElementById("channel-info-overlay");
+  const channelInfoOverlay = document.getElementById("channel-info-overlay");
 
   // Clear any previous timers (avoid stacking multiple animations)
   clearTimeout(overlayTimeoutShow);
@@ -178,6 +186,55 @@ const channelInfoOverlay = document.getElementById("channel-info-overlay");
     channelInfoOverlay.classList.remove("show");
   }, 6000);
 }
+
+function renderRecentOverlay() {
+  const container = document.getElementById("recentChannelsGrid");
+  const recent = JSON.parse(localStorage.getItem(recentlyWatchedKey) || "[]");
+  container.innerHTML = "";
+
+  recent.forEach((channel, index) => {
+    const item = document.createElement("div");
+    item.className = "recent-item";
+    item.setAttribute("tabindex", "0");
+    item.dataset.channel = JSON.stringify(channel);
+
+    const img = document.createElement("img");
+    img.src = channel.image;
+    img.alt = channel.name;
+
+    item.appendChild(img);
+
+    item.addEventListener("click", () => {
+      selectChannel(channel.url, channel.name, channel.image, channel.description, channel.number);
+      hideRecentChannelOverlay();
+      saveRecentlyWatched(channel);
+    });
+
+    container.appendChild(item);
+  });
+
+  // Focus first recent channel when overlay opens
+  const first = container.querySelector(".recent-item");
+  if (first) first.focus();
+}
+
+
+function showRecentChannelOverlay() {
+  const overlay = document.getElementById("recent-channel-overlay");
+  renderRecentOverlay();
+  overlay.classList.add("show");
+  isRecentOverlayActive = true;
+}
+
+function hideRecentChannelOverlay() {
+  const overlay = document.getElementById("recent-channel-overlay");
+  overlay.classList.remove("show");
+  isRecentOverlayActive = false;
+}
+
+
+
+
 
 // Start tracking watch time
 function startWatching(url) {
@@ -224,7 +281,7 @@ function updateQualityDisplay() {
 }
 
 function closeModal() {
-    stopWatching();
+  stopWatching();
   modal.style.display = "none";
 
   if (retryTimeoutId) {
@@ -242,7 +299,7 @@ function closeModal() {
     currentVideoElement.remove();
   }
   updateAllChannelItems();
-    
+
   if (lastFocusedElement && lastFocusedElement.isConnected) {
     lastFocusedElement.focus();
   } else if (allChannelItems.length > 0) {
@@ -328,6 +385,7 @@ function saveRecentlyWatched(channel) {
 
   localStorage.setItem(recentlyWatchedKey, JSON.stringify(recent));
   renderRecentlyWatched();
+  renderRecentOverlay();
 }
 
 function saveRecentlyWatchedCard(name, url, image, description, number) {
@@ -338,7 +396,7 @@ function saveRecentlyWatchedCard(name, url, image, description, number) {
     url,
     image,
     description,
-      number
+    number
   });
 
   if (recent.length > MAX_RECENT) {
@@ -346,6 +404,7 @@ function saveRecentlyWatchedCard(name, url, image, description, number) {
   }
   localStorage.setItem(recentlyWatchedKey, JSON.stringify(recent));
   renderRecentlyWatched();
+  renderRecentOverlay();
 }
 
 function toggleFavorite(url, name, image, description, number, event) {
@@ -396,7 +455,7 @@ function createChannelItem(channel) {
       channel.number
     );
 
-      saveRecentlyWatched(channel);
+    saveRecentlyWatched(channel);
 
 
   });
@@ -418,12 +477,13 @@ function createChannelItem(channel) {
   wrapper.appendChild(numberBadge);
 
   const info = document.createElement("div");
-  info.className = "channel-description";
+  info.className = "channel-name";
 
   const nameSpan = document.createElement("h4");
   nameSpan.textContent = channel.name;
 
   info.appendChild(nameSpan);
+
 
   const favoriteIcon = document.createElement("span");
   favoriteIcon.className = "favorite-icon";
@@ -434,7 +494,7 @@ function createChannelItem(channel) {
       channel.name,
       channel.image,
       channel.description,
-    channel.number,
+      channel.number,
       e
     );
 
@@ -448,11 +508,18 @@ function createChannelItem(channel) {
 function renderChannels(channels) {
   const mainContainer = document.getElementById("channels");
   const existingGrids = mainContainer.querySelectorAll(".content-grid");
+
   const existingHeadings = mainContainer.querySelectorAll(
     "h2:not(.sort-container h2)"
   );
+
+
+
   existingGrids.forEach((grid) => grid.remove());
   existingHeadings.forEach((heading) => heading.remove());
+
+
+
 
   if (currentSortMethod === "none") {
     const categorizedChannels = channels.reduce((acc, channel) => {
@@ -466,8 +533,7 @@ function renderChannels(channels) {
       const channelCount = categorizedChannels[category].length;
       const categoryHeading = document.createElement("h2");
       categoryHeading.textContent = `${category} (${channelCount})`;
-      categoryHeading.style.textAlign = "left";
-      categoryHeading.style.marginLeft = "20px";
+      categoryHeading.className = "text-xl font-bold mt-6 mb-4 col-span-full";
 
       const categoryGrid = document.createElement("div");
       categoryGrid.className = "content-grid";
@@ -488,9 +554,8 @@ function renderChannels(channels) {
   } else {
     const totalChannelCount = channels.length;
     const mainHeading = document.createElement("h2");
-    mainHeading.textContent = `All Channels (${totalChannelCount})`;
-    mainHeading.style.textAlign = "left";
-    mainHeading.style.marginLeft = "20px";
+    mainHeading.textContent = `> Channels < (${totalChannelCount})`;
+    mainHeading.className = "text-xl font-bold mt-6 mb-4 col-span-full";
     mainContainer.appendChild(mainHeading);
 
     const categoryGrid = document.createElement("div");
@@ -545,7 +610,7 @@ document.addEventListener("keydown", (e) => {
           channel.description,
           channel.number
         );
-saveRecentlyWatched(channel);
+        saveRecentlyWatched(channel);
 
       }
 
@@ -647,6 +712,18 @@ function updateAllChannelItems() {
   allChannelItems = Array.from(document.querySelectorAll(".channel-item"));
 }
 
+function nextTrack() {
+  if (playerInstance && playerInstance.tech().featuresVolumeControl) {
+    playerInstance.tech().nextVideo();
+  }
+}
+
+function previousTrack() {
+  if (playerInstance && playerInstance.tech().featuresVolumeControl) {
+    playerInstance.tech().previousVideo();
+  }
+}
+
 
 // Main initialize function
 async function initialize() {
@@ -691,6 +768,7 @@ async function initialize() {
 
   renderFavorites();
   renderRecentlyWatched();
+  renderRecentOverlay();
   updateFavoriteIcons();
   updateAllChannelItems();
 
@@ -708,59 +786,76 @@ async function initialize() {
 
 function getGridColumns() {
   const grid = document.querySelector(".content-grid");
-  if (!grid) return 1;
+  if (!grid) {
+    return 1;
+  }
 
-  const gridStyle = window.getComputedStyle(grid);
-  const gap = parseInt(gridStyle.gap) || 0;
+  const gridComputedStyle = window.getComputedStyle(grid);
+  const gridTemplateColumns = gridComputedStyle.getPropertyValue("grid-template-columns");
 
-  const firstCard = grid.querySelector(".content-card");
-  if (!firstCard) return 1;
+  if (!gridTemplateColumns) {
+    return 1;
+  }
 
-  const cardWidth = firstCard.offsetWidth + gap;
-  const gridWidth = grid.clientWidth;
-
-  return Math.max(1, Math.floor(gridWidth / cardWidth));
+  // Split the computed style string by spaces to count the columns
+  const columnArray = gridTemplateColumns.split(" ");
+  return columnArray.length;
 }
+
 
 document.addEventListener("keydown", (event) => {
   const GRID_COLUMNS = getGridColumns();
-
-  // --- Backspace retry when fullscreen ---
-  if (event.key === "Backspace" && document.fullscreenElement) {
-    event.preventDefault();
-    if (playerInstance) {
-      const currentUrl = playerInstance.currentSrc();
-      const channel = allChannels.find((c) => c.url === currentUrl);
-      if (channel) retryStream(channel.url, channel.name);
-    }
-    return;
-  }
-
   const isModalOpen = modal.style.display === "flex";
   let focusedElement = document.activeElement;
   let focusedIndex = allChannelItems.findIndex((item) => item === focusedElement);
 
-  // =========================
-  // --- MODAL IS OPEN (keep your version) ---
-  // =========================
-  if (isModalOpen) {
-    if (event.key === "Backspace" || event.key === " ") {
+  // --- IF MODAL IS OPEN AND RECENT OVERLAY IS ACTIVE ---
+  if (isModalOpen && isRecentOverlayActive) {
+    const items = Array.from(document.querySelectorAll("#recentChannelsGrid .recent-item"));
+    let idx = items.indexOf(focusedElement);
+
+    if (event.key === "ArrowRight") {
       event.preventDefault();
-      if (playerInstance) {
-        const currentUrl = playerInstance.currentSrc();
-        const channel = allChannels.find((c) => c.url === currentUrl);
-        if (channel) retryStream(channel.url, channel.name);
+      if (items.length > 0) items[(idx + 1) % items.length].focus();
+    } else if (event.key === "ArrowLeft") {
+      event.preventDefault();
+      hideRecentChannelOverlay();
+      if (items.length > 0) items[(idx - 1 + items.length) % items.length].focus();
+    } else if (event.key === "Enter") {
+      event.preventDefault();
+      if (focusedElement && focusedElement.dataset.channel) {
+        const ch = JSON.parse(focusedElement.dataset.channel);
+        selectChannel(ch.url, ch.name, ch.image, ch.description, ch.number);
+        saveRecentlyWatchedCard(ch.name, ch.url, ch.image, ch.description, ch.number);
+
+        // ✅ update lastFocusedElement to the real grid card
+        const realCard = allChannelItems.find(item => item.dataset.name === ch.name);
+        if (realCard) {
+          lastFocusedElement = realCard;
+          realCard.focus();
+        }
+
+        hideRecentChannelOverlay();
       }
-    } else if (event.key === "Escape" || event.key === "ArrowLeft") {
+    }
+    return; // ✅ stop here so no other keys interfere
+  }
+
+  // --- IF MODAL IS OPEN AND RECENT OVERLAY IS NOT ACTIVE ---
+  if (isModalOpen) {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      showRecentChannelOverlay(); // open recent overlay
+      return;
+    }
+
+    if (event.key === "Escape" || event.key === "ArrowLeft") {
       event.preventDefault();
       closeModal();
     } else if (event.key === "ArrowRight") {
       event.preventDefault();
       showChannelInfoOverlay();
-    } else if (event.key === "Enter") {
-      event.preventDefault();
-      toggleFullscreen();
-    } else if (["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End"].includes(event.key)) {
+    } else if (["ArrowUp", "ArrowDown", "PageUp", "PageDown"].includes(event.key)) {
       event.preventDefault();
       if (!lastFocusedElement || allChannelItems.length === 0) return;
 
@@ -774,89 +869,77 @@ document.addEventListener("keydown", (event) => {
         newIndex = (currentChannelIndex + 1) % allChannelItems.length;
       } else if (event.key === "ArrowUp" || event.key === "PageUp") {
         newIndex = (currentChannelIndex - 1 + allChannelItems.length) % allChannelItems.length;
-      } else if (event.key === "Home") {
-        newIndex = 0;
-      } else if (event.key === "End") {
-        newIndex = allChannelItems.length - 1;
       }
 
       const newChannelCard = allChannelItems[newIndex];
       const { url, name, image, description, number } = newChannelCard.dataset;
 
       newChannelCard.scrollIntoView({ behavior: "smooth", block: "center" });
-
       selectChannel(url, name, image, description, number);
       saveRecentlyWatchedCard(name, url, image, description, number);
 
       lastFocusedElement = newChannelCard;
     }
+    return;
+  }
 
-    // =========================
-    // --- MODAL IS CLOSED (grid navigation) ---
-    // =========================
-  } else {
-    if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)) {
-      if (allChannelItems.length === 0) return;
+  // --- IF MODAL IS CLOSED (GRID NAVIGATION) ---
+  if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)) {
+    if (allChannelItems.length === 0) return;
 
-      if (focusedIndex === -1) {
-        allChannelItems[0].focus();
-        allChannelItems[0].scrollIntoView({ behavior: "smooth", block: "center" });
-        focusedIndex = 0;
-        return;
-      }
+    if (focusedIndex === -1) {
+      allChannelItems[0].focus();
+      allChannelItems[0].scrollIntoView({ behavior: "smooth", block: "center" });
+      focusedIndex = 0;
+      return;
+    }
 
+    let newIndex = focusedIndex;
+    if (event.key === "ArrowRight") newIndex = (focusedIndex + 1) % allChannelItems.length;
+    else if (event.key === "ArrowLeft") newIndex = (focusedIndex - 1 + allChannelItems.length) % allChannelItems.length;
+    else if (event.key === "ArrowDown") newIndex = Math.min(focusedIndex + GRID_COLUMNS, allChannelItems.length - 1);
+    else if (event.key === "ArrowUp") newIndex = Math.max(focusedIndex - GRID_COLUMNS, 0);
+
+    const newCard = allChannelItems[newIndex];
+    newCard.focus();
+    newCard.scrollIntoView({ behavior: "smooth", block: "center" });
+
+    focusedIndex = newIndex;
+    event.preventDefault();
+  } else if (["PageUp", "PageDown", "Home", "End"].includes(event.key)) {
+    event.preventDefault();
+    if (focusedIndex === -1 && allChannelItems.length > 0) {
+      allChannelItems[0].focus();
+      allChannelItems[0].scrollIntoView({ behavior: "smooth", block: "center" });
+    } else {
       let newIndex = focusedIndex;
-      if (event.key === "ArrowRight") newIndex = (focusedIndex + 1) % allChannelItems.length;
-      else if (event.key === "ArrowLeft") newIndex = (focusedIndex - 1 + allChannelItems.length) % allChannelItems.length;
-      else if (event.key === "ArrowDown") newIndex = Math.min(focusedIndex + GRID_COLUMNS, allChannelItems.length - 1);
-      else if (event.key === "ArrowUp") newIndex = Math.max(focusedIndex - GRID_COLUMNS, 0);
+      if (event.key === "PageUp") {
+        newIndex = Math.max(focusedIndex - GRID_COLUMNS, 0);
+      } else if (event.key === "PageDown") {
+        newIndex = Math.min(focusedIndex + GRID_COLUMNS, allChannelItems.length - 1);
+      } else if (event.key === "Home") {
+        newIndex = 0;
+      } else if (event.key === "End") {
+        newIndex = allChannelItems.length - 1;
+      }
 
       const newCard = allChannelItems[newIndex];
       newCard.focus();
       newCard.scrollIntoView({ behavior: "smooth", block: "center" });
 
       focusedIndex = newIndex;
-
-      event.preventDefault();
-    } else if (["PageUp", "PageDown", "Home", "End"].includes(event.key)) {
-      event.preventDefault();
-      if (focusedIndex === -1 && allChannelItems.length > 0) {
-        allChannelItems[0].focus();
-        allChannelItems[0].scrollIntoView({ behavior: "smooth", block: "center" });
-      } else {
-        let newIndex = focusedIndex;
-        
-        // --- Category-based navigation for PageUp/PageDown ---
-        if (event.key === "PageUp") {
-            newIndex = Math.max(focusedIndex - GRID_COLUMNS, 0);
-        } else if (event.key === "PageDown") {
-            newIndex = Math.min(focusedIndex + GRID_COLUMNS, allChannelItems.length - 1);
-
-        } else if (event.key === "Home") {
-          newIndex = 0;
-        } else if (event.key === "End") {
-          newIndex = allChannelItems.length - 1;
-        }
-
-        const newCard = allChannelItems[newIndex];
-        newCard.focus();
-        newCard.scrollIntoView({ behavior: "smooth", block: "center" });
-
-        focusedIndex = newIndex;
-      }
-
-    } else if (event.key === "Enter" && focusedIndex !== -1) {
-      event.preventDefault();
-      const card = allChannelItems[focusedIndex];
-      const { url, name, image, description, number } = card.dataset;
-
-      card.scrollIntoView({ behavior: "smooth", block: "center" });
-
-      selectChannel(url, name, image, description, number);
-      saveRecentlyWatchedCard(name, url, image, description, number);
     }
+  } else if (event.key === "Enter" && focusedIndex !== -1) {
+    event.preventDefault();
+    const card = allChannelItems[focusedIndex];
+    const { url, name, image, description, number } = card.dataset;
+
+    card.scrollIntoView({ behavior: "smooth", block: "center" });
+    selectChannel(url, name, image, description, number);
+    saveRecentlyWatchedCard(name, url, image, description, number);
   }
 });
+
 
 
 
@@ -879,14 +962,14 @@ function toggleFullscreen() {
 //YouTube Feed Loading:
 // === Helper: convert YouTube item to channel object ===
 function youtubeItemToChannel(item, feed) {
-    const videoId = item.guid.split(":").pop();
-    return {
-        url: `https://www.youtube.com/watch?v=${videoId}`,
-        name: feed.name,
-        image: feed.image,
-        category: feed.category || "> Person <",
-        description: item.title
-    };
+  const videoId = item.guid.split(":").pop();
+  return {
+    url: `https://www.youtube.com/watch?v=${videoId}`,
+    name: feed.name,
+    image: feed.image,
+    category: feed.category || "> Person <",
+    description: item.title
+  };
 }
 
 // Load YouTube feeds and update allChannels
@@ -927,6 +1010,7 @@ async function loadYouTubeFeeds() {
   // Render channels (avoid duplicates)
   renderChannels(allChannels);
   updateFavoriteIcons();
-      renderRecentlyWatched();
+  renderRecentlyWatched();
+  renderRecentOverlay();
   updateAllChannelItems();
 }
