@@ -64,23 +64,9 @@
     "source": "youtube"
   },
   {
-    "name": "Syed Jawad Naqvi",
-    "url": "https://www.youtube.com/feeds/videos.xml?channel_id=UC5q41mpGBlCIaXc43iG4qwQ",
-    "image": "https://yt3.googleusercontent.com/4ok4VLOTIyXdmk833zyZfluAuD1LpGf3GKL1LCNWeFR1Ink_D-xYOFMZb_B_8x-dqdBnjW8q-Q=s900-c-k-c0x00ffffff-no-rj",
-    "category": "> Person <",
-    "source": "youtube"
-  },
-  {
     "name": "Islamimarkaz live ",
     "url": "https://www.youtube.com/feeds/videos.xml?channel_id=UC02xiMIWs6pfKT6G2D8iDlw",
     "image": "https://yt3.googleusercontent.com/4dQ_seNd3MT3kFbbybnx8f-I2o5NGFrR_IdTauKO3JZHSYrEiG5CXDFj5dmORJg3D1dXdqnx=s900-c-k-c0x00ffffff-no-rj",
-    "category": "> Person <",
-    "source": "youtube"
-  },
-  {
-    "name": "Elm-ul-Awaleen",
-    "url": "https://www.youtube.com/feeds/videos.xml?channel_id=UCLzP93YkghWmModgpzDN4JA",
-    "image": "https://yt3.googleusercontent.com/wON40vCAJT30CAGHI8Ry5fyocWlePZ8D_ej7UrQykXoQLzSipzR62nwEtgTnf_TRzYVyzCtnUA=s900-c-k-c0x00ffffff-no-rj",
     "category": "> Person <",
     "source": "youtube"
   },
