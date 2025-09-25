@@ -41,7 +41,7 @@ const feeds = [
     "image": "https://yt3.googleusercontent.com/KrrtRyGDP6h2wWObxzqPBFqtgxri00qVBYeYrzHQ550S7NJ5Cluy9JkPb2fOD03mqpRdNqP-5Q=s900-c-k-c0x00ffffff-no-rj",
     "category": "> Person <",
     "source": "youtube"
-  }
+  },
   {
     "name": "Global Sach ( Dr Nasir Baig )",
     "url": "https://www.youtube.com/feeds/videos.xml?channel_id=UC4gwciwDIcmqC0QKaUlAFjA",
