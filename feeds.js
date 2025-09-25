@@ -1,5 +1,5 @@
-        // --- Channel Data - Your offline "database" ---
-  const feeds = [
+// --- Channel Data - Your offline "database" ---
+const feeds = [
   {
     "name": "Mansoor Ali Khan",
     "url": "https://www.youtube.com/feeds/videos.xml?channel_id=UClDtMswg3muouH60XTKlVEw",
@@ -41,14 +41,7 @@
     "image": "https://yt3.googleusercontent.com/KrrtRyGDP6h2wWObxzqPBFqtgxri00qVBYeYrzHQ550S7NJ5Cluy9JkPb2fOD03mqpRdNqP-5Q=s900-c-k-c0x00ffffff-no-rj",
     "category": "> Person <",
     "source": "youtube"
-  },
-  {
-    "name": "Hamid Mir",
-    "url": "https://www.youtube.com/feeds/videos.xml?channel_id=UC5N0MlMQopPTGMLUxHISfDg",
-    "image": "https://yt3.googleusercontent.com/KAS-YrL67jg_oaC-Nt34C1bdaCnNKWwFRbqm8dib5KGejonnmobDz_Lmmb_ug_KP43kj1DL2jw=s900-c-k-c0x00ffffff-no-rj",
-    "category": "> Person <",
-    "source": "youtube"
-  },
+  }
   {
     "name": "Global Sach ( Dr Nasir Baig )",
     "url": "https://www.youtube.com/feeds/videos.xml?channel_id=UC4gwciwDIcmqC0QKaUlAFjA",
@@ -64,9 +57,9 @@
     "source": "youtube"
   },
   {
-    "name": "Islamimarkaz live ",
-    "url": "https://www.youtube.com/feeds/videos.xml?channel_id=UC02xiMIWs6pfKT6G2D8iDlw",
-    "image": "https://yt3.googleusercontent.com/4dQ_seNd3MT3kFbbybnx8f-I2o5NGFrR_IdTauKO3JZHSYrEiG5CXDFj5dmORJg3D1dXdqnx=s900-c-k-c0x00ffffff-no-rj",
+    "name": "Elm-ul-Awaleen",
+    "url": "https://www.youtube.com/feeds/videos.xml?channel_id=UCLzP93YkghWmModgpzDN4JA",
+    "image": "https://yt3.googleusercontent.com/wON40vCAJT30CAGHI8Ry5fyocWlePZ8D_ej7UrQykXoQLzSipzR62nwEtgTnf_TRzYVyzCtnUA=s900-c-k-c0x00ffffff-no-rj",
     "category": "> Person <",
     "source": "youtube"
   },
