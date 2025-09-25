@@ -57,13 +57,6 @@ const feeds = [
     "source": "youtube"
   },
   {
-    "name": "Elm-ul-Awaleen",
-    "url": "https://www.youtube.com/feeds/videos.xml?channel_id=UCLzP93YkghWmModgpzDN4JA",
-    "image": "https://yt3.googleusercontent.com/wON40vCAJT30CAGHI8Ry5fyocWlePZ8D_ej7UrQykXoQLzSipzR62nwEtgTnf_TRzYVyzCtnUA=s900-c-k-c0x00ffffff-no-rj",
-    "category": "> Person <",
-    "source": "youtube"
-  },
-  {
     "name": "Shahat TV",
     "url": "https://www.youtube.com/feeds/videos.xml?channel_id=UC76bicuttaSh6VZdioRlHvQ",
     "image": "https://yt3.googleusercontent.com/NlWdeVz4Q7Bmfy6oRyUkAIsKHh6ASMC2ZInqcEttZRtevTVZHVw1iFaXt8YMJVO-2XiL1-qUFak=s900-c-k-c0x00ffffff-no-rj",
