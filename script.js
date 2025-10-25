@@ -16,6 +16,7 @@ let currentVideoUrl = "";
 let overlayTimeoutShow;
 let overlayTimeoutHide;
 let isRecentOverlayActive = false;
+const API_KEY = "AIzaSyDL6cStGYRBUeewAQntRv85hiz2xkpwun0"; // <-- replace with your API key
 
 // Function to extract YouTube ID
 function extractYouTubeID(url) {
@@ -109,8 +110,23 @@ function selectChannel(url, name, image, description, number) {
         controls: 1,
         mute: 1,
         rel: 0,
+        enablejsapi: 1,
         modestbranding: 1
+      },
+      events: {
+        onReady: function (event) {
+          event.target.playVideo();
+          Android.onPlayerReady();
+        },
+        onError: function (error) {
+          Android.onPlayerError(error.data);
+          if (error.data === 101 || error.data === 150 || error.data === 153) {
+            // Fallback
+            window.location.href = "https://m.youtube.com/watch?v=$url";
+          }
+        }
       }
+
     }
   });
 
@@ -372,42 +388,47 @@ function retryStream(url, name) {
 }
 
 function saveRecentlyWatched(channel) {
+  // Destructure and set defaults for resilience.
+  const {
+    name,
+    url,
+    image,
+    description,
+    number,
+    // Ensure isLive defaults to 'false' string if not present
+    isLive = 'true',
+    // Ensure category defaults to 'Unknown' if not present
+    category = 'Unknown'
+  } = channel;
+
   let recent = JSON.parse(localStorage.getItem(recentlyWatchedKey) || "[]");
 
   // Remove duplicate by URL
-  recent = recent.filter(item => item.url !== channel.url);
+  recent = recent.filter(item => item.url !== url);
 
-  // Add new entry to front
-  recent.unshift(channel);
-
-  // Limit list
-  if (recent.length > MAX_RECENT) recent.pop();
-
-  localStorage.setItem(recentlyWatchedKey, JSON.stringify(recent));
-  renderRecentlyWatched();
-  renderRecentOverlay();
-}
-
-function saveRecentlyWatchedCard(name, url, image, description, number) {
-  let recent = JSON.parse(localStorage.getItem(recentlyWatchedKey) || "[]");
-  recent = recent.filter((item) => item.url !== url);
+  // Add the full channel object to the front
   recent.unshift({
     name,
     url,
     image,
     description,
-    number
+    number,
+    isLive,
+    category
   });
 
+  // Limit list length
   if (recent.length > MAX_RECENT) {
     recent.pop();
   }
+
   localStorage.setItem(recentlyWatchedKey, JSON.stringify(recent));
   renderRecentlyWatched();
   renderRecentOverlay();
 }
 
-function toggleFavorite(url, name, image, description, number, event) {
+
+function toggleFavorite(url, name, image, description, number, isLive, category, event) {
   if (event) event.stopPropagation();
 
   let favorites = JSON.parse(localStorage.getItem(favoritesKey) || "[]");
@@ -423,7 +444,9 @@ function toggleFavorite(url, name, image, description, number, event) {
       url,
       image,
       description,
-      number
+      number,
+      isLive,
+      category
     });
   }
 
@@ -445,6 +468,8 @@ function createChannelItem(channel) {
   item.dataset.image = channel.image;
   item.dataset.description = channel.description;
   item.dataset.number = numberText; // ✅ store number in dataset
+  item.dataset.isLive = channel.isLive;
+  item.dataset.category = channel.category;
 
   item.addEventListener("click", () => {
     selectChannel(
@@ -473,6 +498,17 @@ function createChannelItem(channel) {
   numberBadge.className = "channel-number";
   numberBadge.textContent = channel.number;
 
+
+  // ✅ live indicator
+  if (channel.isLive === true || channel.isLive === 'true') {
+    const liveIndicator = document.createElement("img");
+    liveIndicator.src = 'live.webp';
+    liveIndicator.alt = 'Live';
+    liveIndicator.className = 'live-indicator';
+    wrapper.appendChild(liveIndicator);
+  }
+
+
   wrapper.appendChild(img);
   wrapper.appendChild(numberBadge);
 
@@ -495,6 +531,8 @@ function createChannelItem(channel) {
       channel.image,
       channel.description,
       channel.number,
+      channel.isLive,
+      channel.category,
       e
     );
 
@@ -754,7 +792,9 @@ async function initialize() {
     }
   }
 
-  await loadYouTubeFeeds();
+  await loadYouTubeLatestFeeds();
+  // For live streams (API, quota-based)
+  await loadYouTubeLiveFeeds();
 
   allChannels.forEach((ch, i) => {
     if (!ch.number) ch.number = i + 1;
@@ -826,7 +866,7 @@ document.addEventListener("keydown", (event) => {
       if (focusedElement && focusedElement.dataset.channel) {
         const ch = JSON.parse(focusedElement.dataset.channel);
         selectChannel(ch.url, ch.name, ch.image, ch.description, ch.number);
-        saveRecentlyWatchedCard(ch.name, ch.url, ch.image, ch.description, ch.number);
+        saveRecentlyWatched(ch.name, ch.url, ch.image, ch.description, ch.number);
 
         // ✅ update lastFocusedElement to the real grid card
         const realCard = allChannelItems.find(item => item.dataset.name === ch.name);
@@ -872,11 +912,19 @@ document.addEventListener("keydown", (event) => {
       }
 
       const newChannelCard = allChannelItems[newIndex];
-      const { url, name, image, description, number } = newChannelCard.dataset;
+      const {
+        url,
+        name,
+        image,
+        description,
+        number,
+        isLive = 'false', // If data-isLive is missing, default to 'false'
+        category = 'Unknown' // If data-category is missing, default to 'Unknown'
+      } = newChannelCard.dataset;
 
       newChannelCard.scrollIntoView({ behavior: "smooth", block: "center" });
       selectChannel(url, name, image, description, number);
-      saveRecentlyWatchedCard(name, url, image, description, number);
+      saveRecentlyWatched({ name, url, image, description, number, isLive, category });
 
       lastFocusedElement = newChannelCard;
     }
@@ -932,11 +980,19 @@ document.addEventListener("keydown", (event) => {
   } else if (event.key === "Enter" && focusedIndex !== -1) {
     event.preventDefault();
     const card = allChannelItems[focusedIndex];
-    const { url, name, image, description, number } = card.dataset;
+    const {
+      url,
+      name,
+      image,
+      description,
+      number,
+      isLive = 'false',
+      category = 'Unknown'
+    } = card.dataset;
 
     card.scrollIntoView({ behavior: "smooth", block: "center" });
     selectChannel(url, name, image, description, number);
-    saveRecentlyWatchedCard(name, url, image, description, number);
+    saveRecentlyWatched({ name, url, image, description, number, isLive, category });
   }
 });
 
@@ -959,39 +1015,54 @@ function toggleFullscreen() {
   }
 }
 
-//YouTube Feed Loading:
-// === Helper: convert YouTube item to channel object ===
-function youtubeItemToChannel(item, feed) {
-  const videoId = item.guid.split(":").pop();
+// === Helper: Extract videoId from a YouTube link ===
+function extractYouTubeID(url) {
+  const match = url.match(
+    /(?:youtube\.com\/(?:.*v=|live\/|embed\/)|youtu\.be\/)([^&?/]+)/i
+  );
+  return match ? match[1] : null;
+}
+
+// === Convert item (RSS or API) into channel object ===
+function youtubeItemToChannel(videoId, title, feed) {
   return {
     url: `https://www.youtube.com/watch?v=${videoId}`,
     name: feed.name,
     image: feed.image,
     category: feed.category || "> Person <",
-    description: item.title
+    description: title
   };
 }
 
-// Load YouTube feeds and update allChannels
-async function loadYouTubeFeeds() {
+/* ----------------------------------------------------
+   📌 1. Load latest uploads (via RSS)
+   ---------------------------------------------------- */
+async function loadYouTubeLatestFeeds() {
   if (!feeds || feeds.length === 0) return;
 
   for (const feed of feeds) {
-    const feedUrl = "https://api.rss2json.com/v1/api.json?rss_url=" + encodeURIComponent(feed.url);
-
     try {
+      const feedUrl =
+        "https://api.rss2json.com/v1/api.json?rss_url=" +
+        encodeURIComponent(feed.url);
+
       const res = await fetch(feedUrl);
       const data = await res.json();
       if (!data.items || data.items.length === 0) continue;
 
-      // Find first valid video (skip Shorts)
-      const latestValid = data.items.find(item => !item.link.includes("/shorts/"));
+      // Find the latest NON-Shorts video
+      let latestValid = data.items.find(
+        (item) => !item.link.includes("/shorts/")
+      );
       if (!latestValid) continue;
 
-      const channelObj = youtubeItemToChannel(latestValid, feed);
+      const videoId = extractYouTubeID(latestValid.link);
+      if (!videoId) continue;
 
-      // Check for duplicate by name
-      const existing = allChannels.find(ch => ch.name === channelObj.name);
+      const channelObj = youtubeItemToChannel(videoId, latestValid.title, feed);
+
+      // Update or insert
+      const existing = allChannels.find((ch) => ch.name === channelObj.name);
       if (existing) {
         existing.url = channelObj.url;
         existing.description = channelObj.description;
@@ -1000,14 +1071,64 @@ async function loadYouTubeFeeds() {
         allChannels.push(channelObj);
       }
     } catch (e) {
-      console.error("Error loading feed:", feed.name, e);
+      console.error("Error loading RSS feed:", feed.name, e);
     }
   }
 
-  // Save updated allChannels to localStorage
   localStorage.setItem("allChannelsData", JSON.stringify(allChannels));
+  renderChannels(allChannels);
+  updateFavoriteIcons();
+  renderRecentlyWatched();
+  renderRecentOverlay();
+  updateAllChannelItems();
+}
 
-  // Render channels (avoid duplicates)
+/* ----------------------------------------------------
+   📌 2. Load live streams (via YouTube API v3)
+   ---------------------------------------------------- */
+function extractChannelId(feedUrl) {
+  const match = feedUrl.match(/channel_id=([^&]+)/);
+  return match ? match[1] : null;
+}
+
+async function loadYouTubeLiveFeeds() {
+  if (!live || live.length === 0) return;
+
+  for (const feed of live) {
+    try {
+      const channelId = extractChannelId(feed.url);
+      if (!channelId) {
+        console.warn("No channelId found in feed:", feed.url);
+        continue;
+      }
+
+      const apiUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&channelId=${channelId}&eventType=live&type=video&key=${API_KEY}`;
+      const res = await fetch(apiUrl);
+      const data = await res.json();
+
+      if (!data.items || data.items.length === 0) continue;
+
+      const item = data.items[0];
+      const videoId = item.id.videoId;
+      const title = item.snippet.title;
+
+      const channelObj = youtubeItemToChannel(videoId, title, feed);
+
+      // Update or insert
+      const existing = allChannels.find((ch) => ch.name === channelObj.name);
+      if (existing) {
+        existing.url = channelObj.url;
+        existing.description = channelObj.description;
+        existing.image = channelObj.image;
+      } else {
+        allChannels.push(channelObj);
+      }
+    } catch (e) {
+      console.error("Error loading live feed:", feed.name, e);
+    }
+  }
+
+  localStorage.setItem("allChannelsData", JSON.stringify(allChannels));
   renderChannels(allChannels);
   updateFavoriteIcons();
   renderRecentlyWatched();

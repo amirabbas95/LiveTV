@@ -41,6 +41,17 @@ body {
   line-height: 1.6;
 }
 
+.OnScreenDiv {
+  align-items: center;
+  background-color: #000;
+  border: 1.72px solid #fff;
+  border-radius: 20.64px;
+  cursor: pointer;
+  height: 140px;
+  margin: 25px;
+  position: relative;
+}
+
 h1 {
   font-size: 2.5rem;
   font-weight: 700;
@@ -199,7 +210,6 @@ main {
   border-radius: 50%;
   display: block;
 
-  background-color: var(--bg-color-medium);
 }
 
 .content-card img ::before {
@@ -219,6 +229,12 @@ main {
 .thumb-wrapper {
   position: relative;
   display: inline-block;
+  background-color: transparent;
+}
+
+.live-indicator {
+  position: absolute;
+  background-color: transparent;
 }
 
 .channel-number {
@@ -372,7 +388,7 @@ main {
   color: var(--text-color-light);
   cursor: pointer;
   z-index: 1010;
-    transition: opacity 0.3s ease, color 0.3s ease;
+  transition: opacity 0.3s ease, color 0.3s ease;
   opacity: 0;
   line-height: 1;
 }
@@ -465,7 +481,8 @@ main {
   background-color: rgba(0, 0, 0, 0.75);
   padding: 12px;
   border-radius: 12px;
-  display: none; /* hidden by default */
+  display: none;
+  /* hidden by default */
   z-index: 4;
 }
 
@@ -474,9 +491,12 @@ main {
 }
 
 #recentChannelsGrid {
-  display: flex;         /* or grid */
-  gap: 16px;             /* ✅ creates spacing */
-  flex-wrap: wrap;       /* allows wrapping to next row */
+  display: flex;
+  /* or grid */
+  gap: 16px;
+  /* ✅ creates spacing */
+  flex-wrap: wrap;
+  /* allows wrapping to next row */
   justify-content: center;
   padding: 8px;
 }
@@ -485,14 +505,17 @@ main {
 .recent-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
-  gap: 16px; /* same spacing as main grid */
+  gap: 16px;
+  /* same spacing as main grid */
   padding: 8px;
-  max-height: 300px; /* keep overlay compact */
+  max-height: 300px;
+  /* keep overlay compact */
   overflow-y: auto;
 }
 
 .recent-item {
-  --s: 70px;   /* smaller than main channels */
+  --s: 70px;
+  /* smaller than main channels */
   --b: 3px;
   --g: 8px;
 
@@ -621,6 +644,7 @@ main {
   left: 50%;
   transform: translate(-50%, -50%);
   display: none;
+  z-index: 1000;
 }
 
 

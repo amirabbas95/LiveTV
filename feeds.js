@@ -3,21 +3,21 @@ const feeds = [
   {
     "name": "Mansoor Ali Khan",
     "url": "https://www.youtube.com/feeds/videos.xml?channel_id=UClDtMswg3muouH60XTKlVEw",
-    "image": "https://yt3.googleusercontent.com/tNQ2RgaQmLGkOFNgIMhmIibmH43-KniIHoqAnQoe0ozm3V_wDRI7iXBQUGP9wX7FkzE0TaBr=s160-c-k-c0x00ffffff-no-rj",
+    "image": "https://yt3.googleusercontent.com/tNQ2RgaQmLGkOFNgIMhmIibmH43-KniIHoqAnQoe0ozm3V_wDRI7iXBQUGP9wX7FkzE0TaBr=s900-c-k-c0x00ffffff-no-rj",
     "category": "> Person <",
     "source": "youtube"
   },
   {
     "name": "Dr Shahbaz Gill",
     "url": "https://www.youtube.com/feeds/videos.xml?channel_id=UCXQiJKknQM14uQakw0evifw",
-    "image": "https://yt3.googleusercontent.com/W-hpUqmJDug1EA-yill-8LDnt8mfSWH9hHYqlHwEfQ6-s5huffopm-N33e86MYe75_EE06ZqWw=s160-c-k-c0x00ffffff-no-rj",
+    "image": "https://yt3.googleusercontent.com/W-hpUqmJDug1EA-yill-8LDnt8mfSWH9hHYqlHwEfQ6-s5huffopm-N33e86MYe75_EE06ZqWw=s900-c-k-c0x00ffffff-no-rj",
     "category": "> Person <",
     "source": "youtube"
   },
   {
     "name": "Sami Abraham",
     "url": "https://www.youtube.com/feeds/videos.xml?channel_id=UCFCzDl-XQq1TCo_fvBzCoyw",
-    "image": "https://yt3.googleusercontent.com/GtRq2c80q7o1bbY-F3SZgHgEgCtOLWdwIFAvd2tcQHi3ReHmmWu233jBbUP2koZndpPJmBNaaQs=s160-c-k-c0x00ffffff-no-rj",
+    "image": "https://yt3.googleusercontent.com/GtRq2c80q7o1bbY-F3SZgHgEgCtOLWdwIFAvd2tcQHi3ReHmmWu233jBbUP2koZndpPJmBNaaQs=s900-c-k-c0x00ffffff-no-rj",
     "category": "> Person <",
     "source": "youtube"
   },
