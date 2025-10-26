@@ -478,7 +478,7 @@ main {
   bottom: 20%;
   left: 50%;
   transform: translateX(-50%);
-  background-color: rgba(0, 0, 0, 0.75);
+  background-color: rgba(0, 0, 0, 0.5);
   padding: 12px;
   border-radius: 12px;
   display: none;
@@ -542,7 +542,6 @@ main {
   object-fit: cover;
   border-radius: 50%;
   display: block;
-  background-color: var(--bg-color-medium);
 }
 
 .recent-item:focus,

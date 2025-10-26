@@ -218,6 +218,15 @@ function renderRecentOverlay() {
     img.src = channel.image;
     img.alt = channel.name;
 
+      // ✅ live indicator
+  if (channel.isLive === true || channel.isLive === 'true') {
+    const liveIndicator = document.createElement("img");
+    liveIndicator.src = 'live.webp';
+    liveIndicator.alt = 'Live';
+    liveIndicator.className = 'live-indicator';
+    item.appendChild(liveIndicator);
+  }
+
     item.appendChild(img);
 
     item.addEventListener("click", () => {
@@ -866,7 +875,7 @@ document.addEventListener("keydown", (event) => {
       if (focusedElement && focusedElement.dataset.channel) {
         const ch = JSON.parse(focusedElement.dataset.channel);
         selectChannel(ch.url, ch.name, ch.image, ch.description, ch.number);
-        saveRecentlyWatched(ch.name, ch.url, ch.image, ch.description, ch.number);
+        saveRecentlyWatched(ch);
 
         // ✅ update lastFocusedElement to the real grid card
         const realCard = allChannelItems.find(item => item.dataset.name === ch.name);
