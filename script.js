@@ -28,7 +28,7 @@ function extractYouTubeID(url) {
 const modal = document.getElementById("videoModal");
 const qualityEl = document.getElementById("video-quality");
 
-function selectChannel(url, name, image, description, number) {
+function selectChannel(url, name, image, description, number, isLive) {
   if (!url) return;
 
   const videoContainer = document.getElementById("player-container");
@@ -120,7 +120,7 @@ function selectChannel(url, name, image, description, number) {
           Android.onPlayerError(error.data);
           if (error.data === 101 || error.data === 150 || error.data === 153) {
             // Fallback
-            window.location.href = "https://m.youtube.com/watch?v=$url";
+            window.location.href = "https://m.youtube.com/watch?v=$[url]";
           }
         },
       },
@@ -145,10 +145,14 @@ function selectChannel(url, name, image, description, number) {
   playerInstance.on("loadedmetadata", function () {
     const currentSrc = playerInstance.currentSrc();
 
-    if (channel.isLive === true || channel.isLive === "true") {
-      playerInstance.controls(true);
-    } else {
+    const isChannelLive = isLive === true || isLive === "true";
+
+    if (!isChannelLive && isYouTube) {
       playerInstance.controls(false);
+    } else if (isChannelLive && isYouTube) {
+      playerInstance.controls(false);
+    } else {
+      playerInstance.controls(true);
     }
   });
 
@@ -224,7 +228,8 @@ function renderRecentOverlay() {
         channel.name,
         channel.image,
         channel.description,
-        channel.number
+        channel.number,
+        channel.isLive
       );
       hideRecentChannelOverlay();
       saveRecentlyWatched(channel);
@@ -483,7 +488,8 @@ function createChannelItem(channel) {
       channel.name,
       channel.image,
       channel.description,
-      channel.number
+      channel.number,
+      channel.isLive
     );
 
     saveRecentlyWatched(channel);
@@ -642,7 +648,8 @@ document.addEventListener("keydown", (e) => {
           channel.name,
           channel.image,
           channel.description,
-          channel.number
+          channel.number,
+          channel.isLive
         );
         saveRecentlyWatched(channel);
       }
@@ -785,9 +792,9 @@ async function initialize() {
     }
   }
 
-  //await loadYouTubeLatestFeeds();
+  await loadYouTubeLatestFeeds();
   // For live streams (API, quota-based)
-  //await loadYouTubeLiveFeeds();
+  await loadYouTubeLiveFeeds();
 
   allChannels.forEach((ch, i) => {
     if (!ch.number) ch.number = i + 1;
@@ -864,7 +871,14 @@ document.addEventListener("keydown", (event) => {
       event.preventDefault();
       if (focusedElement && focusedElement.dataset.channel) {
         const ch = JSON.parse(focusedElement.dataset.channel);
-        selectChannel(ch.url, ch.name, ch.image, ch.description, ch.number);
+        selectChannel(
+          ch.url,
+          ch.name,
+          ch.image,
+          ch.description,
+          ch.number,
+          ch.isLive
+        );
         saveRecentlyWatched(ch);
 
         // ✅ update lastFocusedElement to the real grid card
@@ -928,7 +942,7 @@ document.addEventListener("keydown", (event) => {
       } = newChannelCard.dataset;
 
       newChannelCard.scrollIntoView({ behavior: "smooth", block: "center" });
-      selectChannel(url, name, image, description, number);
+      selectChannel(url, name, image, description, number, isLive);
       saveRecentlyWatched({
         name,
         url,
@@ -1021,7 +1035,7 @@ document.addEventListener("keydown", (event) => {
     } = card.dataset;
 
     card.scrollIntoView({ behavior: "smooth", block: "center" });
-    selectChannel(url, name, image, description, number);
+    selectChannel(url, name, image, description, number, isLive);
     saveRecentlyWatched({
       name,
       url,
