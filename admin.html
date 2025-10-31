@@ -359,8 +359,13 @@
 
                         <div style="display: flex; gap: 10px; margin-top: 10px;">
                             <button class="btn-primary" type="submit">Save Channel</button>
+                            <button class="btn-danger channel-item-button" type="button"
+                                onclick="deleteCurrentChannel()">Delete</button>
                             <button class="btn-secondary" type="button" onclick="clearChannelForm()">Cancel</button>
+
                         </div>
+
+
                     </form>
                 </div>
             </div>
@@ -816,8 +821,14 @@
             document.getElementById('channelStatus').value = channel.isLive ? 'true' : 'false';
 
             showTab('tab-channel');
-            //window.scrollTo(0, 0); // Scroll to the top of the page/form
+
+            window.scrollTo({
+                top: 0,
+                left: 0,
+                behavior: 'smooth'
+            }); // Scroll to the top of the page/form
             updateNavigationButtons(index);
+
         }
 
 
@@ -941,6 +952,63 @@
                 } else {
                     clearChannelForm();
                 }
+            }
+        }
+
+        function deleteCurrentChannel() {
+            const indexValue = document.getElementById('channelIndex').value;
+
+            // 1. Validate the index
+            if (indexValue === "" || isNaN(parseInt(indexValue))) {
+                alert("No channel is currently loaded for deletion.");
+                return;
+            }
+
+            const actualIndex = parseInt(indexValue);
+            const channelName = document.getElementById('channelName').value;
+
+            const confirmDeletion = confirm(`Are you sure you want to permanently delete the channel: "${channelName}"?`);
+
+            if (!confirmDeletion) {
+                return;
+            }
+
+            // 2. Determine the NEXT channel to load (before deletion)
+            let nextIndexToLoad = -1;
+
+            // Case A: If not the last channel, load the channel at the current index (it will be the next one)
+            if (actualIndex < channelsData.length - 1) {
+                nextIndexToLoad = actualIndex;
+            }
+            // Case B: If it IS the last channel, load the PREVIOUS channel
+            else if (actualIndex > 0) {
+                nextIndexToLoad = actualIndex - 1;
+            }
+            // Case C: If it's the only channel, nextIndexToLoad remains -1 (clears the form)
+
+
+            // 3. Delete the channel from the global data array
+            if (actualIndex >= 0 && actualIndex < channelsData.length) {
+                channelsData.splice(actualIndex, 1);
+                alert(`Channel "${channelName}" deleted successfully.`);
+            } else {
+                alert("Error: Invalid channel index found.");
+                return;
+            }
+
+            // 4. Update the UI and load the next channel
+
+            // Save and re-sort the data
+            sortChannelsByCategories();
+            renderUI();
+
+            // Load the next channel or clear the form
+            if (nextIndexToLoad !== -1 && channelsData.length > 0) {
+                // Load the designated channel
+                editChannel(nextIndexToLoad);
+            } else {
+                // Clear the form if the list is empty or the last channel was deleted
+                clearChannelForm();
             }
         }
 
