@@ -38,7 +38,6 @@ function selectChannel(url, name, image, description, number) {
 
   lastFocusedElement = document.activeElement;
 
-
   // ✅ show channel number if available
   const numberEl = document.getElementById("channel-number");
   numberEl.textContent = number ? number + "." : "";
@@ -68,7 +67,6 @@ function selectChannel(url, name, image, description, number) {
   newVideoEl.preload = "auto";
   newVideoEl.setAttribute("data-setup", "{}");
   videoContainer.appendChild(newVideoEl);
-
 
   // Update overlay info
   imageElement.src = image || "";
@@ -111,7 +109,7 @@ function selectChannel(url, name, image, description, number) {
         mute: 1,
         rel: 0,
         enablejsapi: 1,
-        modestbranding: 1
+        modestbranding: 1,
       },
       events: {
         onReady: function (event) {
@@ -124,20 +122,15 @@ function selectChannel(url, name, image, description, number) {
             // Fallback
             window.location.href = "https://m.youtube.com/watch?v=$url";
           }
-        }
-      }
-
-    }
+        },
+      },
+    },
   });
 
   playerInstance.ready(function () {
-
-
     playerInstance.play().catch((e) => {
       console.warn("Autoplay blocked:", e);
     });
-
-
 
     playerInstance.on("loadedmetadata", updateQualityDisplay);
 
@@ -151,11 +144,8 @@ function selectChannel(url, name, image, description, number) {
 
   playerInstance.on("loadedmetadata", function () {
     const currentSrc = playerInstance.currentSrc();
-    if (
-      currentSrc.includes("imarkaz") ||
-      currentSrc.endsWith(".mp4") ||
-      currentSrc.endsWith(".mkv")
-    ) {
+
+    if (channel.isLive === true || channel.isLive === "true") {
       playerInstance.controls(true);
     } else {
       playerInstance.controls(false);
@@ -176,7 +166,6 @@ function selectChannel(url, name, image, description, number) {
   retryCount = 0;
 
   startWatching(url);
-
 }
 
 function showChannelInfoOverlay() {
@@ -218,19 +207,25 @@ function renderRecentOverlay() {
     img.src = channel.image;
     img.alt = channel.name;
 
-      // ✅ live indicator
-  if (channel.isLive === true || channel.isLive === 'true') {
-    const liveIndicator = document.createElement("img");
-    liveIndicator.src = 'live.webp';
-    liveIndicator.alt = 'Live';
-    liveIndicator.className = 'live-indicator';
-    item.appendChild(liveIndicator);
-  }
+    // ✅ live indicator
+    if (channel.isLive === true || channel.isLive === "true") {
+      const liveIndicator = document.createElement("img");
+      liveIndicator.src = "live.webp";
+      liveIndicator.alt = "Live";
+      liveIndicator.className = "live-indicator";
+      item.appendChild(liveIndicator);
+    }
 
     item.appendChild(img);
 
     item.addEventListener("click", () => {
-      selectChannel(channel.url, channel.name, channel.image, channel.description, channel.number);
+      selectChannel(
+        channel.url,
+        channel.name,
+        channel.image,
+        channel.description,
+        channel.number
+      );
       hideRecentChannelOverlay();
       saveRecentlyWatched(channel);
     });
@@ -242,7 +237,6 @@ function renderRecentOverlay() {
   const first = container.querySelector(".recent-item");
   if (first) first.focus();
 }
-
 
 function showRecentChannelOverlay() {
   const overlay = document.getElementById("recent-channel-overlay");
@@ -257,10 +251,6 @@ function hideRecentChannelOverlay() {
   isRecentOverlayActive = false;
 }
 
-
-
-
-
 // Start tracking watch time
 function startWatching(url) {
   currentVideoUrl = url;
@@ -274,7 +264,8 @@ function stopWatching() {
   const watchedMs = Date.now() - watchStartTime;
   const watchedSeconds = Math.floor(watchedMs / 1000);
 
-  const watchData = JSON.parse(localStorage.getItem("watchTimePerChannel")) || {};
+  const watchData =
+    JSON.parse(localStorage.getItem("watchTimePerChannel")) || {};
   if (!watchData[currentVideoUrl]) watchData[currentVideoUrl] = 0;
   watchData[currentVideoUrl] += watchedSeconds;
 
@@ -289,7 +280,6 @@ function stopWatching() {
 function loadWatchTime() {
   return JSON.parse(localStorage.getItem("watchTimePerChannel")) || {};
 }
-
 
 function sortChannelsByWatchTime(channels) {
   const watchData = loadWatchTime();
@@ -405,15 +395,15 @@ function saveRecentlyWatched(channel) {
     description,
     number,
     // Ensure isLive defaults to 'false' string if not present
-    isLive = 'true',
+    isLive = "true",
     // Ensure category defaults to 'Unknown' if not present
-    category = 'Unknown'
+    category = "Unknown",
   } = channel;
 
   let recent = JSON.parse(localStorage.getItem(recentlyWatchedKey) || "[]");
 
   // Remove duplicate by URL
-  recent = recent.filter(item => item.url !== url);
+  recent = recent.filter((item) => item.url !== url);
 
   // Add the full channel object to the front
   recent.unshift({
@@ -423,7 +413,7 @@ function saveRecentlyWatched(channel) {
     description,
     number,
     isLive,
-    category
+    category,
   });
 
   // Limit list length
@@ -436,8 +426,16 @@ function saveRecentlyWatched(channel) {
   renderRecentOverlay();
 }
 
-
-function toggleFavorite(url, name, image, description, number, isLive, category, event) {
+function toggleFavorite(
+  url,
+  name,
+  image,
+  description,
+  number,
+  isLive,
+  category,
+  event
+) {
   if (event) event.stopPropagation();
 
   let favorites = JSON.parse(localStorage.getItem(favoritesKey) || "[]");
@@ -455,7 +453,7 @@ function toggleFavorite(url, name, image, description, number, isLive, category,
       description,
       number,
       isLive,
-      category
+      category,
     });
   }
 
@@ -463,7 +461,6 @@ function toggleFavorite(url, name, image, description, number, isLive, category,
   renderFavorites();
   updateFavoriteIcons();
 }
-
 
 function createChannelItem(channel) {
   const item = document.createElement("div");
@@ -490,8 +487,6 @@ function createChannelItem(channel) {
     );
 
     saveRecentlyWatched(channel);
-
-
   });
 
   // ✅ wrapper for image & number
@@ -507,28 +502,25 @@ function createChannelItem(channel) {
   numberBadge.className = "channel-number";
   numberBadge.textContent = channel.number;
 
-
   // ✅ live indicator
-  if (channel.isLive === true || channel.isLive === 'true') {
+  if (channel.isLive === true || channel.isLive === "true") {
     const liveIndicator = document.createElement("img");
-    liveIndicator.src = 'live.webp';
-    liveIndicator.alt = 'Live';
-    liveIndicator.className = 'live-indicator';
+    liveIndicator.src = "live.webp";
+    liveIndicator.alt = "Live";
+    liveIndicator.className = "live-indicator";
     wrapper.appendChild(liveIndicator);
   }
-
 
   wrapper.appendChild(img);
   wrapper.appendChild(numberBadge);
 
-  const info = document.createElement("div");
-  info.className = "channel-name";
+  //const info = document.createElement("div");
+  //info.className = "channel-name";
 
-  const nameSpan = document.createElement("h4");
-  nameSpan.textContent = channel.name;
+  //const nameSpan = document.createElement("h4");
+  //nameSpan.textContent = channel.name;
 
-  info.appendChild(nameSpan);
-
+  //info.appendChild(nameSpan);
 
   const favoriteIcon = document.createElement("span");
   favoriteIcon.className = "favorite-icon";
@@ -547,7 +539,7 @@ function createChannelItem(channel) {
 
   item.appendChild(wrapper);
   item.appendChild(favoriteIcon);
-  item.appendChild(info);
+  //item.appendChild(info);
 
   return item;
 }
@@ -560,13 +552,8 @@ function renderChannels(channels) {
     "h2:not(.sort-container h2)"
   );
 
-
-
   existingGrids.forEach((grid) => grid.remove());
   existingHeadings.forEach((heading) => heading.remove());
-
-
-
 
   if (currentSortMethod === "none") {
     const categorizedChannels = channels.reduce((acc, channel) => {
@@ -645,7 +632,7 @@ document.addEventListener("keydown", (e) => {
           allChannelItems[focusedIndex].focus();
           allChannelItems[focusedIndex].scrollIntoView({
             behavior: "smooth",
-            block: "center"
+            block: "center",
           });
         }
 
@@ -658,7 +645,6 @@ document.addEventListener("keydown", (e) => {
           channel.number
         );
         saveRecentlyWatched(channel);
-
       }
 
       numberBuffer = ""; // reset buffer
@@ -697,8 +683,6 @@ function sortChannelsAndRender(sortMethod = "none") {
   updateAllChannelItems();
 }
 
-
-
 function handleSortChange() {
   const sortMethod = document.getElementById("sortChannels").value;
 
@@ -707,7 +691,6 @@ function handleSortChange() {
 
   sortChannelsAndRender(sortMethod);
 }
-
 
 function renderFavorites() {
   const container = document.getElementById("favoritesGrid");
@@ -771,7 +754,6 @@ function previousTrack() {
   }
 }
 
-
 // Main initialize function
 async function initialize() {
   const contentGrid = document.querySelector(".content-grid");
@@ -788,7 +770,9 @@ async function initialize() {
   });
 
   // Sorting dropdown
-  document.getElementById("sortChannels").addEventListener("change", handleSortChange);
+  document
+    .getElementById("sortChannels")
+    .addEventListener("change", handleSortChange);
 
   // 2. Perform all the loading tasks
   let savedChannels = localStorage.getItem("allChannelsData");
@@ -801,9 +785,9 @@ async function initialize() {
     }
   }
 
-  await loadYouTubeLatestFeeds();
+  //await loadYouTubeLatestFeeds();
   // For live streams (API, quota-based)
-  await loadYouTubeLiveFeeds();
+  //await loadYouTubeLiveFeeds();
 
   allChannels.forEach((ch, i) => {
     if (!ch.number) ch.number = i + 1;
@@ -840,7 +824,9 @@ function getGridColumns() {
   }
 
   const gridComputedStyle = window.getComputedStyle(grid);
-  const gridTemplateColumns = gridComputedStyle.getPropertyValue("grid-template-columns");
+  const gridTemplateColumns = gridComputedStyle.getPropertyValue(
+    "grid-template-columns"
+  );
 
   if (!gridTemplateColumns) {
     return 1;
@@ -851,16 +837,19 @@ function getGridColumns() {
   return columnArray.length;
 }
 
-
 document.addEventListener("keydown", (event) => {
   const GRID_COLUMNS = getGridColumns();
   const isModalOpen = modal.style.display === "flex";
   let focusedElement = document.activeElement;
-  let focusedIndex = allChannelItems.findIndex((item) => item === focusedElement);
+  let focusedIndex = allChannelItems.findIndex(
+    (item) => item === focusedElement
+  );
 
   // --- IF MODAL IS OPEN AND RECENT OVERLAY IS ACTIVE ---
   if (isModalOpen && isRecentOverlayActive) {
-    const items = Array.from(document.querySelectorAll("#recentChannelsGrid .recent-item"));
+    const items = Array.from(
+      document.querySelectorAll("#recentChannelsGrid .recent-item")
+    );
     let idx = items.indexOf(focusedElement);
 
     if (event.key === "ArrowRight") {
@@ -869,7 +858,8 @@ document.addEventListener("keydown", (event) => {
     } else if (event.key === "ArrowLeft") {
       event.preventDefault();
       hideRecentChannelOverlay();
-      if (items.length > 0) items[(idx - 1 + items.length) % items.length].focus();
+      if (items.length > 0)
+        items[(idx - 1 + items.length) % items.length].focus();
     } else if (event.key === "Enter") {
       event.preventDefault();
       if (focusedElement && focusedElement.dataset.channel) {
@@ -878,7 +868,9 @@ document.addEventListener("keydown", (event) => {
         saveRecentlyWatched(ch);
 
         // ✅ update lastFocusedElement to the real grid card
-        const realCard = allChannelItems.find(item => item.dataset.name === ch.name);
+        const realCard = allChannelItems.find(
+          (item) => item.dataset.name === ch.name
+        );
         if (realCard) {
           lastFocusedElement = realCard;
           realCard.focus();
@@ -904,7 +896,9 @@ document.addEventListener("keydown", (event) => {
     } else if (event.key === "ArrowRight") {
       event.preventDefault();
       showChannelInfoOverlay();
-    } else if (["ArrowUp", "ArrowDown", "PageUp", "PageDown"].includes(event.key)) {
+    } else if (
+      ["ArrowUp", "ArrowDown", "PageUp", "PageDown"].includes(event.key)
+    ) {
       event.preventDefault();
       if (!lastFocusedElement || allChannelItems.length === 0) return;
 
@@ -917,7 +911,9 @@ document.addEventListener("keydown", (event) => {
       if (event.key === "ArrowDown" || event.key === "PageDown") {
         newIndex = (currentChannelIndex + 1) % allChannelItems.length;
       } else if (event.key === "ArrowUp" || event.key === "PageUp") {
-        newIndex = (currentChannelIndex - 1 + allChannelItems.length) % allChannelItems.length;
+        newIndex =
+          (currentChannelIndex - 1 + allChannelItems.length) %
+          allChannelItems.length;
       }
 
       const newChannelCard = allChannelItems[newIndex];
@@ -927,13 +923,21 @@ document.addEventListener("keydown", (event) => {
         image,
         description,
         number,
-        isLive = 'false', // If data-isLive is missing, default to 'false'
-        category = 'Unknown' // If data-category is missing, default to 'Unknown'
+        isLive = "false", // If data-isLive is missing, default to 'false'
+        category = "Unknown", // If data-category is missing, default to 'Unknown'
       } = newChannelCard.dataset;
 
       newChannelCard.scrollIntoView({ behavior: "smooth", block: "center" });
       selectChannel(url, name, image, description, number);
-      saveRecentlyWatched({ name, url, image, description, number, isLive, category });
+      saveRecentlyWatched({
+        name,
+        url,
+        image,
+        description,
+        number,
+        isLive,
+        category,
+      });
 
       lastFocusedElement = newChannelCard;
     }
@@ -946,16 +950,27 @@ document.addEventListener("keydown", (event) => {
 
     if (focusedIndex === -1) {
       allChannelItems[0].focus();
-      allChannelItems[0].scrollIntoView({ behavior: "smooth", block: "center" });
+      allChannelItems[0].scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+      });
       focusedIndex = 0;
       return;
     }
 
     let newIndex = focusedIndex;
-    if (event.key === "ArrowRight") newIndex = (focusedIndex + 1) % allChannelItems.length;
-    else if (event.key === "ArrowLeft") newIndex = (focusedIndex - 1 + allChannelItems.length) % allChannelItems.length;
-    else if (event.key === "ArrowDown") newIndex = Math.min(focusedIndex + GRID_COLUMNS, allChannelItems.length - 1);
-    else if (event.key === "ArrowUp") newIndex = Math.max(focusedIndex - GRID_COLUMNS, 0);
+    if (event.key === "ArrowRight")
+      newIndex = (focusedIndex + 1) % allChannelItems.length;
+    else if (event.key === "ArrowLeft")
+      newIndex =
+        (focusedIndex - 1 + allChannelItems.length) % allChannelItems.length;
+    else if (event.key === "ArrowDown")
+      newIndex = Math.min(
+        focusedIndex + GRID_COLUMNS,
+        allChannelItems.length - 1
+      );
+    else if (event.key === "ArrowUp")
+      newIndex = Math.max(focusedIndex - GRID_COLUMNS, 0);
 
     const newCard = allChannelItems[newIndex];
     newCard.focus();
@@ -967,13 +982,19 @@ document.addEventListener("keydown", (event) => {
     event.preventDefault();
     if (focusedIndex === -1 && allChannelItems.length > 0) {
       allChannelItems[0].focus();
-      allChannelItems[0].scrollIntoView({ behavior: "smooth", block: "center" });
+      allChannelItems[0].scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+      });
     } else {
       let newIndex = focusedIndex;
       if (event.key === "PageUp") {
         newIndex = Math.max(focusedIndex - GRID_COLUMNS, 0);
       } else if (event.key === "PageDown") {
-        newIndex = Math.min(focusedIndex + GRID_COLUMNS, allChannelItems.length - 1);
+        newIndex = Math.min(
+          focusedIndex + GRID_COLUMNS,
+          allChannelItems.length - 1
+        );
       } else if (event.key === "Home") {
         newIndex = 0;
       } else if (event.key === "End") {
@@ -995,24 +1016,27 @@ document.addEventListener("keydown", (event) => {
       image,
       description,
       number,
-      isLive = 'false',
-      category = 'Unknown'
+      isLive = "false",
+      category = "Unknown",
     } = card.dataset;
 
     card.scrollIntoView({ behavior: "smooth", block: "center" });
     selectChannel(url, name, image, description, number);
-    saveRecentlyWatched({ name, url, image, description, number, isLive, category });
+    saveRecentlyWatched({
+      name,
+      url,
+      image,
+      description,
+      number,
+      isLive,
+      category,
+    });
   }
 });
-
-
-
-
 
 window.addEventListener("DOMContentLoaded", async () => {
   await initialize();
 });
-
 
 function toggleFullscreen() {
   if (playerInstance) {
@@ -1039,7 +1063,7 @@ function youtubeItemToChannel(videoId, title, feed) {
     name: feed.name,
     image: feed.image,
     category: feed.category || "> Person <",
-    description: title
+    description: title,
   };
 }
 
@@ -1112,6 +1136,7 @@ async function loadYouTubeLiveFeeds() {
       }
 
       const apiUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&channelId=${channelId}&eventType=live&type=video&key=${API_KEY}`;
+
       const res = await fetch(apiUrl);
       const data = await res.json();
 
