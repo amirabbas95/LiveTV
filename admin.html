@@ -1,541 +1,625 @@
 <!DOCTYPE html>
 <html lang="en">
-
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Live TV Player Admin</title>
     <style>
-        :root {
-            --bg-color-dark: #121212;
-            --bg-color-medium: #1f1f1f;
-            --bg-color-light: #242424;
-            --text-color-primary: #e0e0e0;
-            --text-color-secondary: #a0a0a0;
-            --border-color: #475569;
-            --accent-color-primary: #007bff;
-            --accent-color-secondary: #276749;
-            --accent-color-danger: #dc3545;
-        }
+      :root {
+        --bg-color-dark: #121212;
+        --bg-color-medium: #1f1f1f;
+        --bg-color-light: #242424;
+        --text-color-primary: #e0e0e0;
+        --text-color-secondary: #a0a0a0;
+        --border-color: #475569;
+        --accent-color-primary: #007bff;
+        --accent-color-secondary: #276749;
+        --accent-color-danger: #dc3545;
+      }
 
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background-color: var(--bg-color-dark);
-            color: var(--text-color-primary);
-            margin: 0;
-            padding: 20px;
-        }
+      body {
+        font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+        background-color: var(--bg-color-dark);
+        color: var(--text-color-primary);
+        margin: 0;
+        padding: 20px;
+      }
 
-        h1,
-        h2,
-        h3 {
-            color: var(--text-color-secondary);
-            border-bottom: 1px solid var(--border-color);
-            padding-bottom: 10px;
-            margin-top: 0;
-        }
+      h1,
+      h2,
+      h3 {
+        color: var(--text-color-secondary);
+        border-bottom: 1px solid var(--border-color);
+        padding-bottom: 10px;
+        margin-top: 0;
+      }
 
+      .container {
+        display: grid;
+        grid-template-columns: 1fr 2fr;
+        gap: 20px;
+      }
+
+      @media (max-width: 992px) {
         .container {
-            display: grid;
-            grid-template-columns: 1fr 2fr;
-            gap: 20px;
+          grid-template-columns: 1fr;
         }
+      }
 
-        @media (max-width: 992px) {
-            .container {
-                grid-template-columns: 1fr;
-            }
-        }
+      .panel {
+        background-color: var(--bg-color-medium);
+        padding: 25px;
+        border-radius: 12px;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
+      }
 
-        .panel {
-            background-color: var(--bg-color-medium);
-            padding: 25px;
-            border-radius: 12px;
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-            display: flex;
-            flex-direction: column;
-            gap: 20px;
-        }
+      .controls-panel {
+        min-width: 300px;
+      }
 
-        .controls-panel {
-            min-width: 300px;
-        }
+      .preview-panel {
+        min-width: 400px;
+      }
 
-        .preview-panel {
-            min-width: 400px;
-        }
+      form {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
 
-        form {
-            display: flex;
-            flex-direction: column;
-            gap: 12px;
-        }
+      label {
+        font-weight: bold;
+        color: var(--text-color-secondary);
+      }
 
-        label {
-            font-weight: bold;
-            color: var(--text-color-secondary);
-        }
+      input,
+      select,
+      textarea {
+        padding: 10px;
+        border-radius: 6px;
+        border: 1px solid var(--border-color);
+        background-color: var(--bg-color-light);
+        color: var(--text-color-primary);
+        font-size: 1em;
+        transition: border-color 0.2s ease;
+      }
 
-        input,
-        select,
-        textarea {
-            padding: 10px;
-            border-radius: 6px;
-            border: 1px solid var(--border-color);
-            background-color: var(--bg-color-light);
-            color: var(--text-color-primary);
-            font-size: 1em;
-            transition: border-color 0.2s ease;
-        }
+      input:focus,
+      select:focus,
+      textarea:focus {
+        outline: none;
+        border-color: var(--accent-color-primary);
+      }
 
-        input:focus,
-        select:focus,
-        textarea:focus {
-            outline: none;
-            border-color: var(--accent-color-primary);
-        }
+      .button-1,
+      .button-3,
+      .btn-primary,
+      .btn-secondary,
+      .btn-danger {
+        padding: 10px 16px;
+        font-size: 0.95em;
+        font-weight: bold;
+        border: none;
+        border-radius: 6px;
+        cursor: pointer;
+        transition: 0.2s ease all;
+        color: white;
+      }
 
-        .button-1,
-        .button-3,
-        .btn-primary,
-        .btn-secondary,
-        .btn-danger {
-            padding: 10px 16px;
-            font-size: 0.95em;
-            font-weight: bold;
-            border: none;
-            border-radius: 6px;
-            cursor: pointer;
-            transition: 0.2s ease all;
-            color: white;
-        }
+      .button-1 {
+        background-color: #ea4c89;
+      }
 
-        .button-1 {
-            background-color: #EA4C89;
-        }
+      .button-1:hover,
+      .button-1:focus {
+        background-color: #f082ac;
+      }
 
-        .button-1:hover,
-        .button-1:focus {
-            background-color: #F082AC;
-        }
+      .button-3 {
+        background-color: #2ea44f;
+      }
 
-        .button-3 {
-            background-color: #2ea44f;
-        }
+      .button-3:hover {
+        background-color: #2c974b;
+      }
 
-        .button-3:hover {
-            background-color: #2c974b;
-        }
+      .btn-primary {
+        background-color: var(--accent-color-primary);
+      }
 
-        .btn-primary {
-            background-color: var(--accent-color-primary);
-        }
+      .btn-primary:hover {
+        background-color: #0056b3;
+      }
 
-        .btn-primary:hover {
-            background-color: #0056b3;
-        }
+      .btn-secondary {
+        background-color: var(--accent-color-secondary);
+      }
 
-        .btn-secondary {
-            background-color: var(--accent-color-secondary);
-        }
+      .btn-secondary:hover {
+        background-color: #5a6268;
+      }
 
-        .btn-secondary:hover {
-            background-color: #5a6268;
-        }
+      .btn-danger {
+        background-color: var(--accent-color-danger);
+      }
 
-        .btn-danger {
-            background-color: var(--accent-color-danger);
-        }
+      .btn-danger:hover {
+        background-color: #c82333;
+      }
 
-        .btn-danger:hover {
-            background-color: #c82333;
-        }
+      .channel-item-button {
+        padding: 5px 10px;
+        font-size: 0.85em;
+        border-radius: 4px;
+      }
 
-        .channel-item-button {
-            padding: 5px 10px;
-            font-size: 0.85em;
-            border-radius: 4px;
-        }
+      .file-controls,
+      .json-preview,
+      .visual-preview,
+      #addChannelForm,
+      #addCategoryForm {
+        border: 1px solid var(--border-color);
+        padding: 15px;
+        border-radius: 8px;
+      }
 
-        .file-controls,
-        .json-preview,
-        .visual-preview,
-        #addChannelForm,
-        #addCategoryForm {
-            border: 1px solid var(--border-color);
-            padding: 15px;
-            border-radius: 8px;
-        }
+      #jsonOutput {
+        white-space: pre-wrap;
+        word-wrap: break-word;
+        padding: 15px;
+        background-color: var(--bg-color-light);
+        border-radius: 8px;
+        overflow-x: auto;
+        max-height: 400px;
+      }
 
-        #jsonOutput {
-            white-space: pre-wrap;
-            word-wrap: break-word;
-            padding: 15px;
-            background-color: var(--bg-color-light);
-            border-radius: 8px;
-            overflow-x: auto;
-            max-height: 400px;
-        }
+      .category-list-preview,
+      .channel-list-category {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin-top: 10px;
+      }
 
-        .category-list-preview,
-        .channel-list-category {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 10px;
-            margin-top: 10px;
-        }
+      .channel-preview-item {
+        width: 100%;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        background-color: var(--bg-color-light);
+        padding: 10px;
+        border-radius: 8px;
+        transition: transform 0.2s ease;
+      }
 
-        .channel-preview-item {
-            width: 100%;
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            background-color: var(--bg-color-light);
-            padding: 10px;
-            border-radius: 8px;
-            transition: transform 0.2s ease;
-        }
+      .category-preview-item {
+        width: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        background-color: var(--bg-color-light);
+        padding: 10px;
+        border-radius: 8px;
+        transition: transform 0.2s ease;
+      }
 
-        .category-preview-item {
-            width: 100%;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            gap: 12px;
-            background-color: var(--bg-color-light);
-            padding: 10px;
-            border-radius: 8px;
-            transition: transform 0.2s ease;
-        }
+      .channel-preview-item:hover,
+      .category-preview-item:hover {
+        transform: translateY(-2px);
+      }
 
-        .channel-preview-item:hover,
-        .category-preview-item:hover {
-            transform: translateY(-2px);
-        }
+      .channel-preview-item img {
+        width: 80px;
+        height: 80px;
+        object-fit: cover;
+        border-radius: 6px;
+        background-color: #1e293b;
+      }
 
-        .channel-preview-item img {
-            width: 80px;
-            height: 80px;
-            object-fit: cover;
-            border-radius: 6px;
-            background-color: #1E293B;
-        }
+      .channel-preview-item .actions,
+      .category-preview-item .actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 5px;
+      }
 
-        .channel-preview-item .actions,
-        .category-preview-item .actions {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 5px;
-        }
+      #fileInput {
+        display: none;
+      }
 
-        #fileInput {
-            display: none;
-        }
+      /* Tabbed Interface Styling */
+      .tab-container {
+        border-bottom: 1px solid var(--border-color);
+        margin-bottom: 15px;
+      }
 
-        /* Tabbed Interface Styling */
-        .tab-container {
-            border-bottom: 1px solid var(--border-color);
-            margin-bottom: 15px;
-        }
+      .tab-button {
+        background-color: transparent;
+        color: var(--text-color-secondary);
+        border: none;
+        padding: 10px 15px;
+        cursor: pointer;
+        border-bottom: 3px solid transparent;
+        margin-bottom: -1px;
+        transition: color 0.2s ease, border-bottom-color 0.2s ease;
+      }
 
-        .tab-button {
-            background-color: transparent;
-            color: var(--text-color-secondary);
-            border: none;
-            padding: 10px 15px;
-            cursor: pointer;
-            border-bottom: 3px solid transparent;
-            margin-bottom: -1px;
-            transition: color 0.2s ease, border-bottom-color 0.2s ease;
-        }
+      .tab-button.active {
+        color: var(--text-color-primary);
+        border-bottom-color: var(--accent-color-primary);
+      }
 
-        .tab-button.active {
-            color: var(--text-color-primary);
-            border-bottom-color: var(--accent-color-primary);
-        }
+      .tab-content {
+        display: none;
+      }
 
-        .tab-content {
-            display: none;
-        }
+      .tab-content.active {
+        display: block;
+      }
 
-        .tab-content.active {
-            display: block;
-        }
+      .file-controls {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
 
-        .file-controls {
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
-        }
+      .button-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+      }
 
-        .button-row {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 10px;
-        }
-
-        .button-row button,
-        .button-row label {
-            padding: 10px 15px;
-            cursor: pointer;
-        }
+      .button-row button,
+      .button-row label {
+        padding: 10px 15px;
+        cursor: pointer;
+      }
     </style>
+  </head>
 
-</head>
-
-<body>
-
+  <body>
     <h1>Live TV Player Admin Panel</h1>
 
     <div class="container">
-        <div class="controls-panel panel">
-            <h2>Controls</h2>
+      <div class="controls-panel panel">
+        <h2>Controls</h2>
 
-            <div class="tab-container">
-                <button class="tab-button active" onclick="showTab('tab-file')">File</button>
-                <button class="tab-button" onclick="showTab('tab-category')">Categories</button>
-                <button class="tab-button" onclick="showTab('tab-channel')">Channels</button>
-            </div>
-
-            <div id="tab-file" class="tab-content active">
-                <div class="file-controls">
-                    <h3>File Management</h3>
-                    <label for="fileInput" class="button-1" style="margin-bottom: 10px; padding: 10px;">Load
-                        channels.json</label>
-                    <input type="file" id="fileInput" accept=".json">
-                    <button class="btn-primary" onclick="saveData()">Save as channels.json</button>
-                    <button class="button-3" onclick="loadChannelsFromStorage()">Load from Local Storage</button>
-                    <button class="btn-danger" onclick="saveAllChannels()">Save in Local Storage</button>
-                </div>
-            </div>
-
-            <div id="tab-category" class="tab-content">
-                <div id="addCategoryForm">
-                    <h3>Add/Edit Category</h3>
-                    <form onsubmit="event.preventDefault(); addCategory()">
-                        <label for="newCategoryName">Category Name:</label>
-                        <input type="text" id="newCategoryName" required>
-                        <button class="btn-primary" type="submit">Add Category</button>
-                    </form>
-                </div>
-                <h3>Categories</h3>
-                <div id="categoryListPreview" class="category-list-preview"></div>
-            </div>
-
-            <div id="tab-channel" class="tab-content">
-                <div id="addChannelForm">
-                    <h3>Add/Edit Channel</h3>
-                    <form onsubmit="event.preventDefault(); saveChannel()">
-                        <input type="hidden" id="channelIndex">
-
-                        <img id="imagePreview" src="" alt="Channel Image Preview"
-                            style="width: 100px; height: 100px; display: flex; align-items: center; padding: 10px; object-fit: cover; border-radius: 8px; border: 1px solid var(--border-color); display: none;">
-
-                        <label for="displayChannelIndex">Channel Index:</label>
-                        <input type="text" id="displayChannelIndex" disabled>
-
-                        <label for="channelName">Channel Name:</label>
-                        <input type="text" id="channelName" required>
-                        <label for="channelUrl">Channel URL:</label>
-                        <input type="url" id="channelUrl" required>
-                        <label for="channelImage">Image URL:</label>
-                        <input type="url" id="channelImage" required>
-                        <label for="channelDescription">Description:</label>
-                        <input type="text" id="channelDescription" required>
-                        <label for="channelCategory">Category:</label>
-                        <select id="channelCategory" required></select>
-                        <label for="channelStatus">Live Status:</label>
-                        <select id="channelStatus" required>
-                            <option value="false">False</option>
-                            <option value="true">True</option>
-                        </select>
-
-                        <div style="display: flex; gap: 10px; margin-top: 10px; justify-content: space-between;">
-                            <button class="btn-secondary" type="button" id="prevChannelBtn"
-                                onclick="navigateChannel(-1)">Previous</button>
-                            <button class="btn-secondary" type="button" id="nextChannelBtn"
-                                onclick="navigateChannel(1)">Next</button>
-                        </div>
-
-                        <div style="display: flex; gap: 10px; margin-top: 10px;">
-                            <button class="btn-primary" type="submit">Save Channel</button>
-                            <button class="btn-danger channel-item-button" type="button"
-                                onclick="deleteCurrentChannel()">Delete</button>
-                            <button class="btn-secondary" type="button" onclick="clearChannelForm()">Cancel</button>
-
-                        </div>
-
-
-                    </form>
-                </div>
-            </div>
-
+        <div class="tab-container">
+          <button class="tab-button active" onclick="showTab('tab-file')">
+            File
+          </button>
+          <button class="tab-button" onclick="showTab('tab-category')">
+            Categories
+          </button>
+          <button class="tab-button" onclick="showTab('tab-channel')">
+            Channels
+          </button>
         </div>
 
-        <div class="preview-panel panel">
-            <h2>Live Preview</h2>
-            <div class="visual-preview">
-                <div id="channelListPreview"></div>
-            </div>
-
-            <div class="json-preview">
-                <h3>Live JSON Output</h3>
-                <textarea id="jsonOutput" rows="20"
-                    style="width: 96%; height: 300px; padding: 15px; border-radius: 8px; border: 1px solid var(--border-color); background-color: var(--bg-color-light); color: var(--text-color-primary);"></textarea>
-                <div style="margin-top: 10px;">
-                    <button class="btn-primary" onclick="loadDataFromTextarea()">Load from Text</button>
-                    <button class="btn-primary" onclick="sortJson()">Sort JSON</button>
-                    <button class="btn-primary" onclick="saveData()">Save as channels.json</button>
-                </div>
-            </div>
+        <div id="tab-file" class="tab-content active">
+          <div class="file-controls">
+            <h3>File Management</h3>
+            <label
+              for="fileInput"
+              class="button-1"
+              style="margin-bottom: 10px; padding: 10px"
+              >Load channels.json</label
+            >
+            <input type="file" id="fileInput" accept=".json" />
+            <button class="btn-primary" onclick="saveData()">
+              Save as channels.json
+            </button>
+            <button class="button-3" onclick="loadChannelsFromStorage()">
+              Load from Local Storage
+            </button>
+            <button class="btn-danger" onclick="saveAllChannels()">
+              Save in Local Storage
+            </button>
+          </div>
         </div>
+
+        <div id="tab-category" class="tab-content">
+          <div id="addCategoryForm">
+            <h3>Add/Edit Category</h3>
+            <form onsubmit="event.preventDefault(); addCategory()">
+              <label for="newCategoryName">Category Name:</label>
+              <input type="text" id="newCategoryName" required />
+              <button class="btn-primary" type="submit">Add Category</button>
+            </form>
+          </div>
+          <h3>Categories</h3>
+          <div id="categoryListPreview" class="category-list-preview"></div>
+        </div>
+
+        <div id="tab-channel" class="tab-content">
+          <div id="addChannelForm">
+            <h3>Add/Edit Channel</h3>
+            <form onsubmit="event.preventDefault(); saveChannel()">
+              <input type="hidden" id="channelIndex" />
+
+              <img
+                id="imagePreview"
+                src=""
+                alt="Channel Image Preview"
+                style="
+                  width: 100px;
+                  height: 100px;
+                  display: flex;
+                  align-items: center;
+                  padding: 10px;
+                  object-fit: cover;
+                  border-radius: 8px;
+                  border: 1px solid var(--border-color);
+                  display: none;
+                "
+              />
+
+              <label for="displayChannelIndex">Channel Index:</label>
+              <input type="text" id="displayChannelIndex" disabled />
+
+              <label for="channelName">Channel Name:</label>
+              <input type="text" id="channelName" required />
+              <label for="channelUrl">Channel URL:</label>
+              <input type="url" id="channelUrl" required />
+              <label for="channelImage">Image URL:</label>
+              <input type="url" id="channelImage" required />
+              <label for="channelDescription">Description:</label>
+              <input type="text" id="channelDescription" required />
+              <label for="channelCategory">Category:</label>
+              <select id="channelCategory" required></select>
+              <label for="channelStatus">Live Status:</label>
+              <select id="channelStatus" required>
+                <option value="false">False</option>
+                <option value="true">True</option>
+              </select>
+
+              <div
+                style="
+                  display: flex;
+                  gap: 10px;
+                  margin-top: 10px;
+                  justify-content: space-between;
+                "
+              >
+                <!-- Left button -->
+                <button
+                  class="btn-secondary"
+                  type="button"
+                  id="prevChannelBtn"
+                  onclick="navigateChannel(-1)"
+                >
+                  ◀
+                </button>
+
+                <button class="btn-primary" type="submit">Save Channel</button>
+                <button
+                  class="btn-danger channel-item-button"
+                  type="button"
+                  onclick="deleteCurrentChannel()"
+                >
+                  Delete
+                </button>
+                <button
+                  class="btn-secondary"
+                  type="button"
+                  onclick="clearChannelForm()"
+                >
+                  Cancel
+                </button>
+
+                <!-- Right button -->
+                <button
+                  class="btn-secondary"
+                  type="button"
+                  id="nextChannelBtn"
+                  onclick="navigateChannel(1)"
+                >
+                  ▶
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+
+      <div class="preview-panel panel">
+        <h2>Live Preview</h2>
+        <div class="visual-preview">
+          <div id="channelListPreview"></div>
+        </div>
+
+        <div class="json-preview">
+          <h3>Live JSON Output</h3>
+          <textarea
+            id="jsonOutput"
+            rows="20"
+            style="
+              width: 96%;
+              height: 300px;
+              padding: 15px;
+              border-radius: 8px;
+              border: 1px solid var(--border-color);
+              background-color: var(--bg-color-light);
+              color: var(--text-color-primary);
+            "
+          ></textarea>
+          <div style="margin-top: 10px">
+            <button class="btn-primary" onclick="loadDataFromTextarea()">
+              Load from Text
+            </button>
+            <button class="btn-primary" onclick="sortJson()">Sort JSON</button>
+            <button class="btn-primary" onclick="saveData()">
+              Save as channels.json
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
 
     <script>
-        let channelsData = [];
-        let categoriesData = [];
-        let originalChannelData = null;
+      let channelsData = [];
+      let categoriesData = [];
+      let originalChannelData = null;
 
-        const fileInput = document.getElementById('fileInput');
-        const jsonOutput = document.getElementById('jsonOutput');
-        const categoryListPreview = document.getElementById('categoryListPreview');
-        const channelListPreview = document.getElementById('channelListPreview');
-        const channelForm = document.getElementById('addChannelForm').querySelector('form');
-        const newCategoryInput = document.getElementById('newCategoryName');
-        const categoryForm = newCategoryInput.closest('form');
+      const fileInput = document.getElementById("fileInput");
+      const jsonOutput = document.getElementById("jsonOutput");
+      const categoryListPreview = document.getElementById(
+        "categoryListPreview"
+      );
+      const channelListPreview = document.getElementById("channelListPreview");
+      const channelForm = document
+        .getElementById("addChannelForm")
+        .querySelector("form");
+      const newCategoryInput = document.getElementById("newCategoryName");
+      const categoryForm = newCategoryInput.closest("form");
 
-        fileInput.addEventListener('change', loadDataFromFile);
+      fileInput.addEventListener("change", loadDataFromFile);
 
-        function renderUI() {
-            renderChannelFormCategories();
-            renderCategoryPreview();
-            renderChannelPreview();
-            updateJsonOutput();
-            // Ensure buttons are updated when UI is rendered, just in case a channel was deleted/added
-            updateNavigationButtons(parseInt(document.getElementById('channelIndex').value));
+      function renderUI() {
+        renderChannelFormCategories();
+        renderCategoryPreview();
+        renderChannelPreview();
+        updateJsonOutput();
+        // Ensure buttons are updated when UI is rendered, just in case a channel was deleted/added
+        updateNavigationButtons(
+          parseInt(document.getElementById("channelIndex").value)
+        );
+      }
+
+      // Get the new image preview element
+      const imagePreview = document.getElementById("imagePreview");
+      const channelImageInput = document.getElementById("channelImage");
+
+      // Event listener to update the image preview as the user types/pastes a URL
+      channelImageInput.addEventListener("input", function () {
+        const url = this.value.trim();
+        if (url) {
+          imagePreview.src = url;
+          imagePreview.style.display = "block";
+        } else {
+          imagePreview.style.display = "none";
+          imagePreview.src = ""; // Clear the source
         }
+      });
 
-        // Get the new image preview element
-        const imagePreview = document.getElementById('imagePreview');
-        const channelImageInput = document.getElementById('channelImage');
+      // --- File/Data Loading Functions ---
 
-        // Event listener to update the image preview as the user types/pastes a URL
-        channelImageInput.addEventListener('input', function () {
-            const url = this.value.trim();
-            if (url) {
-                imagePreview.src = url;
-                imagePreview.style.display = 'block';
-            } else {
-                imagePreview.style.display = 'none';
-                imagePreview.src = ''; // Clear the source
-            }
-        });
-
-        // --- File/Data Loading Functions ---
-
-        function loadDataFromTextarea() {
-            const jsonString = jsonOutput.value;
-            if (!jsonString) {
-                alert('JSON data is empty.');
-                return;
-            }
-            try {
-                let parsedData = JSON.parse(jsonString);
-
-                if (Array.isArray(parsedData)) {
-                    // Remove the 'number' key if it exists, as it will be reassigned by the sort function
-                    parsedData.forEach(channel => {
-                        delete channel.number;
-                    });
-                }
-
-                channelsData = parsedData;
-                categoriesData = [...new Set(channelsData.map(c => c.category))];
-                renderUI();
-                alert('Data loaded from JSON successfully!');
-            } catch (e) {
-                alert('Invalid JSON format. Please check your data.');
-                console.error(e);
-            }
+      function loadDataFromTextarea() {
+        const jsonString = jsonOutput.value;
+        if (!jsonString) {
+          alert("JSON data is empty.");
+          return;
         }
+        try {
+          let parsedData = JSON.parse(jsonString);
 
-        function loadDataFromFile() {
-            const file = fileInput.files[0];
-            if (!file) return;
-            const reader = new FileReader();
-            reader.onload = (e) => {
-                try {
-                    channelsData = JSON.parse(e.target.result);
-                    categoriesData = [...new Set(channelsData.map(c => c.category))];
-                    renderUI();
-                    alert('Data loaded successfully!');
-                } catch (e) {
-                    alert('Invalid JSON format. Please check your file.');
-                }
-            };
-            reader.readAsText(file);
-        }
-
-        function saveData() {
-            sortChannelsByCategories();
-            const jsonString = JSON.stringify(channelsData, null, 2);
-            const blob = new Blob([jsonString], { type: 'application/json' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = 'channels.json';
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            URL.revokeObjectURL(url);
-        }
-
-        function saveAllChannels() {
-            if (channelsData.length === 0) {
-                alert("No channels to save!");
-                return;
-            }
-            localStorage.setItem("allChannelsData", JSON.stringify(channelsData));
-            alert("All channels saved successfully!");
-        }
-
-        function loadChannelsFromStorage() {
-            const storedData = localStorage.getItem("allChannelsData");
-            if (!storedData) {
-                alert("No channels found in localStorage.");
-                return;
-            }
-            try {
-                channelsData = JSON.parse(storedData);
-                categoriesData = [...new Set(channelsData.map(c => c.category))];
-                sortChannelsByCategories();
-                renderUI();
-                alert("Channels loaded from localStorage successfully!");
-            } catch (e) {
-                console.error(e);
-                alert("Failed to parse channels data from localStorage.");
-            }
-        }
-
-        // --- Category Functions ---
-
-        function renderChannelFormCategories() {
-            const categorySelect = document.getElementById('channelCategory');
-            categorySelect.innerHTML = '';
-            categoriesData.forEach(cat => {
-                const option = document.createElement('option');
-                option.value = cat;
-                option.textContent = cat;
-                categorySelect.appendChild(option);
+          if (Array.isArray(parsedData)) {
+            // Remove the 'number' key if it exists, as it will be reassigned by the sort function
+            parsedData.forEach((channel) => {
+              delete channel.number;
             });
-        }
+          }
 
-        function renderCategoryPreview() {
-            categoryListPreview.innerHTML = '';
-            categoriesData.forEach((cat, index) => {
-                const item = document.createElement('div');
-                item.className = 'category-preview-item';
-                item.innerHTML = `
+          channelsData = parsedData;
+          categoriesData = [...new Set(channelsData.map((c) => c.category))];
+          renderUI();
+          alert("Data loaded from JSON successfully!");
+        } catch (e) {
+          alert("Invalid JSON format. Please check your data.");
+          console.error(e);
+        }
+      }
+
+      function loadDataFromFile() {
+        const file = fileInput.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          try {
+            channelsData = JSON.parse(e.target.result);
+            categoriesData = [...new Set(channelsData.map((c) => c.category))];
+            renderUI();
+            alert("Data loaded successfully!");
+          } catch (e) {
+            alert("Invalid JSON format. Please check your file.");
+          }
+        };
+        reader.readAsText(file);
+      }
+
+      function saveData() {
+        sortChannelsByCategories();
+        const jsonString = JSON.stringify(channelsData, null, 2);
+        const blob = new Blob([jsonString], { type: "application/json" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "channels.json";
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      }
+
+      function saveAllChannels() {
+        if (channelsData.length === 0) {
+          alert("No channels to save!");
+          return;
+        }
+        localStorage.setItem("allChannelsData", JSON.stringify(channelsData));
+        alert("All channels saved successfully!");
+      }
+
+      function loadChannelsFromStorage() {
+        const storedData = localStorage.getItem("allChannelsData");
+        if (!storedData) {
+          alert("No channels found in localStorage.");
+          return;
+        }
+        try {
+          let parsedData = JSON.parse(storedData);
+
+          if (Array.isArray(parsedData)) {
+            // Remove the 'number' key if it exists, as it will be reassigned by the sort function
+            parsedData.forEach((channel) => {
+              delete channel.number;
+            });
+          }
+          channelsData = parsedData;
+          categoriesData = [...new Set(channelsData.map((c) => c.category))];
+          sortChannelsByCategories();
+          renderUI();
+          alert("Channels loaded from localStorage successfully!");
+          showTab("tab-channel");
+        } catch (e) {
+          console.error(e);
+          alert("Failed to parse channels data from localStorage.");
+        }
+      }
+
+      // --- Category Functions ---
+
+      function renderChannelFormCategories() {
+        const categorySelect = document.getElementById("channelCategory");
+        categorySelect.innerHTML = "";
+        categoriesData.forEach((cat) => {
+          const option = document.createElement("option");
+          option.value = cat;
+          option.textContent = cat;
+          categorySelect.appendChild(option);
+        });
+      }
+
+      function renderCategoryPreview() {
+        categoryListPreview.innerHTML = "";
+        categoriesData.forEach((cat, index) => {
+          const item = document.createElement("div");
+          item.className = "category-preview-item";
+          item.innerHTML = `
                 <span>${cat}</span>
                 <div class="actions">
                     <button class="btn-secondary channel-item-button" onclick="moveCategoryUp(${index})">▲</button>
@@ -544,154 +628,196 @@
                     <button class="btn-danger channel-item-button" onclick="deleteCategory('${cat}')">Delete</button>
                 </div>
             `;
-                categoryListPreview.appendChild(item);
-            });
-        }
+          categoryListPreview.appendChild(item);
+        });
+      }
 
-        function addCategory() {
-            const newCategoryName = document.getElementById('newCategoryName').value.trim();
-            if (!newCategoryName) return;
-            if (categoriesData.includes(newCategoryName)) {
-                alert('Category already exists!');
-                return;
-            }
-            categoriesData.push(newCategoryName);
+      function addCategory() {
+        const newCategoryName = document
+          .getElementById("newCategoryName")
+          .value.trim();
+        if (!newCategoryName) return;
+        if (categoriesData.includes(newCategoryName)) {
+          alert("Category already exists!");
+          return;
+        }
+        categoriesData.push(newCategoryName);
+        renderUI();
+        document.getElementById("newCategoryName").value = "";
+      }
+
+      function editCategoryPrompt(oldCategoryName) {
+        const newCategoryName = prompt(
+          `Enter a new name for the category "${oldCategoryName}":`,
+          oldCategoryName
+        );
+        if (newCategoryName === null || newCategoryName.trim() === "") {
+          return;
+        }
+        const trimmedNewName = newCategoryName.trim();
+        if (
+          categoriesData.includes(trimmedNewName) &&
+          trimmedNewName !== oldCategoryName
+        ) {
+          alert(
+            "This category name already exists. Please choose a different name."
+          );
+          return;
+        }
+        channelsData.forEach((channel) => {
+          if (channel.category === oldCategoryName) {
+            channel.category = trimmedNewName;
+          }
+        });
+        const categoryIndex = categoriesData.indexOf(oldCategoryName);
+        if (categoryIndex !== -1) {
+          categoriesData[categoryIndex] = trimmedNewName;
+        }
+        renderUI();
+      }
+
+      function deleteCategory(categoryName) {
+        if (
+          confirm(
+            `Are you sure you want to delete the category "${categoryName}" and all its channels?`
+          )
+        ) {
+          categoriesData = categoriesData.filter((cat) => cat !== categoryName);
+          channelsData = channelsData.filter(
+            (c) => c.category !== categoryName
+          );
+          renderUI();
+        }
+      }
+
+      // --- Channel Sorting and Movement ---
+
+      function sortChannelsByCategories() {
+        const categoryOrderMap = new Map();
+        categoriesData.forEach((cat, index) => {
+          categoryOrderMap.set(cat, index);
+        });
+
+        channelsData.sort((a, b) => {
+          const orderA = categoryOrderMap.get(a.category);
+          const orderB = categoryOrderMap.get(b.category);
+
+          if (orderA === undefined && orderB === undefined) return 0;
+          if (orderA === undefined) return 1;
+          if (orderB === undefined) return -1;
+
+          return orderA - orderB;
+        });
+      }
+
+      function moveCategoryUp(index) {
+        if (index > 0) {
+          [categoriesData[index - 1], categoriesData[index]] = [
+            categoriesData[index],
+            categoriesData[index - 1],
+          ];
+          sortChannelsByCategories();
+          renderUI();
+        }
+      }
+
+      function moveCategoryDown(index) {
+        if (index < categoriesData.length - 1) {
+          [categoriesData[index + 1], categoriesData[index]] = [
+            categoriesData[index],
+            categoriesData[index + 1],
+          ];
+          sortChannelsByCategories();
+          renderUI();
+        }
+      }
+
+      function moveChannelUp(index) {
+        if (index > 0) {
+          // Check if the channel is in the same category as the channel above it
+          if (
+            channelsData[index].category === channelsData[index - 1].category
+          ) {
+            [channelsData[index - 1], channelsData[index]] = [
+              channelsData[index],
+              channelsData[index - 1],
+            ];
             renderUI();
-            document.getElementById('newCategoryName').value = '';
+          } else {
+            alert("Cannot move channel above its category boundary.");
+          }
         }
+      }
 
-        function editCategoryPrompt(oldCategoryName) {
-            const newCategoryName = prompt(`Enter a new name for the category "${oldCategoryName}":`, oldCategoryName);
-            if (newCategoryName === null || newCategoryName.trim() === '') {
-                return;
-            }
-            const trimmedNewName = newCategoryName.trim();
-            if (categoriesData.includes(trimmedNewName) && trimmedNewName !== oldCategoryName) {
-                alert('This category name already exists. Please choose a different name.');
-                return;
-            }
-            channelsData.forEach(channel => {
-                if (channel.category === oldCategoryName) {
-                    channel.category = trimmedNewName;
-                }
-            });
-            const categoryIndex = categoriesData.indexOf(oldCategoryName);
-            if (categoryIndex !== -1) {
-                categoriesData[categoryIndex] = trimmedNewName;
-            }
+      function moveChannelDown(index) {
+        if (index < channelsData.length - 1) {
+          // Check if the channel is in the same category as the channel below it
+          if (
+            channelsData[index].category === channelsData[index + 1].category
+          ) {
+            [channelsData[index + 1], channelsData[index]] = [
+              channelsData[index],
+              channelsData[index + 1],
+            ];
             renderUI();
+          } else {
+            alert("Cannot move channel below its category boundary.");
+          }
         }
+      }
 
-        function deleteCategory(categoryName) {
-            if (confirm(`Are you sure you want to delete the category "${categoryName}" and all its channels?`)) {
-                categoriesData = categoriesData.filter(cat => cat !== categoryName);
-                channelsData = channelsData.filter(c => c.category !== categoryName);
-                renderUI();
-            }
-        }
+      function sortChannelsByName(category) {
+        // 1. Separate channels in the target category
+        const channelsInCategory = channelsData.filter(
+          (c) => c.category === category
+        );
+        // 2. Separate all other channels
+        const otherChannels = channelsData.filter(
+          (c) => c.category !== category
+        );
 
-        // --- Channel Sorting and Movement ---
+        // 3. Sort the channels within the specified category by name (A-Z)
+        channelsInCategory.sort((a, b) => a.name.localeCompare(b.name));
 
-        function sortChannelsByCategories() {
-            const categoryOrderMap = new Map();
-            categoriesData.forEach((cat, index) => {
-                categoryOrderMap.set(cat, index);
-            });
+        // 4. Recombine the arrays, respecting the category order
+        const newChannelsData = [];
+        categoriesData.forEach((cat) => {
+          if (cat === category) {
+            newChannelsData.push(...channelsInCategory);
+          } else {
+            newChannelsData.push(
+              ...channelsData.filter((c) => c.category === cat)
+            );
+          }
+        });
+        channelsData = newChannelsData;
+        renderUI();
+      }
 
-            channelsData.sort((a, b) => {
-                const orderA = categoryOrderMap.get(a.category);
-                const orderB = categoryOrderMap.get(b.category);
-
-                if (orderA === undefined && orderB === undefined) return 0;
-                if (orderA === undefined) return 1;
-                if (orderB === undefined) return -1;
-
-                return orderA - orderB;
-            });
-        }
-
-        function moveCategoryUp(index) {
-            if (index > 0) {
-                [categoriesData[index - 1], categoriesData[index]] = [categoriesData[index], categoriesData[index - 1]];
-                sortChannelsByCategories();
-                renderUI();
-            }
-        }
-
-        function moveCategoryDown(index) {
-            if (index < categoriesData.length - 1) {
-                [categoriesData[index + 1], categoriesData[index]] = [categoriesData[index], categoriesData[index + 1]];
-                sortChannelsByCategories();
-                renderUI();
-            }
-        }
-
-        function moveChannelUp(index) {
-            if (index > 0) {
-                // Check if the channel is in the same category as the channel above it
-                if (channelsData[index].category === channelsData[index - 1].category) {
-                    [channelsData[index - 1], channelsData[index]] = [channelsData[index], channelsData[index - 1]];
-                    renderUI();
-                } else {
-                    alert("Cannot move channel above its category boundary.");
-                }
-            }
-        }
-
-        function moveChannelDown(index) {
-            if (index < channelsData.length - 1) {
-                // Check if the channel is in the same category as the channel below it
-                if (channelsData[index].category === channelsData[index + 1].category) {
-                    [channelsData[index + 1], channelsData[index]] = [channelsData[index], channelsData[index + 1]];
-                    renderUI();
-                } else {
-                    alert("Cannot move channel below its category boundary.");
-                }
-            }
-        }
-
-        function sortChannelsByName(category) {
-            // 1. Separate channels in the target category
-            const channelsInCategory = channelsData.filter(c => c.category === category);
-            // 2. Separate all other channels
-            const otherChannels = channelsData.filter(c => c.category !== category);
-
-            // 3. Sort the channels within the specified category by name (A-Z)
-            channelsInCategory.sort((a, b) => a.name.localeCompare(b.name));
-
-            // 4. Recombine the arrays, respecting the category order
-            const newChannelsData = [];
-            categoriesData.forEach(cat => {
-                if (cat === category) {
-                    newChannelsData.push(...channelsInCategory);
-                } else {
-                    newChannelsData.push(...channelsData.filter(c => c.category === cat));
-                }
-            });
-            channelsData = newChannelsData;
-            renderUI();
-        }
-
-        function renderChannelPreview() {
-            channelListPreview.innerHTML = '';
-            categoriesData.forEach(category => {
-                const categorySection = document.createElement('div');
-                categorySection.innerHTML = `
+      function renderChannelPreview() {
+        channelListPreview.innerHTML = "";
+        categoriesData.forEach((category) => {
+          const categorySection = document.createElement("div");
+          categorySection.innerHTML = `
                 <div style="display: flex; justify-content: space-between; align-items: center;">
                     <h3>${category}</h3>
                     <button class="btn-secondary channel-item-button" onclick="sortChannelsByName('${category}')">Sort A-Z</button>
                 </div>
                 <div class="channel-list-category"></div>
             `;
-                channelListPreview.appendChild(categorySection);
-                const channelsInCategory = channelsData.filter(c => c.category === category);
-                const categoryChannelContainer = categorySection.querySelector('.channel-list-category');
+          channelListPreview.appendChild(categorySection);
+          const channelsInCategory = channelsData.filter(
+            (c) => c.category === category
+          );
+          const categoryChannelContainer = categorySection.querySelector(
+            ".channel-list-category"
+          );
 
-                channelsInCategory.forEach((channel) => {
-                    const index = channelsData.indexOf(channel);
-                    const item = document.createElement('div');
-                    item.className = 'channel-preview-item';
-                    item.innerHTML = `
+          channelsInCategory.forEach((channel) => {
+            const index = channelsData.indexOf(channel);
+            const item = document.createElement("div");
+            item.className = "channel-preview-item";
+            item.innerHTML = `
                     <img src="${channel.image}" alt="${channel.name} logo">
                     <div>
                         <strong>${channel.name}</strong><br>
@@ -701,369 +827,388 @@
                         <button class="btn-secondary channel-item-button" onclick="moveChannelUp(${index})">▲</button>
                         <button class="btn-secondary channel-item-button" onclick="moveChannelDown(${index})">▼</button>
                         <button class="btn-secondary channel-item-button" onclick="editChannel(${index})">Edit</button>
-                        <button class="btn-danger channel-item-button" onclick="deleteChannel(${index})">Delete</button>
                     </div>
                 `;
-                    categoryChannelContainer.appendChild(item);
-                });
-            });
-        }
-
-        // --- Channel Form & Editing Functions (CRITICAL FIXES) ---
-
-        /**
-         * Saves a new channel or updates an existing one.
-         */
-        // admin.html: (Update the existing function near line 798)
-
-        function saveChannel() {
-            const index = document.getElementById('channelIndex').value;
-            const name = document.getElementById('channelName').value.trim();
-            const image = document.getElementById('channelImage').value.trim();
-            const url = document.getElementById('channelUrl').value.trim();
-            const description = document.getElementById('channelDescription').value.trim();
-
-            const isLiveString = document.getElementById('channelStatus').value.trim();
-            const isLive = (isLiveString === "true"); // Converts string to boolean
-
-            const category = document.getElementById('channelCategory').value;
-
-            if (!name || !url || !image || !description || !category) {
-                alert("All fields are required!");
-                return;
-            }
-
-            const newChannel = { name, image, url, description, isLive, category };
-
-            if (index === "") {
-                // --- OPERATION: ADD NEW CHANNEL ---
-                channelsData.push(newChannel);
-                alert("New channel added successfully!");
-
-                // When adding a NEW channel, we clear the form to start a fresh entry.
-                sortChannelsByCategories();
-                renderUI();
-                clearChannelForm();
-
-            } else {
-                // --- OPERATION: UPDATE EXISTING CHANNEL ---
-                channelsData[index] = newChannel;
-                alert("Channel updated successfully!");
-
-                sortChannelsByCategories();
-                renderUI();
-
-                // 1. DO NOT CLEAR THE FORM.
-                // 2. Instead, re-call editChannel with the current index.
-                //    This re-populates the form with the new data and ensures the index is preserved.
-                editChannel(parseInt(index));
-            }
-        }
-
-        /**
-         * Clears the channel edit form and resets it for a new entry.
-         */
-        /**
-         * Clears the channel edit form.
-         * (Modified to reset the original data tracker)
-         */
-        function clearChannelForm() {
-            document.getElementById('channelIndex').value = '';
-            document.getElementById('displayChannelIndex').value = '';
-            channelForm.reset();
-
-            const imagePreview = document.getElementById('imagePreview');
-            imagePreview.style.display = 'none';
-            imagePreview.src = '';
-
-            // ✅ NEW: Reset the tracker
-            originalChannelData = null;
-
-            updateNavigationButtons(-1);
-        }
-
-        /**
-         * Loads channel data into the form for editing.
-         * @param {number} index - The array index of the channel.
-         */
-        function editChannel(index) {
-            if (index < 0 || index >= channelsData.length) {
-                return; // Prevent errors if navigation goes out of bounds
-            }
-
-            const channel = channelsData[index];
-
-            // Set Hidden Index for saving
-            document.getElementById('channelIndex').value = index;
-
-            // Set Visible Index for user display
-            document.getElementById('displayChannelIndex').value = parseInt(index) + 1;
-
-            // Populate all other form fields
-            document.getElementById('channelName').value = channel.name;
-            document.getElementById('channelUrl').value = channel.url;
-            document.getElementById('channelImage').value = channel.image;
-            document.getElementById('channelDescription').value = channel.description;
-            document.getElementById('channelStatus').value = channel.isLive ? 'true' : 'false';
-
-            // ✅ NEW: Store the original state for dirty checking
-            trackOriginalChannelData(channel);
-
-            // ✅ ADDED: Display the image preview
-            const imagePreview = document.getElementById('imagePreview');
-            imagePreview.src = channel.image;
-            imagePreview.style.display = 'block';
-
-            // Select correct Category
-            document.getElementById('channelCategory').value = channel.category;
-
-            // Set Live Status (convert boolean back to string for the dropdown)
-            document.getElementById('channelStatus').value = channel.isLive ? 'true' : 'false';
-
-            showTab('tab-channel');
-
-            window.scrollTo({
-                top: 0,
-                left: 0,
-                behavior: 'smooth'
-            }); // Scroll to the top of the page/form
-            updateNavigationButtons(index);
-
-        }
-
-
-        /**
- * Handles navigation between channels in the edit form.
- * (Modified to check for unsaved changes)
- * @param {number} direction - -1 for previous, 1 for next.
- */
-        function navigateChannel(direction) {
-            // 1. Check for unsaved changes
-            if (isFormDirty()) {
-                const confirmSave = confirm("You have unsaved changes. Do you want to save the current channel before moving?");
-
-                if (confirmSave) {
-                    // Save the channel and let it reload the form via the saveChannel() logic
-                    saveChannel();
-                    // The index might change if the save causes a re-sort, so we restart navigation
-                    // We use setTimeout to ensure saveChannel's internal logic completes first.
-                    setTimeout(() => {
-                        const currentIndex = parseInt(document.getElementById('channelIndex').value);
-                        const newIndex = currentIndex + direction;
-                        if (newIndex >= 0 && newIndex < channelsData.length) {
-                            editChannel(newIndex);
-                        }
-                    }, 50);
-                    return;
-                }
-                // If the user selects CANCEL (i.e., NO, don't save), proceed with navigation,
-                // which will overwrite the form data.
-            }
-
-            // 2. Proceed with navigation (original logic)
-            const currentIndexValue = document.getElementById('channelIndex').value;
-            let currentIndex = parseInt(currentIndexValue);
-
-            if (currentIndexValue === "" || isNaN(currentIndex)) {
-                currentIndex = -1;
-            }
-
-            const newIndex = currentIndex + direction;
-
-            if (newIndex >= 0 && newIndex < channelsData.length) {
-                editChannel(newIndex);
-            }
-        }
-
-        /**
- * Saves the current channel data into the global tracker for comparison.
- * Called inside editChannel().
- */
-        function trackOriginalChannelData(channel) {
-            // We only track essential, editable fields. Ensure isLive is a boolean for comparison.
-            originalChannelData = {
-                name: channel.name,
-                url: channel.url,
-                image: channel.image,
-                description: channel.description,
-                category: channel.category,
-                isLive: channel.isLive === true || channel.isLive === "true" // Handle string/boolean
-            };
-        }
-
-
-        /**
- * Checks if the current form data differs from the original data.
- * @returns {boolean} True if changes were made, false otherwise.
- */
-        function isFormDirty() {
-            if (!originalChannelData) return false; // Not editing a channel or form is empty
-
-            // Get current form values
-            const currentData = {
-                name: document.getElementById('channelName').value.trim(),
-                url: document.getElementById('channelUrl').value.trim(),
-                image: document.getElementById('channelImage').value.trim(),
-                description: document.getElementById('channelDescription').value.trim(),
-                category: document.getElementById('channelCategory').value,
-                isLive: document.getElementById('channelStatus').value === "true" // Check dropdown value
-            };
-
-            // Compare all properties
-            return (
-                currentData.name !== originalChannelData.name ||
-                currentData.url !== originalChannelData.url ||
-                currentData.image !== originalChannelData.image ||
-                currentData.description !== originalChannelData.description ||
-                currentData.category !== originalChannelData.category ||
-                currentData.isLive !== originalChannelData.isLive
-            );
-        }
-
-        /**
-         * Enables/Disables the Previous and Next buttons.
-         * @param {number} currentIndex - The array index currently loaded (-1 if empty).
-         */
-        function updateNavigationButtons(currentIndex) {
-            const prevBtn = document.getElementById('prevChannelBtn');
-            const nextBtn = document.getElementById('nextChannelBtn');
-            const totalChannels = channelsData.length;
-
-            if (prevBtn) {
-                prevBtn.disabled = (currentIndex <= 0 || totalChannels === 0);
-            }
-
-            if (nextBtn) {
-                nextBtn.disabled = (currentIndex >= totalChannels - 1 || totalChannels === 0);
-            }
-        }
-
-        function deleteChannel(index) {
-            if (confirm(`Are you sure you want to delete channel "${channelsData[index].name}"?`)) {
-                channelsData.splice(index, 1);
-                // After deletion, attempt to load the channel at the same index, or the previous one
-                let newIndex = index > 0 ? index - 1 : 0;
-
-                renderUI();
-
-                // If there are still channels, load one for continued editing
-                if (channelsData.length > 0) {
-                    editChannel(newIndex);
-                } else {
-                    clearChannelForm();
-                }
-            }
-        }
-
-        function deleteCurrentChannel() {
-            const indexValue = document.getElementById('channelIndex').value;
-
-            // 1. Validate the index
-            if (indexValue === "" || isNaN(parseInt(indexValue))) {
-                alert("No channel is currently loaded for deletion.");
-                return;
-            }
-
-            const actualIndex = parseInt(indexValue);
-            const channelName = document.getElementById('channelName').value;
-
-            const confirmDeletion = confirm(`Are you sure you want to permanently delete the channel: "${channelName}"?`);
-
-            if (!confirmDeletion) {
-                return;
-            }
-
-            // 2. Determine the NEXT channel to load (before deletion)
-            let nextIndexToLoad = -1;
-
-            // Case A: If not the last channel, load the channel at the current index (it will be the next one)
-            if (actualIndex < channelsData.length - 1) {
-                nextIndexToLoad = actualIndex;
-            }
-            // Case B: If it IS the last channel, load the PREVIOUS channel
-            else if (actualIndex > 0) {
-                nextIndexToLoad = actualIndex - 1;
-            }
-            // Case C: If it's the only channel, nextIndexToLoad remains -1 (clears the form)
-
-
-            // 3. Delete the channel from the global data array
-            if (actualIndex >= 0 && actualIndex < channelsData.length) {
-                channelsData.splice(actualIndex, 1);
-                alert(`Channel "${channelName}" deleted successfully.`);
-            } else {
-                alert("Error: Invalid channel index found.");
-                return;
-            }
-
-            // 4. Update the UI and load the next channel
-
-            // Save and re-sort the data
-            sortChannelsByCategories();
-            renderUI();
-
-            // Load the next channel or clear the form
-            if (nextIndexToLoad !== -1 && channelsData.length > 0) {
-                // Load the designated channel
-                editChannel(nextIndexToLoad);
-            } else {
-                // Clear the form if the list is empty or the last channel was deleted
-                clearChannelForm();
-            }
-        }
-
-
-        // --- Utility Functions ---
-
-        function updateJsonOutput() {
-            if (channelsData.length > 0) {
-                jsonOutput.value = JSON.stringify(channelsData, null, 2);
-            } else {
-                jsonOutput.value = 'No data loaded.';
-            }
-        }
-
-        function sortJson() {
-            const jsonString = jsonOutput.value;
-            if (!jsonString) {
-                alert('JSON data is empty. Please load or add some channels first.');
-                return;
-            }
-
-            try {
-                const data = JSON.parse(jsonString);
-
-                if (Array.isArray(data)) {
-                    // Sort the array by category order
-                    sortChannelsByCategories();
-
-                    // Update the textarea with the sorted data, nicely formatted
-                    jsonOutput.value = JSON.stringify(channelsData, null, 2);
-                    alert('JSON data sorted successfully by category!');
-
-                } else {
-                    alert('The JSON data is not a valid array of channels and cannot be sorted.');
-                }
-            } catch (e) {
-                alert('Invalid JSON format. Please correct the syntax before sorting.');
-                console.error('JSON sorting error:', e);
-            }
-        }
-
-        function showTab(tabId) {
-            const tabs = document.querySelectorAll('.tab-content');
-            const buttons = document.querySelectorAll('.tab-button');
-            tabs.forEach(tab => tab.classList.remove('active'));
-            buttons.forEach(button => button.classList.remove('active'));
-            document.getElementById(tabId).classList.add('active');
-            document.querySelector(`[onclick="showTab('${tabId}')"]`).classList.add('active');
-        }
-
-        document.addEventListener('DOMContentLoaded', () => {
-            renderUI();
-            updateNavigationButtons(-1); // Disable buttons on initial load
+            categoryChannelContainer.appendChild(item);
+          });
         });
-    </script>
-</body>
+      }
 
+      // --- Channel Form & Editing Functions (CRITICAL FIXES) ---
+
+      /**
+       * Saves a new channel or updates an existing one.
+       */
+      // admin.html: (Update the existing function near line 798)
+
+      function saveChannel() {
+        const index = document.getElementById("channelIndex").value;
+        const name = document.getElementById("channelName").value.trim();
+        const image = document.getElementById("channelImage").value.trim();
+        const url = document.getElementById("channelUrl").value.trim();
+        const description = document
+          .getElementById("channelDescription")
+          .value.trim();
+
+        const isLiveString = document
+          .getElementById("channelStatus")
+          .value.trim();
+        const isLive = isLiveString === "true"; // Converts string to boolean
+
+        const category = document.getElementById("channelCategory").value;
+
+        if (!name || !url || !image || !description || !category) {
+          alert("All fields are required!");
+          return;
+        }
+
+        const newChannel = { name, image, url, description, isLive, category };
+
+        if (index === "") {
+          // --- OPERATION: ADD NEW CHANNEL ---
+          channelsData.push(newChannel);
+          alert("New channel added successfully!");
+
+          // When adding a NEW channel, we clear the form to start a fresh entry.
+          sortChannelsByCategories();
+          renderUI();
+          clearChannelForm();
+        } else {
+          // --- OPERATION: UPDATE EXISTING CHANNEL ---
+          channelsData[index] = newChannel;
+          alert("Channel updated successfully!");
+
+          sortChannelsByCategories();
+          renderUI();
+
+          // 1. DO NOT CLEAR THE FORM.
+          // 2. Instead, re-call editChannel with the current index.
+          //    This re-populates the form with the new data and ensures the index is preserved.
+          editChannel(parseInt(index));
+        }
+      }
+
+      /**
+       * Clears the channel edit form and resets it for a new entry.
+       */
+      /**
+       * Clears the channel edit form.
+       * (Modified to reset the original data tracker)
+       */
+      function clearChannelForm() {
+        document.getElementById("channelIndex").value = "";
+        document.getElementById("displayChannelIndex").value = "";
+        channelForm.reset();
+
+        const imagePreview = document.getElementById("imagePreview");
+        imagePreview.style.display = "none";
+        imagePreview.src = "";
+
+        // ✅ NEW: Reset the tracker
+        originalChannelData = null;
+
+        updateNavigationButtons(-1);
+      }
+
+      /**
+       * Loads channel data into the form for editing.
+       * @param {number} index - The array index of the channel.
+       */
+      function editChannel(index) {
+        if (index < 0 || index >= channelsData.length) {
+          return; // Prevent errors if navigation goes out of bounds
+        }
+
+        const channel = channelsData[index];
+
+        // Set Hidden Index for saving
+        document.getElementById("channelIndex").value = index;
+
+        // Set Visible Index for user display
+        document.getElementById("displayChannelIndex").value =
+          parseInt(index) + 1;
+
+        // Populate all other form fields
+        document.getElementById("channelName").value = channel.name;
+        document.getElementById("channelUrl").value = channel.url;
+        document.getElementById("channelImage").value = channel.image;
+        document.getElementById("channelDescription").value =
+          channel.description;
+        document.getElementById("channelStatus").value = channel.isLive
+          ? "true"
+          : "false";
+
+        // ✅ NEW: Store the original state for dirty checking
+        trackOriginalChannelData(channel);
+
+        // ✅ ADDED: Display the image preview
+        const imagePreview = document.getElementById("imagePreview");
+        imagePreview.src = channel.image;
+        imagePreview.style.display = "block";
+
+        // Select correct Category
+        document.getElementById("channelCategory").value = channel.category;
+
+        // Set Live Status (convert boolean back to string for the dropdown)
+        document.getElementById("channelStatus").value = channel.isLive
+          ? "true"
+          : "false";
+
+        showTab("tab-channel");
+
+        document
+          .getElementById("tab-channel")
+          .scrollIntoView({ behavior: "smooth", block: "center" });
+
+        updateNavigationButtons(index);
+      }
+
+      /**
+       * Handles navigation between channels in the edit form.
+       * (Modified to check for unsaved changes)
+       * @param {number} direction - -1 for previous, 1 for next.
+       */
+      function navigateChannel(direction) {
+        // 1. Check for unsaved changes
+        if (isFormDirty()) {
+          const confirmSave = confirm(
+            "You have unsaved changes. Do you want to save the current channel before moving?"
+          );
+
+          if (confirmSave) {
+            // Save the channel and let it reload the form via the saveChannel() logic
+            saveChannel();
+            // The index might change if the save causes a re-sort, so we restart navigation
+            // We use setTimeout to ensure saveChannel's internal logic completes first.
+            setTimeout(() => {
+              const currentIndex = parseInt(
+                document.getElementById("channelIndex").value
+              );
+              const newIndex = currentIndex + direction;
+              if (newIndex >= 0 && newIndex < channelsData.length) {
+                editChannel(newIndex);
+              }
+            }, 50);
+            return;
+          }
+          // If the user selects CANCEL (i.e., NO, don't save), proceed with navigation,
+          // which will overwrite the form data.
+        }
+
+        // 2. Proceed with navigation (original logic)
+        const currentIndexValue = document.getElementById("channelIndex").value;
+        let currentIndex = parseInt(currentIndexValue);
+
+        if (currentIndexValue === "" || isNaN(currentIndex)) {
+          currentIndex = -1;
+        }
+
+        const newIndex = currentIndex + direction;
+
+        if (newIndex >= 0 && newIndex < channelsData.length) {
+          editChannel(newIndex);
+        }
+      }
+
+      /**
+       * Saves the current channel data into the global tracker for comparison.
+       * Called inside editChannel().
+       */
+      function trackOriginalChannelData(channel) {
+        // We only track essential, editable fields. Ensure isLive is a boolean for comparison.
+        originalChannelData = {
+          name: channel.name,
+          url: channel.url,
+          image: channel.image,
+          description: channel.description,
+          category: channel.category,
+          isLive: channel.isLive === true || channel.isLive === "true", // Handle string/boolean
+        };
+      }
+
+      /**
+       * Checks if the current form data differs from the original data.
+       * @returns {boolean} True if changes were made, false otherwise.
+       */
+      function isFormDirty() {
+        if (!originalChannelData) return false; // Not editing a channel or form is empty
+
+        // Get current form values
+        const currentData = {
+          name: document.getElementById("channelName").value.trim(),
+          url: document.getElementById("channelUrl").value.trim(),
+          image: document.getElementById("channelImage").value.trim(),
+          description: document
+            .getElementById("channelDescription")
+            .value.trim(),
+          category: document.getElementById("channelCategory").value,
+          isLive: document.getElementById("channelStatus").value === "true", // Check dropdown value
+        };
+
+        // Compare all properties
+        return (
+          currentData.name !== originalChannelData.name ||
+          currentData.url !== originalChannelData.url ||
+          currentData.image !== originalChannelData.image ||
+          currentData.description !== originalChannelData.description ||
+          currentData.category !== originalChannelData.category ||
+          currentData.isLive !== originalChannelData.isLive
+        );
+      }
+
+      /**
+       * Enables/Disables the Previous and Next buttons.
+       * @param {number} currentIndex - The array index currently loaded (-1 if empty).
+       */
+      function updateNavigationButtons(currentIndex) {
+        const prevBtn = document.getElementById("prevChannelBtn");
+        const nextBtn = document.getElementById("nextChannelBtn");
+        const totalChannels = channelsData.length;
+
+        if (prevBtn) {
+          prevBtn.disabled = currentIndex <= 0 || totalChannels === 0;
+        }
+
+        if (nextBtn) {
+          nextBtn.disabled =
+            currentIndex >= totalChannels - 1 || totalChannels === 0;
+        }
+      }
+
+      function deleteChannel(index) {
+        if (
+          confirm(
+            `Are you sure you want to delete channel "${channelsData[index].name}"?`
+          )
+        ) {
+          channelsData.splice(index, 1);
+          // After deletion, attempt to load the channel at the same index, or the previous one
+          let newIndex = index > 0 ? index - 1 : 0;
+
+          renderUI();
+
+          // If there are still channels, load one for continued editing
+          if (channelsData.length > 0) {
+            editChannel(newIndex);
+          } else {
+            clearChannelForm();
+          }
+        }
+      }
+
+      function deleteCurrentChannel() {
+        const indexValue = document.getElementById("channelIndex").value;
+
+        // 1. Validate the index
+        if (indexValue === "" || isNaN(parseInt(indexValue))) {
+          alert("No channel is currently loaded for deletion.");
+          return;
+        }
+
+        const actualIndex = parseInt(indexValue);
+        const channelName = document.getElementById("channelName").value;
+
+        const confirmDeletion = confirm(
+          `Are you sure you want to permanently delete the channel: "${channelName}"?`
+        );
+
+        if (!confirmDeletion) {
+          return;
+        }
+
+        // 2. Determine the NEXT channel to load (before deletion)
+        let nextIndexToLoad = -1;
+
+        // Case A: If not the last channel, load the channel at the current index (it will be the next one)
+        if (actualIndex < channelsData.length - 1) {
+          nextIndexToLoad = actualIndex;
+        }
+        // Case B: If it IS the last channel, load the PREVIOUS channel
+        else if (actualIndex > 0) {
+          nextIndexToLoad = actualIndex - 1;
+        }
+        // Case C: If it's the only channel, nextIndexToLoad remains -1 (clears the form)
+
+        // 3. Delete the channel from the global data array
+        if (actualIndex >= 0 && actualIndex < channelsData.length) {
+          channelsData.splice(actualIndex, 1);
+          alert(`Channel "${channelName}" deleted successfully.`);
+        } else {
+          alert("Error: Invalid channel index found.");
+          return;
+        }
+
+        // 4. Update the UI and load the next channel
+
+        // Save and re-sort the data
+        sortChannelsByCategories();
+        renderUI();
+
+        // Load the next channel or clear the form
+        if (nextIndexToLoad !== -1 && channelsData.length > 0) {
+          // Load the designated channel
+          editChannel(nextIndexToLoad);
+        } else {
+          // Clear the form if the list is empty or the last channel was deleted
+          clearChannelForm();
+        }
+      }
+
+      // --- Utility Functions ---
+
+      function updateJsonOutput() {
+        if (channelsData.length > 0) {
+          jsonOutput.value = JSON.stringify(channelsData, null, 2);
+        } else {
+          jsonOutput.value = "No data loaded.";
+        }
+      }
+
+      function sortJson() {
+        const jsonString = jsonOutput.value;
+        if (!jsonString) {
+          alert("JSON data is empty. Please load or add some channels first.");
+          return;
+        }
+
+        try {
+          const data = JSON.parse(jsonString);
+
+          if (Array.isArray(data)) {
+            // Sort the array by category order
+            sortChannelsByCategories();
+
+            // Update the textarea with the sorted data, nicely formatted
+            jsonOutput.value = JSON.stringify(channelsData, null, 2);
+            alert("JSON data sorted successfully by category!");
+          } else {
+            alert(
+              "The JSON data is not a valid array of channels and cannot be sorted."
+            );
+          }
+        } catch (e) {
+          alert(
+            "Invalid JSON format. Please correct the syntax before sorting."
+          );
+          console.error("JSON sorting error:", e);
+        }
+      }
+
+      function showTab(tabId) {
+        const tabs = document.querySelectorAll(".tab-content");
+        const buttons = document.querySelectorAll(".tab-button");
+        tabs.forEach((tab) => tab.classList.remove("active"));
+        buttons.forEach((button) => button.classList.remove("active"));
+        document.getElementById(tabId).classList.add("active");
+        document
+          .querySelector(`[onclick="showTab('${tabId}')"]`)
+          .classList.add("active");
+      }
+
+      document.addEventListener("DOMContentLoaded", () => {
+        renderUI();
+        updateNavigationButtons(-1); // Disable buttons on initial load
+      });
+    </script>
+  </body>
 </html>

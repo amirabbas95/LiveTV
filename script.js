@@ -121,11 +121,13 @@ function selectChannel(url, name, image, description, number, isLive) {
         onReady: function (event) {
           event.target.playVideo();
           Android.onPlayerReady();
+          log("Player is ready and video started.");
         },
         onError: function (error) {
           Android.onPlayerError(error.data);
           if (error.data === 101 || error.data === 150 || error.data === 153) {
             // Fallback
+            log("Error requires fallback to mobile YouTube link.", true);
             window.location.href = "https://m.youtube.com/watch?v=$[url]";
           }
         },
@@ -1109,6 +1111,16 @@ function youtubeItemToChannel(videoId, title, feed) {
    📌 1. Load latest uploads (via RSS)
    ---------------------------------------------------- */
 async function loadYouTubeLatestFeeds() {
+  let feeds = [];
+
+  try {
+    const response = await fetch("feeds.json");
+    feeds = await response.json();
+  } catch (error) {
+    console.error("Failed to load feeds.json:", error);
+    return;
+  }
+
   if (!feeds || feeds.length === 0) return;
 
   for (const feed of feeds) {
@@ -1165,6 +1177,16 @@ function extractChannelId(feedUrl) {
 }
 
 async function loadYouTubeLiveFeeds() {
+  let live = [];
+
+  try {
+    const response = await fetch("live.json");
+    live = await response.json();
+  } catch (error) {
+    console.error("Failed to load feeds.json:", error);
+    return;
+  }
+
   if (!live || live.length === 0) return;
 
   for (const feed of live) {
@@ -1175,18 +1197,17 @@ async function loadYouTubeLiveFeeds() {
         continue;
       }
 
-      const apiUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&channelId=${channelId}&eventType=live&type=video&key=${API_KEY}`;
+      //const apiUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&channelId=${channelId}&eventType=live&type=video&key=${API_KEY}`;
+      const apiUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&channelId=${channelId}&eventType=live&type=video&order=date&maxResults=1&key=${API_KEY}`;
 
       const res = await fetch(apiUrl);
 
-
       if (!res.ok) {
-          // Throw an error with the status text (e.g., 403 Forbidden)
-          // This will be caught by the outer catch block in loadAllChannelFeeds()
-          throw new Error(`API returned status ${res.status}: ${res.statusText}`);
+        // Throw an error with the status text (e.g., 403 Forbidden)
+        // This will be caught by the outer catch block in loadAllChannelFeeds()
+        throw new Error(`API returned status ${res.status}: ${res.statusText}`);
       }
 
-      
       const data = await res.json();
 
       if (!data.items || data.items.length === 0) {
@@ -1196,10 +1217,10 @@ async function loadYouTubeLiveFeeds() {
 
       // Check for YouTube API specific errors (like quota exceeded in the JSON body)
       if (data.error) {
-           throw new Error(`YouTube API Error for ${feed.name}: ${data.error.message}`);
+        throw new Error(
+          `YouTube API Error for ${feed.name}: ${data.error.message}`
+        );
       }
-
-      
 
       const item = data.items[0];
       const videoId = item.id.videoId;
@@ -1219,7 +1240,10 @@ async function loadYouTubeLiveFeeds() {
 
       log(`Channel Name: ${feed.name} Successfully updated`);
     } catch (e) {
-      log(`Error loading live feed for ${feed.name}. Error: ${e.message}`, true);
+      log(
+        `Error loading live feed for ${feed.name}. Error: ${e.message}`,
+        true
+      );
       console.error("Error loading live feed:", feed.name, e);
       throw e;
     }
@@ -1301,7 +1325,7 @@ function startChannelAutoUpdate() {
   }
 
   const nextUpdateDate = new Date(nextExpiryTime).toLocaleString();
-log(`Next update available after: ${nextUpdateDate}`);
+  log(`Next update available after: ${nextUpdateDate}`);
 
   const checkAndUpdate = async () => {
     const lastUpdateTimestamp = parseInt(
