@@ -17,6 +17,12 @@ let overlayTimeoutShow;
 let overlayTimeoutHide;
 let isRecentOverlayActive = false;
 const API_KEY = "AIzaSyDL6cStGYRBUeewAQntRv85hiz2xkpwun0"; // <-- replace with your API key
+// --- Configuration and Global State ---
+const CACHE_KEY = "lastChannelsUpdate";
+// 8 hours in milliseconds (8 * 60 * 60 * 1000)
+const EIGHT_HOURS_MS = 8 * 60 * 60 * 1000;
+// Check status every 15 minutes
+const CHECK_INTERVAL_MS = 15 * 60 * 1000;
 
 // Function to extract YouTube ID
 function extractYouTubeID(url) {
@@ -147,13 +153,14 @@ function selectChannel(url, name, image, description, number, isLive) {
 
     const isChannelLive = isLive === true || isLive === "true";
 
-    if (!isChannelLive && isYouTube) {
-      playerInstance.controls(false);
-    } else if (isChannelLive && isYouTube) {
-      playerInstance.controls(false);
-    } else {
+    if (!isChannelLive && !isYouTube) {
       playerInstance.controls(true);
+    } else {
+      playerInstance.controls(false);
     }
+
+    //Clear the handler after execution to prevent duplicate listeners
+    playerInstance.off("loadedmetadata");
   });
 
   // Set up the retry button for manual use only
@@ -783,18 +790,35 @@ async function initialize() {
 
   // 2. Perform all the loading tasks
   let savedChannels = localStorage.getItem("allChannelsData");
+
   if (savedChannels) {
     try {
       allChannels = JSON.parse(savedChannels);
-    } catch {
-      console.warn("Invalid allChannelsData in localStorage, ignoring.");
+      log(
+        `Successfully loaded ${allChannels.length} channels from localStorage.`
+      );
+    } catch (e) {
+      // Log the error using your custom error handler
+      log(
+        "Invalid 'allChannelsData' found in localStorage. The data will be ignored.",
+        true
+      );
+      log(`Error details: ${e.message}`, true);
+
+      console.warn("Invalid allChannelsData in localStorage, ignoring.", e);
       allChannels = [];
     }
+  } else {
+    // Log if no data was found
+    log("No previous 'allChannelsData' found in localStorage. Starting fresh.");
+    allChannels = [];
   }
 
-  await loadYouTubeLatestFeeds();
+  //await loadYouTubeLatestFeeds();
   // For live streams (API, quota-based)
-  await loadYouTubeLiveFeeds();
+  //await loadYouTubeLiveFeeds();
+
+  startChannelAutoUpdate();
 
   allChannels.forEach((ch, i) => {
     if (!ch.number) ch.number = i + 1;
@@ -1117,17 +1141,19 @@ async function loadYouTubeLatestFeeds() {
       } else {
         allChannels.push(channelObj);
       }
+
+      log(`Channel Name: ${feed.name} Successfully updated`);
     } catch (e) {
-      console.error("Error loading RSS feed:", feed.name, e);
+      log(`Error loading RSS feed for ${feed.name}: ${e.message}`, true);
     }
   }
 
-  localStorage.setItem("allChannelsData", JSON.stringify(allChannels));
+  /*   localStorage.setItem("allChannelsData", JSON.stringify(allChannels));
   renderChannels(allChannels);
   updateFavoriteIcons();
   renderRecentlyWatched();
   renderRecentOverlay();
-  updateAllChannelItems();
+  updateAllChannelItems(); */
 }
 
 /* ----------------------------------------------------
@@ -1152,9 +1178,28 @@ async function loadYouTubeLiveFeeds() {
       const apiUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&channelId=${channelId}&eventType=live&type=video&key=${API_KEY}`;
 
       const res = await fetch(apiUrl);
+
+
+      if (!res.ok) {
+          // Throw an error with the status text (e.g., 403 Forbidden)
+          // This will be caught by the outer catch block in loadAllChannelFeeds()
+          throw new Error(`API returned status ${res.status}: ${res.statusText}`);
+      }
+
+      
       const data = await res.json();
 
-      if (!data.items || data.items.length === 0) continue;
+      if (!data.items || data.items.length === 0) {
+        log(`info: Live API for ${feed.name} found no active stream.`);
+        continue;
+      }
+
+      // Check for YouTube API specific errors (like quota exceeded in the JSON body)
+      if (data.error) {
+           throw new Error(`YouTube API Error for ${feed.name}: ${data.error.message}`);
+      }
+
+      
 
       const item = data.items[0];
       const videoId = item.id.videoId;
@@ -1171,15 +1216,154 @@ async function loadYouTubeLiveFeeds() {
       } else {
         allChannels.push(channelObj);
       }
+
+      log(`Channel Name: ${feed.name} Successfully updated`);
     } catch (e) {
+      log(`Error loading live feed for ${feed.name}. Error: ${e.message}`, true);
       console.error("Error loading live feed:", feed.name, e);
+      throw e;
     }
   }
 
-  localStorage.setItem("allChannelsData", JSON.stringify(allChannels));
+  /*   localStorage.setItem("allChannelsData", JSON.stringify(allChannels));
   renderChannels(allChannels);
   updateFavoriteIcons();
   renderRecentlyWatched();
   renderRecentOverlay();
-  updateAllChannelItems();
+  updateAllChannelItems(); */
+}
+
+/* ----------------------------------------------------
+   MASTER FUNCTION: Combines All Updates
+   ---------------------------------------------------- */
+/**
+ * Executes both the RSS and Live API updates, then saves and renders the final data.
+ * @returns {Promise<boolean>} True if all updates were successful, false otherwise.
+ */
+
+async function loadAllChannelFeeds() {
+  log("Starting full channel update (RSS and Live API)...");
+
+  try {
+    log("1/2: Loading latest uploads from (RSS)...");
+    await loadYouTubeLatestFeeds();
+    log("1/2: Latest uploads loaded successfully.");
+
+    log("2/2: Loading live streams (YouTube API)...");
+    await loadYouTubeLiveFeeds();
+    log("2/2: Live streams loaded successfully.");
+
+    // Final steps executed ONLY ONCE after both methods complete
+    log("Saving updated channel data to localStorage...");
+    localStorage.setItem("allChannelsData", JSON.stringify(allChannels));
+
+    // Execute all rendering and UI update functions
+    log("Rendering UI and updating components...");
+    renderChannels(allChannels);
+    updateFavoriteIcons();
+    renderRecentlyWatched();
+    renderRecentOverlay();
+    updateAllChannelItems();
+
+    log("Full channels update COMPLETE.");
+
+    return true; // Indicate success
+  } catch (e) {
+    log(`Critical error during full channel update: ${e.message}`, true);
+    return false; // Indicate failure
+  }
+}
+
+/* ----------------------------------------------------
+   AUTO-TRIGGER MECHANISM
+   ---------------------------------------------------- */
+/**
+ * Initializes a recurring check to automatically trigger the channel update
+ * when the 8-hour cache window has expired.
+ */
+function startChannelAutoUpdate() {
+  // 1. Internal logic run by the interval
+  console.log(
+    `Auto-update service initializing. Check interval set to ${
+      CHECK_INTERVAL_MS / 60000
+    } minutes.`
+  );
+
+  const lastUpdateTimestamp = parseInt(localStorage.getItem(CACHE_KEY) || "0");
+  const currentTime = Date.now();
+  const nextExpiryTime = lastUpdateTimestamp + EIGHT_HOURS_MS;
+
+  if (lastUpdateTimestamp === 0) {
+    log("Last Update: Never. Starting initial data fetch now.");
+  } else {
+    const lastUpdateDate = new Date(lastUpdateTimestamp).toLocaleString();
+    log(`Last Update: ${lastUpdateDate}`);
+  }
+
+  const nextUpdateDate = new Date(nextExpiryTime).toLocaleString();
+log(`Next update available after: ${nextUpdateDate}`);
+
+  const checkAndUpdate = async () => {
+    const lastUpdateTimestamp = parseInt(
+      localStorage.getItem(CACHE_KEY) || "0"
+    );
+
+    // Check if 8 hours have passed
+    if (nextExpiryTime < currentTime) {
+      log("Cache has expired. Initiating full data update now.");
+
+      // Only save the new timestamp if the update process succeeds
+      const success = await loadAllChannelFeeds();
+
+      if (success) {
+        const newTimestamp = Date.now();
+        localStorage.setItem(CACHE_KEY, newTimestamp.toString());
+
+        const newLastUpdateDate = new Date(newTimestamp).toLocaleString();
+        const newNextUpdateDate = new Date(
+          newTimestamp + EIGHT_HOURS_MS
+        ).toLocaleString();
+
+        log("Channels updated successfully.");
+        log(`New Last Update Time: ${newLastUpdateDate}`);
+        log(`Next Scheduled Check (Expiry): ${newNextUpdateDate}`);
+      } else {
+        log(
+          "Update failed to complete. Cache timestamp preserved for retry on next check.",
+          true
+        );
+      }
+    } else {
+      const timeRemaining = lastUpdateTimestamp + EIGHT_HOURS_MS - currentTime;
+      const minutesRemaining = Math.ceil(timeRemaining / (60 * 1000));
+      console.log(
+        `Cache is valid. Expires in approximately ${minutesRemaining} minutes.`
+      );
+    }
+  };
+
+  // 2. Run the check immediately on page load
+  checkAndUpdate();
+
+  // 3. Set a recurring interval to perform the time check every 15 minutes
+  setInterval(checkAndUpdate, CHECK_INTERVAL_MS);
+
+  console.log(
+    `Auto-update service started. Checking cache status every ${
+      CHECK_INTERVAL_MS / 60000
+    } minutes.`
+  );
+}
+
+// You must call this function when your HTML page loads to start the service:
+// startChannelAutoUpdate();
+
+// Utility to log messages to the UI
+function log(message, isError = false) {
+  const logArea = document.getElementById("logArea");
+  const prefix = isError ? "Error: " : "Info: ";
+  logArea.innerHTML += `<div class="${
+    isError ? "text-red-400" : ""
+  }">${prefix}[${new Date().toLocaleTimeString()}] ${message}</div>`;
+  logArea.scrollTop = logArea.scrollHeight;
 }
