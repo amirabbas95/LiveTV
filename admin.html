@@ -271,12 +271,66 @@
         display: flex;
         flex-wrap: wrap;
         gap: 10px;
+        margin-top: 10px;
       }
 
       .button-row button,
       .button-row label {
         padding: 10px 15px;
         cursor: pointer;
+      }
+
+      /* Base full-width button */
+      .btn-soft-green {
+        background-color: #2ea44f;
+        color: #dcdcdc;
+        border: none;
+        border-radius: 6px;
+        padding: 12px;
+        font-weight: bold;
+                font-size: 0.95em;
+        transition: background-color 0.2s ease;
+      }
+
+      .btn-soft-green:hover {
+        background-color: #2c974b;
+      }
+
+      .btn-soft-red {
+        background-color: #dc3545;
+        color: #dcdcdc;
+        border: none;
+        border-radius: 6px;
+        padding: 12px;
+        font-weight: bold;
+        font-size: 0.95em;
+        transition: background-color 0.2s ease;
+      }
+
+      .btn-soft-red:hover {
+        background-color: #c82333;
+      }
+
+            .btn-soft-blue {
+        background-color: #007bff;
+        color: #dcdcdc;
+        border: none;
+        border-radius: 6px;
+        padding: 12px;
+        font-weight: bold;
+        font-size: 0.95em;
+        transition: background-color 0.2s ease;
+      }
+
+      .btn-soft-blue:hover {
+        background-color: #0056b3;
+      }
+      
+
+      .full-width {
+        width: 100%;
+        text-align: center;
+        margin-bottom: 10px;
       }
     </style>
   </head>
@@ -299,25 +353,47 @@
             Channels
           </button>
         </div>
-
         <div id="tab-file" class="tab-content active">
           <div class="file-controls">
             <h3>File Management</h3>
-            <label
-              for="fileInput"
-              class="button-1"
-              style="margin-bottom: 10px; padding: 10px"
-              >Load channels.json</label
+
+            <!-- Hidden file input -->
+            <input
+              type="file"
+              id="fileInput"
+              accept=".json"
+              style="display: none"
+            />
+
+            <!-- Full-width buttons with consistent styling -->
+            <button
+              class="btn-soft-blue full-width"
+              onclick="document.getElementById('fileInput').click();"
             >
-            <input type="file" id="fileInput" accept=".json" />
-            <button class="btn-primary" onclick="saveData()">
-              Save as channels.json
+              📂 Load channels.json
             </button>
-            <button class="button-3" onclick="loadChannelsFromStorage()">
-              Load from Local Storage
+
+            <button class="btn-soft-red full-width" onclick="loadLiveChannels()">
+              📡 Load Live Channels
             </button>
-            <button class="btn-danger" onclick="saveAllChannels()">
-              Save in Local Storage
+
+            <button class="btn-soft-green full-width" onclick="loadLatestFeeds()">
+              📰 Load Latest Feeds
+            </button>
+
+            <button
+              class="btn-soft-blue full-width"
+              onclick="loadChannelsFromStorage()"
+            >
+              💾 Load from Local Storage
+            </button>
+
+            <button class="btn-soft-green full-width" onclick="saveData()">
+              💾 Save as channels.json
+            </button>
+
+            <button class="btn-soft-red full-width" onclick="saveAllChannels()">
+              🧠 Save in Local Storage
             </button>
           </div>
         </div>
@@ -543,12 +619,44 @@
             channelsData = JSON.parse(e.target.result);
             categoriesData = [...new Set(channelsData.map((c) => c.category))];
             renderUI();
-            alert("Data loaded successfully!");
+            alert("Data loaded successfully from file!");
           } catch (e) {
             alert("Invalid JSON format. Please check your file.");
           }
         };
         reader.readAsText(file);
+      }
+
+      function loadLiveChannels() {
+        fetch("liveChannels.json")
+          .then((res) => res.json())
+          .then((data) => {
+            channelsData = data;
+            categoriesData = [...new Set(channelsData.map((c) => c.category))];
+            renderUI();
+            alert("Live channels loaded successfully!");
+            showTab("tab-channel");
+          })
+          .catch((err) => {
+            alert("Failed to load liveChannels.json");
+            console.error(err);
+          });
+      }
+
+      function loadLatestFeeds() {
+        fetch("latestFeeds.json")
+          .then((res) => res.json())
+          .then((data) => {
+            channelsData = data;
+            categoriesData = [...new Set(channelsData.map((c) => c.category))];
+            renderUI();
+            alert("Latest feeds loaded successfully!");
+            showTab("tab-channel");
+          })
+          .catch((err) => {
+            alert("Failed to load latestFeeds.json");
+            console.error(err);
+          });
       }
 
       function saveData() {

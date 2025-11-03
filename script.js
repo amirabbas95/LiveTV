@@ -1123,14 +1123,19 @@ async function loadYouTubeLatestFeeds() {
 
   if (!feeds || feeds.length === 0) return;
 
-  for (const feed of feeds) {
+  for (const [index, feed] of feeds.entries()) {
     try {
-      const feedUrl =
-        "https://api.rss2json.com/v1/api.json?rss_url=" +
-        encodeURIComponent(feed.url);
+      // ⭐ RATE LIMITING: Add 100ms delay between requests
+      if (index > 0) {
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+
+      const feedUrl = "https://api.rss2json.com/v1/api.json?rss_url=" + encodeURIComponent(feed.url);
 
       const res = await fetch(feedUrl);
       const data = await res.json();
+
+
       if (!data.items || data.items.length === 0) continue;
 
       // Find the latest NON-Shorts video
@@ -1145,27 +1150,13 @@ async function loadYouTubeLatestFeeds() {
       const channelObj = youtubeItemToChannel(videoId, latestValid.title, feed);
 
       // Update or insert
-      const existing = allChannels.find((ch) => ch.name === channelObj.name);
-      if (existing) {
-        existing.url = channelObj.url;
-        existing.description = channelObj.description;
-        existing.image = channelObj.image;
-      } else {
-        allChannels.push(channelObj);
-      }
+      updateOrAddChannel(channelObj);
 
       log(`Channel Name: ${feed.name} Successfully updated`);
     } catch (e) {
       log(`Error loading RSS feed for ${feed.name}: ${e.message}`, true);
     }
   }
-
-  /*   localStorage.setItem("allChannelsData", JSON.stringify(allChannels));
-  renderChannels(allChannels);
-  updateFavoriteIcons();
-  renderRecentlyWatched();
-  renderRecentOverlay();
-  updateAllChannelItems(); */
 }
 
 /* ----------------------------------------------------
@@ -1183,14 +1174,21 @@ async function loadYouTubeLiveFeeds() {
     const response = await fetch("live.json");
     live = await response.json();
   } catch (error) {
-    console.error("Failed to load feeds.json:", error);
+    console.error("Failed to load live.json:", error);
     return;
   }
 
   if (!live || live.length === 0) return;
 
-  for (const feed of live) {
+  
+
+  for (const [index, feed] of live.entries()) {
     try {
+      // ⭐ RATE LIMITING: Add 200ms delay for YouTube API (more strict limits)
+      if (index > 0) {
+        await new Promise(resolve => setTimeout(resolve, 200));
+      }
+
       const channelId = extractChannelId(feed.url);
       if (!channelId) {
         console.warn("No channelId found in feed:", feed.url);
@@ -1202,9 +1200,14 @@ async function loadYouTubeLiveFeeds() {
 
       const res = await fetch(apiUrl);
 
+      // In loadYouTubeLiveFeeds(), consider adding:
       if (!res.ok) {
-        // Throw an error with the status text (e.g., 403 Forbidden)
-        // This will be caught by the outer catch block in loadAllChannelFeeds()
+        // More specific error handling based on status code
+        if (res.status === 403) {
+          throw new Error(`YouTube API quota exceeded for ${feed.name}`);
+        } else if (res.status === 404) {
+          throw new Error(`Channel not found for ${feed.name}`);
+        }
         throw new Error(`API returned status ${res.status}: ${res.statusText}`);
       }
 
@@ -1229,14 +1232,8 @@ async function loadYouTubeLiveFeeds() {
       const channelObj = youtubeItemToChannel(videoId, title, feed);
 
       // Update or insert
-      const existing = allChannels.find((ch) => ch.name === channelObj.name);
-      if (existing) {
-        existing.url = channelObj.url;
-        existing.description = channelObj.description;
-        existing.image = channelObj.image;
-      } else {
-        allChannels.push(channelObj);
-      }
+
+      updateOrAddChannel(channelObj);
 
       log(`Channel Name: ${feed.name} Successfully updated`);
     } catch (e) {
@@ -1249,12 +1246,6 @@ async function loadYouTubeLiveFeeds() {
     }
   }
 
-  /*   localStorage.setItem("allChannelsData", JSON.stringify(allChannels));
-  renderChannels(allChannels);
-  updateFavoriteIcons();
-  renderRecentlyWatched();
-  renderRecentOverlay();
-  updateAllChannelItems(); */
 }
 
 /* ----------------------------------------------------
@@ -1283,6 +1274,7 @@ async function loadAllChannelFeeds() {
 
     // Execute all rendering and UI update functions
     log("Rendering UI and updating components...");
+
     renderChannels(allChannels);
     updateFavoriteIcons();
     renderRecentlyWatched();
@@ -1390,4 +1382,14 @@ function log(message, isError = false) {
     isError ? "text-red-400" : ""
   }">${prefix}[${new Date().toLocaleTimeString()}] ${message}</div>`;
   logArea.scrollTop = logArea.scrollHeight;
+}
+
+
+function updateOrAddChannel(channelObj) {
+  const existingIndex = allChannels.findIndex(ch => ch.name === channelObj.name);
+  if (existingIndex !== -1) {
+    allChannels[existingIndex] = { ...allChannels[existingIndex], ...channelObj };
+  } else {
+    allChannels.push(channelObj);
+  }
 }
