@@ -23,10 +23,17 @@ const CACHE_KEY = "lastChannelsUpdate";
 const EIGHT_HOURS_MS = 8 * 60 * 60 * 1000;
 // Check status every 15 minutes
 const CHECK_INTERVAL_MS = 15 * 60 * 1000;
+let allChannels = [];
+let focusedIndex = 0;
+
+const rssCache = new Map();
+const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
 
 // Function to extract YouTube ID
 function extractYouTubeID(url) {
-  const match = url.match(/(?:youtube\.com\/.*v=|youtu\.be\/)([^&?/]+)/);
+  const match = url.match(
+    /(?:youtube\.com\/(?:.*v=|live\/|embed\/)|youtu\.be\/)([^&?/]+)/i
+  );
   return match ? match[1] : null;
 }
 
@@ -38,6 +45,12 @@ function selectChannel(url, name, image, description, number, isLive) {
   if (!url) return;
 
   const videoContainer = document.getElementById("player-container");
+  videoContainer.innerHTML = `
+    <div class="loading-state">
+      <div class="spinner"></div>
+      <p>Loading ${name}...</p>
+    </div>
+  `;
   const imageElement = document.getElementById("content-image");
   const videoTitleElement = document.getElementById("video-title");
   const channelInfoElement = document.getElementById("channel-description");
@@ -139,6 +152,8 @@ function selectChannel(url, name, image, description, number, isLive) {
     playerInstance.play().catch((e) => {
       console.warn("Autoplay blocked:", e);
     });
+    // ✅ ADD CONNECTION MONITORING
+    monitorConnectionQuality();
 
     playerInstance.on("loadedmetadata", updateQualityDisplay);
 
@@ -170,12 +185,12 @@ function selectChannel(url, name, image, description, number, isLive) {
   if (retryButton) {
     retryButton.onclick = function () {
       console.log("Manual retry triggered by user.");
-      retryStream(url);
+      retryStream(url, name);
     };
     retryButton.style.display = "none";
   }
 
-  addRetryListeners();
+  addRetryListeners(name);
   retryCount = 0;
 
   startWatching(url);
@@ -183,6 +198,7 @@ function selectChannel(url, name, image, description, number, isLive) {
 
 function showChannelInfoOverlay() {
   const channelInfoOverlay = document.getElementById("channel-info-overlay");
+   if (!channelInfoOverlay) return;
 
   // Clear any previous timers (avoid stacking multiple animations)
   clearTimeout(overlayTimeoutShow);
@@ -203,66 +219,6 @@ function showChannelInfoOverlay() {
   overlayTimeoutHide = setTimeout(() => {
     channelInfoOverlay.classList.remove("show");
   }, 6000);
-}
-
-function renderRecentOverlay() {
-  const container = document.getElementById("recentChannelsGrid");
-  const recent = JSON.parse(localStorage.getItem(recentlyWatchedKey) || "[]");
-  container.innerHTML = "";
-
-  recent.forEach((channel, index) => {
-    const item = document.createElement("div");
-    item.className = "recent-item";
-    item.setAttribute("tabindex", "0");
-    item.dataset.channel = JSON.stringify(channel);
-
-    const img = document.createElement("img");
-    img.src = channel.image;
-    img.alt = channel.name;
-
-    // ✅ live indicator
-    if (channel.isLive === true || channel.isLive === "true") {
-      const liveIndicator = document.createElement("img");
-      liveIndicator.src = "live.webp";
-      liveIndicator.alt = "Live";
-      liveIndicator.className = "live-indicator";
-      item.appendChild(liveIndicator);
-    }
-
-    item.appendChild(img);
-
-    item.addEventListener("click", () => {
-      selectChannel(
-        channel.url,
-        channel.name,
-        channel.image,
-        channel.description,
-        channel.number,
-        channel.isLive
-      );
-      hideRecentChannelOverlay();
-      saveRecentlyWatched(channel);
-    });
-
-    container.appendChild(item);
-  });
-
-  // Focus first recent channel when overlay opens
-  const first = container.querySelector(".recent-item");
-  if (first) first.focus();
-}
-
-function showRecentChannelOverlay() {
-  const overlay = document.getElementById("recent-channel-overlay");
-  renderRecentOverlay();
-  overlay.classList.add("show");
-  isRecentOverlayActive = true;
-}
-
-function hideRecentChannelOverlay() {
-  const overlay = document.getElementById("recent-channel-overlay");
-  overlay.classList.remove("show");
-  isRecentOverlayActive = false;
 }
 
 // Start tracking watch time
@@ -363,12 +319,22 @@ function handlePlayerSuccess() {
   retryCount = 0;
 }
 
-function addRetryListeners() {
+function addRetryListeners(name) {
   if (playerInstance) {
     playerInstance.off("error", handlePlayerError);
     playerInstance.off("play", handlePlayerSuccess);
     playerInstance.on("error", handlePlayerError);
     playerInstance.on("play", handlePlayerSuccess);
+
+    // ✅ Add network state monitoring
+    playerInstance.on("loadstart", () => {
+      log(`Loading stream for ${name}: ${playerInstance.currentSrc()}`);
+    });
+
+    playerInstance.on("stalled", () => {
+      log("Stream stalled, attempting recovery...", true);
+      setTimeout(() => playerInstance.play().catch(() => { }), 2000);
+    });
   }
 }
 
@@ -437,7 +403,6 @@ function saveRecentlyWatched(channel) {
 
   localStorage.setItem(recentlyWatchedKey, JSON.stringify(recent));
   renderRecentlyWatched();
-  renderRecentOverlay();
 }
 
 function toggleFavorite(
@@ -512,6 +477,12 @@ function createChannelItem(channel) {
   img.src = channel.image;
   img.alt = `${channel.name} Logo`;
 
+  // ✅ Add error handling for broken images
+  img.onerror = function () {
+    this.src = 'fallback-image.png';
+    this.alt = 'Image not available';
+  };
+
   // ✅ number badge
   const numberBadge = document.createElement("span");
   numberBadge.className = "channel-number";
@@ -567,6 +538,9 @@ function renderChannels(channels) {
     "h2:not(.sort-container h2)"
   );
 
+  // ✅ Use DocumentFragment for batch DOM updates
+  const fragment = document.createDocumentFragment();
+
   existingGrids.forEach((grid) => grid.remove());
   existingHeadings.forEach((heading) => heading.remove());
 
@@ -597,15 +571,21 @@ function renderChannels(channels) {
         });
       }
 
-      mainContainer.appendChild(categoryHeading);
-      mainContainer.appendChild(categoryGrid);
+      fragment.appendChild(categoryHeading);
+      fragment.appendChild(categoryGrid);
     }
+
+    // ✅ APPEND FRAGMENT TO MAIN CONTAINER
+    mainContainer.appendChild(fragment);
+
   } else {
     const totalChannelCount = channels.length;
     const mainHeading = document.createElement("h2");
     mainHeading.textContent = `> Channels < (${totalChannelCount})`;
     mainHeading.className = "text-xl font-bold mt-6 mb-4 col-span-full";
-    mainContainer.appendChild(mainHeading);
+
+    // ✅ ADD HEADING TO FRAGMENT, NOT DIRECTLY TO CONTAINER
+    fragment.appendChild(mainHeading);
 
     const categoryGrid = document.createElement("div");
     categoryGrid.className = "content-grid";
@@ -615,8 +595,16 @@ function renderChannels(channels) {
       categoryGrid.appendChild(item);
     });
 
-    mainContainer.appendChild(categoryGrid);
+    // ✅ ADD GRID TO FRAGMENT
+    fragment.appendChild(categoryGrid);
+
+    // ✅ APPEND FRAGMENT TO MAIN CONTAINER
+    mainContainer.appendChild(fragment);
   }
+
+  // ✅ UPDATE allChannelItems after rendering
+  updateAllChannelItems();
+  console.log(`✅ Rendered ${channels.length} channels in ${currentSortMethod} view`);
 }
 
 let numberBuffer = "";
@@ -834,7 +822,6 @@ async function initialize() {
 
   renderFavorites();
   renderRecentlyWatched();
-  renderRecentOverlay();
   updateFavoriteIcons();
   updateAllChannelItems();
 
@@ -870,104 +857,160 @@ function getGridColumns() {
   return columnArray.length;
 }
 
+let navigationDebounce;
+
 document.addEventListener("keydown", (event) => {
-  const GRID_COLUMNS = getGridColumns();
-  const isModalOpen = modal.style.display === "flex";
-  let focusedElement = document.activeElement;
-  let focusedIndex = allChannelItems.findIndex(
-    (item) => item === focusedElement
-  );
+  // Clear the previous timeout
+  clearTimeout(navigationDebounce);
 
-  // --- IF MODAL IS OPEN AND RECENT OVERLAY IS ACTIVE ---
-  if (isModalOpen && isRecentOverlayActive) {
-    const items = Array.from(
-      document.querySelectorAll("#recentChannelsGrid .recent-item")
+  // Set new timeout - will only execute after 50ms of no keypresses
+  navigationDebounce = setTimeout(() => {
+    const GRID_COLUMNS = getGridColumns();
+    const isModalOpen = modal.style.display === "flex";
+    let focusedElement = document.activeElement;
+    let focusedIndex = allChannelItems.findIndex(
+      (item) => item === focusedElement
     );
-    let idx = items.indexOf(focusedElement);
 
-    if (event.key === "ArrowRight") {
-      event.preventDefault();
-      if (items.length > 0) items[(idx + 1) % items.length].focus();
-    } else if (event.key === "ArrowLeft") {
-      event.preventDefault();
-      hideRecentChannelOverlay();
-      if (items.length > 0)
-        items[(idx - 1 + items.length) % items.length].focus();
-    } else if (event.key === "Enter") {
-      event.preventDefault();
-      if (focusedElement && focusedElement.dataset.channel) {
-        const ch = JSON.parse(focusedElement.dataset.channel);
-        selectChannel(
-          ch.url,
-          ch.name,
-          ch.image,
-          ch.description,
-          ch.number,
-          ch.isLive
-        );
-        saveRecentlyWatched(ch);
+    // --- IF MODAL IS OPEN ---
+    if (isModalOpen) {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        toggleFullscreen();
+        return;
+      }
 
-        // ✅ update lastFocusedElement to the real grid card
-        const realCard = allChannelItems.find(
-          (item) => item.dataset.name === ch.name
+      if (event.key === "Escape" || event.key === "ArrowLeft") {
+        event.preventDefault();
+        closeModal();
+      } else if (event.key === "ArrowRight") {
+        event.preventDefault();
+        showChannelInfoOverlay();
+      } else if (
+        ["ArrowUp", "ArrowDown", "PageUp", "PageDown"].includes(event.key)
+      ) {
+        event.preventDefault();
+        if (!lastFocusedElement || allChannelItems.length === 0) return;
+
+        const currentChannelIndex = allChannelItems.findIndex(
+          (item) => item === lastFocusedElement
         );
-        if (realCard) {
-          lastFocusedElement = realCard;
-          realCard.focus();
+        if (currentChannelIndex === -1) return;
+
+        let newIndex = currentChannelIndex;
+        if (event.key === "ArrowDown" || event.key === "PageDown") {
+          newIndex = (currentChannelIndex + 1) % allChannelItems.length;
+        } else if (event.key === "ArrowUp" || event.key === "PageUp") {
+          newIndex =
+            (currentChannelIndex - 1 + allChannelItems.length) %
+            allChannelItems.length;
         }
 
-        hideRecentChannelOverlay();
-      }
-    }
-    return; // ✅ stop here so no other keys interfere
-  }
+        const newChannelCard = allChannelItems[newIndex];
+        const {
+          url,
+          name,
+          image,
+          description,
+          number,
+          isLive = "false",
+          category = "Unknown",
+        } = newChannelCard.dataset;
 
-  // --- IF MODAL IS OPEN AND RECENT OVERLAY IS NOT ACTIVE ---
-  if (isModalOpen) {
-    if (event.key === "Enter") {
-      event.preventDefault();
-      showRecentChannelOverlay(); // open recent overlay
+        newChannelCard.scrollIntoView({ behavior: "smooth", block: "center" });
+        selectChannel(url, name, image, description, number, isLive);
+        saveRecentlyWatched({
+          name,
+          url,
+          image,
+          description,
+          number,
+          isLive,
+          category,
+        });
+
+        lastFocusedElement = newChannelCard;
+      }
       return;
     }
 
-    if (event.key === "Escape" || event.key === "ArrowLeft") {
-      event.preventDefault();
-      closeModal();
-    } else if (event.key === "ArrowRight") {
-      event.preventDefault();
-      showChannelInfoOverlay();
-    } else if (
-      ["ArrowUp", "ArrowDown", "PageUp", "PageDown"].includes(event.key)
-    ) {
-      event.preventDefault();
-      if (!lastFocusedElement || allChannelItems.length === 0) return;
+    // --- IF MODAL IS CLOSED (GRID NAVIGATION) ---
+    if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)) {
+      if (allChannelItems.length === 0) return;
 
-      const currentChannelIndex = allChannelItems.findIndex(
-        (item) => item === lastFocusedElement
-      );
-      if (currentChannelIndex === -1) return;
-
-      let newIndex = currentChannelIndex;
-      if (event.key === "ArrowDown" || event.key === "PageDown") {
-        newIndex = (currentChannelIndex + 1) % allChannelItems.length;
-      } else if (event.key === "ArrowUp" || event.key === "PageUp") {
-        newIndex =
-          (currentChannelIndex - 1 + allChannelItems.length) %
-          allChannelItems.length;
+      if (focusedIndex === -1) {
+        allChannelItems[0].focus();
+        allChannelItems[0].scrollIntoView({
+          behavior: "smooth",
+          block: "center",
+        });
+        focusedIndex = 0;
+        return;
       }
 
-      const newChannelCard = allChannelItems[newIndex];
+      let newIndex = focusedIndex;
+      if (event.key === "ArrowRight")
+        newIndex = (focusedIndex + 1) % allChannelItems.length;
+      else if (event.key === "ArrowLeft")
+        newIndex =
+          (focusedIndex - 1 + allChannelItems.length) % allChannelItems.length;
+      else if (event.key === "ArrowDown")
+        newIndex = Math.min(
+          focusedIndex + GRID_COLUMNS,
+          allChannelItems.length - 1
+        );
+      else if (event.key === "ArrowUp")
+        newIndex = Math.max(focusedIndex - GRID_COLUMNS, 0);
+
+      const newCard = allChannelItems[newIndex];
+      newCard.focus();
+      newCard.scrollIntoView({ behavior: "smooth", block: "center" });
+
+      focusedIndex = newIndex;
+      event.preventDefault();
+    } else if (["PageUp", "PageDown", "Home", "End"].includes(event.key)) {
+      event.preventDefault();
+      if (focusedIndex === -1 && allChannelItems.length > 0) {
+        allChannelItems[0].focus();
+        allChannelItems[0].scrollIntoView({
+          behavior: "smooth",
+          block: "center",
+        });
+      } else {
+        let newIndex = focusedIndex;
+        if (event.key === "PageUp") {
+          newIndex = Math.max(focusedIndex - GRID_COLUMNS, 0);
+        } else if (event.key === "PageDown") {
+          newIndex = Math.min(
+            focusedIndex + GRID_COLUMNS,
+            allChannelItems.length - 1
+          );
+        } else if (event.key === "Home") {
+          newIndex = 0;
+        } else if (event.key === "End") {
+          newIndex = allChannelItems.length - 1;
+        }
+
+        const newCard = allChannelItems[newIndex];
+        newCard.focus();
+        newCard.scrollIntoView({ behavior: "smooth", block: "center" });
+
+        focusedIndex = newIndex;
+      }
+    } else if (event.key === "Enter" && focusedIndex !== -1) {
+      event.preventDefault();
+      const card = allChannelItems[focusedIndex];
       const {
         url,
         name,
         image,
         description,
         number,
-        isLive = "false", // If data-isLive is missing, default to 'false'
-        category = "Unknown", // If data-category is missing, default to 'Unknown'
-      } = newChannelCard.dataset;
+        isLive = "false",
+        category = "Unknown",
+      } = card.dataset;
 
-      newChannelCard.scrollIntoView({ behavior: "smooth", block: "center" });
+      card.scrollIntoView({ behavior: "smooth", block: "center" });
       selectChannel(url, name, image, description, number, isLive);
       saveRecentlyWatched({
         name,
@@ -978,100 +1021,9 @@ document.addEventListener("keydown", (event) => {
         isLive,
         category,
       });
-
-      lastFocusedElement = newChannelCard;
-    }
-    return;
-  }
-
-  // --- IF MODAL IS CLOSED (GRID NAVIGATION) ---
-  if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)) {
-    if (allChannelItems.length === 0) return;
-
-    if (focusedIndex === -1) {
-      allChannelItems[0].focus();
-      allChannelItems[0].scrollIntoView({
-        behavior: "smooth",
-        block: "center",
-      });
-      focusedIndex = 0;
-      return;
     }
 
-    let newIndex = focusedIndex;
-    if (event.key === "ArrowRight")
-      newIndex = (focusedIndex + 1) % allChannelItems.length;
-    else if (event.key === "ArrowLeft")
-      newIndex =
-        (focusedIndex - 1 + allChannelItems.length) % allChannelItems.length;
-    else if (event.key === "ArrowDown")
-      newIndex = Math.min(
-        focusedIndex + GRID_COLUMNS,
-        allChannelItems.length - 1
-      );
-    else if (event.key === "ArrowUp")
-      newIndex = Math.max(focusedIndex - GRID_COLUMNS, 0);
-
-    const newCard = allChannelItems[newIndex];
-    newCard.focus();
-    newCard.scrollIntoView({ behavior: "smooth", block: "center" });
-
-    focusedIndex = newIndex;
-    event.preventDefault();
-  } else if (["PageUp", "PageDown", "Home", "End"].includes(event.key)) {
-    event.preventDefault();
-    if (focusedIndex === -1 && allChannelItems.length > 0) {
-      allChannelItems[0].focus();
-      allChannelItems[0].scrollIntoView({
-        behavior: "smooth",
-        block: "center",
-      });
-    } else {
-      let newIndex = focusedIndex;
-      if (event.key === "PageUp") {
-        newIndex = Math.max(focusedIndex - GRID_COLUMNS, 0);
-      } else if (event.key === "PageDown") {
-        newIndex = Math.min(
-          focusedIndex + GRID_COLUMNS,
-          allChannelItems.length - 1
-        );
-      } else if (event.key === "Home") {
-        newIndex = 0;
-      } else if (event.key === "End") {
-        newIndex = allChannelItems.length - 1;
-      }
-
-      const newCard = allChannelItems[newIndex];
-      newCard.focus();
-      newCard.scrollIntoView({ behavior: "smooth", block: "center" });
-
-      focusedIndex = newIndex;
-    }
-  } else if (event.key === "Enter" && focusedIndex !== -1) {
-    event.preventDefault();
-    const card = allChannelItems[focusedIndex];
-    const {
-      url,
-      name,
-      image,
-      description,
-      number,
-      isLive = "false",
-      category = "Unknown",
-    } = card.dataset;
-
-    card.scrollIntoView({ behavior: "smooth", block: "center" });
-    selectChannel(url, name, image, description, number, isLive);
-    saveRecentlyWatched({
-      name,
-      url,
-      image,
-      description,
-      number,
-      isLive,
-      category,
-    });
-  }
+  }, 50); // Wait 50ms after last keypress
 });
 
 window.addEventListener("DOMContentLoaded", async () => {
@@ -1088,12 +1040,26 @@ function toggleFullscreen() {
   }
 }
 
-// === Helper: Extract videoId from a YouTube link ===
+/* // === Helper: Extract videoId from a YouTube link ===
 function extractYouTubeID(url) {
   const match = url.match(
     /(?:youtube\.com\/(?:.*v=|live\/|embed\/)|youtu\.be\/)([^&?/]+)/i
   );
   return match ? match[1] : null;
+} */
+
+function extractChannelId(feedUrl) {
+  const patterns = [
+    /channel_id=([^&]+)/,
+    /\/channel\/([^/?]+)/,
+    /\/user\/([^/?]+)/,
+    /\/c\/([^/?]+)/
+  ];
+  for (const pattern of patterns) {
+    const match = feedUrl.match(pattern);
+    if (match) return match[1];
+  }
+  return null;
 }
 
 // === Convert item (RSS or API) into channel object ===
@@ -1127,34 +1093,40 @@ async function loadYouTubeLatestFeeds() {
     try {
       // ⭐ RATE LIMITING: Add 100ms delay between requests
       if (index > 0) {
-        await new Promise(resolve => setTimeout(resolve, 100));
+        await new Promise(resolve => setTimeout(resolve, 150));
+      }
+
+      // ✅ CHECK CACHE FIRST
+      const cacheKey = `rss_${feed.url}`;
+      const cached = rssCache.get(cacheKey);
+
+      if (cached && (Date.now() - cached.timestamp < CACHE_DURATION)) {
+        // Use cached data
+        log(`📦 Using cached data for ${feed.name}`);
+        processRSSData(cached.data, feed);
+        continue;
       }
 
       const feedUrl = "https://api.rss2json.com/v1/api.json?rss_url=" + encodeURIComponent(feed.url);
 
       const res = await fetch(feedUrl);
+
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}`);
+      }
+
       const data = await res.json();
 
+      // ✅ STORE IN CACHE
+      rssCache.set(cacheKey, {
+        data: data,
+        timestamp: Date.now()
+      });
 
-      if (!data.items || data.items.length === 0) continue;
+      processRSSData(data, feed);
 
-      // Find the latest NON-Shorts video
-      let latestValid = data.items.find(
-        (item) => !item.link.includes("/shorts/")
-      );
-      if (!latestValid) continue;
-
-      const videoId = extractYouTubeID(latestValid.link);
-      if (!videoId) continue;
-
-      const channelObj = youtubeItemToChannel(videoId, latestValid.title, feed);
-
-      // Update or insert
-      updateOrAddChannel(channelObj);
-
-      log(`Channel Name: ${feed.name} Successfully updated`);
     } catch (e) {
-      log(`Error loading RSS feed for ${feed.name}: ${e.message}`, true);
+      log(`❌ Error loading RSS feed for ${feed.name}: ${e.message}`, true);
     }
   }
 }
@@ -1162,10 +1134,6 @@ async function loadYouTubeLatestFeeds() {
 /* ----------------------------------------------------
    📌 2. Load live streams (via YouTube API v3)
    ---------------------------------------------------- */
-function extractChannelId(feedUrl) {
-  const match = feedUrl.match(/channel_id=([^&]+)/);
-  return match ? match[1] : null;
-}
 
 async function loadYouTubeLiveFeeds() {
   let live = [];
@@ -1180,13 +1148,22 @@ async function loadYouTubeLiveFeeds() {
 
   if (!live || live.length === 0) return;
 
-  
+  let apiQuotaExceeded = false;
+  let successfulUpdates = 0;
+  let failedUpdates = 0;
 
   for (const [index, feed] of live.entries()) {
     try {
-      // ⭐ RATE LIMITING: Add 200ms delay for YouTube API (more strict limits)
+      // ⭐ RATE LIMITING: Add 200ms delay for YouTube API
       if (index > 0) {
         await new Promise(resolve => setTimeout(resolve, 200));
+      }
+
+      // ✅ STOP if API quota exceeded
+      if (apiQuotaExceeded) {
+        log(`⏸️ Skipping ${feed.name} - API quota exceeded`);
+        failedUpdates++;
+        continue;
       }
 
       const channelId = extractChannelId(feed.url);
@@ -1197,32 +1174,39 @@ async function loadYouTubeLiveFeeds() {
 
       //const apiUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&channelId=${channelId}&eventType=live&type=video&key=${API_KEY}`;
       const apiUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&channelId=${channelId}&eventType=live&type=video&order=date&maxResults=1&key=${API_KEY}`;
-
       const res = await fetch(apiUrl);
 
-      // In loadYouTubeLiveFeeds(), consider adding:
       if (!res.ok) {
-        // More specific error handling based on status code
         if (res.status === 403) {
-          throw new Error(`YouTube API quota exceeded for ${feed.name}`);
+          // ✅ MARK quota exceeded and skip remaining channels
+          apiQuotaExceeded = true;
+          log("🚫 YouTube API quota exceeded. Stopping live stream updates.");
+          failedUpdates++;
+          continue;
         } else if (res.status === 404) {
-          throw new Error(`Channel not found for ${feed.name}`);
+          log(`❌ Channel not found for ${feed.name}`);
+          failedUpdates++;
+          continue;
         }
         throw new Error(`API returned status ${res.status}: ${res.statusText}`);
       }
 
       const data = await res.json();
 
-      if (!data.items || data.items.length === 0) {
-        log(`info: Live API for ${feed.name} found no active stream.`);
-        continue;
+      // Check for YouTube API specific errors
+      if (data.error) {
+        if (data.error.code === 403) {
+          apiQuotaExceeded = true;
+          log("🚫 YouTube API quota exceeded (in response). Stopping live stream updates.");
+          failedUpdates++;
+          continue;
+        }
+        throw new Error(`YouTube API Error for ${feed.name}: ${data.error.message}`);
       }
 
-      // Check for YouTube API specific errors (like quota exceeded in the JSON body)
-      if (data.error) {
-        throw new Error(
-          `YouTube API Error for ${feed.name}: ${data.error.message}`
-        );
+      if (!data.items || data.items.length === 0) {
+        log(`ℹ️ No live stream found for ${feed.name}`);
+        continue;
       }
 
       const item = data.items[0];
@@ -1230,23 +1214,31 @@ async function loadYouTubeLiveFeeds() {
       const title = item.snippet.title;
 
       const channelObj = youtubeItemToChannel(videoId, title, feed);
-
-      // Update or insert
-
       updateOrAddChannel(channelObj);
+      successfulUpdates++;
 
-      log(`Channel Name: ${feed.name} Successfully updated`);
+      log(`✅ ${feed.name} Successfully updated`);
+
     } catch (e) {
-      log(
-        `Error loading live feed for ${feed.name}. Error: ${e.message}`,
-        true
-      );
-      console.error("Error loading live feed:", feed.name, e);
-      throw e;
+      failedUpdates++;
+      if (e.message.includes('quota exceeded') || e.message.includes('403')) {
+        apiQuotaExceeded = true;
+        log("🚫 YouTube API quota exceeded. Stopping live stream updates.");
+      } else {
+        log(`❌ Error loading live feed for ${feed.name}: ${e.message}`, true);
+      }
     }
   }
 
+  // ✅ Summary log
+  log(`Live streams update completed: ${successfulUpdates} successful, ${failedUpdates} failed`);
+
+  // ✅ If ALL updates failed due to quota, throw error to prevent cache update
+  if (successfulUpdates === 0 && failedUpdates > 0 && apiQuotaExceeded) {
+    throw new Error("YouTube API quota exceeded - no live streams updated");
+  }
 }
+
 
 /* ----------------------------------------------------
    MASTER FUNCTION: Combines All Updates
@@ -1260,7 +1252,7 @@ async function loadAllChannelFeeds() {
   log("Starting full channel update (RSS and Live API)...");
 
   try {
-    log("1/2: Loading latest uploads from (RSS)...");
+    log("1/2: Loading latest uploads from RSS...");
     await loadYouTubeLatestFeeds();
     log("1/2: Latest uploads loaded successfully.");
 
@@ -1274,19 +1266,26 @@ async function loadAllChannelFeeds() {
 
     // Execute all rendering and UI update functions
     log("Rendering UI and updating components...");
-
     renderChannels(allChannels);
     updateFavoriteIcons();
     renderRecentlyWatched();
-    renderRecentOverlay();
     updateAllChannelItems();
 
-    log("Full channels update COMPLETE.");
+    log("✅ Full channels update COMPLETE.");
+    return true;
 
-    return true; // Indicate success
   } catch (e) {
-    log(`Critical error during full channel update: ${e.message}`, true);
-    return false; // Indicate failure
+    log(`❌ Critical error during full channel update: ${e.message}`, true);
+
+    // ✅ Still update the UI with whatever data we have
+    log("Updating UI with available data...");
+    localStorage.setItem("allChannelsData", JSON.stringify(allChannels));
+    renderChannels(allChannels);
+    updateFavoriteIcons();
+    renderRecentlyWatched();
+    updateAllChannelItems();
+
+    return false;
   }
 }
 
@@ -1298,77 +1297,82 @@ async function loadAllChannelFeeds() {
  * when the 8-hour cache window has expired.
  */
 function startChannelAutoUpdate() {
-  // 1. Internal logic run by the interval
-  console.log(
-    `Auto-update service initializing. Check interval set to ${
-      CHECK_INTERVAL_MS / 60000
-    } minutes.`
-  );
-
-  const lastUpdateTimestamp = parseInt(localStorage.getItem(CACHE_KEY) || "0");
-  const currentTime = Date.now();
-  const nextExpiryTime = lastUpdateTimestamp + EIGHT_HOURS_MS;
-
-  if (lastUpdateTimestamp === 0) {
-    log("Last Update: Never. Starting initial data fetch now.");
-  } else {
-    const lastUpdateDate = new Date(lastUpdateTimestamp).toLocaleString();
-    log(`Last Update: ${lastUpdateDate}`);
-  }
-
-  const nextUpdateDate = new Date(nextExpiryTime).toLocaleString();
-  log(`Next update available after: ${nextUpdateDate}`);
+  console.log(`Auto-update service initializing. Check interval set to ${CHECK_INTERVAL_MS / 60000} minutes.`);
 
   const checkAndUpdate = async () => {
-    const lastUpdateTimestamp = parseInt(
-      localStorage.getItem(CACHE_KEY) || "0"
-    );
+    const lastUpdateTimestamp = parseInt(localStorage.getItem(CACHE_KEY) || "0");
+    const currentTime = Date.now();
 
-    // Check if 8 hours have passed
-    if (nextExpiryTime < currentTime) {
+    // ✅ FIXED: Calculate time since last SUCCESSFUL update
+    const timeSinceLastUpdate = currentTime - lastUpdateTimestamp;
+    const shouldUpdate = lastUpdateTimestamp === 0 || timeSinceLastUpdate >= EIGHT_HOURS_MS;
+
+    console.log(`[DEBUG] Last update: ${lastUpdateTimestamp}, Current: ${currentTime}, Time since: ${timeSinceLastUpdate}, Should update: ${shouldUpdate}`);
+
+    if (shouldUpdate) {
       log("Cache has expired. Initiating full data update now.");
 
-      // Only save the new timestamp if the update process succeeds
-      const success = await loadAllChannelFeeds();
+      try {
+        const success = await loadAllChannelFeeds();
 
-      if (success) {
-        const newTimestamp = Date.now();
-        localStorage.setItem(CACHE_KEY, newTimestamp.toString());
+        if (success) {
+          const newTimestamp = Date.now();
+          localStorage.setItem(CACHE_KEY, newTimestamp.toString());
 
-        const newLastUpdateDate = new Date(newTimestamp).toLocaleString();
-        const newNextUpdateDate = new Date(
-          newTimestamp + EIGHT_HOURS_MS
-        ).toLocaleString();
+          const newLastUpdateDate = new Date(newTimestamp).toLocaleString();
+          const newNextUpdateDate = new Date(newTimestamp + EIGHT_HOURS_MS).toLocaleString();
 
-        log("Channels updated successfully.");
-        log(`New Last Update Time: ${newLastUpdateDate}`);
-        log(`Next Scheduled Check (Expiry): ${newNextUpdateDate}`);
-      } else {
-        log(
-          "Update failed to complete. Cache timestamp preserved for retry on next check.",
-          true
-        );
+          log("✅ Channels updated successfully.");
+          log(`New Last Update Time: ${newLastUpdateDate}`);
+          log(`Next Scheduled Check (Expiry): ${newNextUpdateDate}`);
+        } else {
+          // ✅ FIX: Don't update cache timestamp if update failed
+          log("❌ Update failed. Cache timestamp preserved for retry.", true);
+
+          // ✅ Calculate when we can retry (wait at least 1 hour before retrying after quota error)
+          const retryTime = new Date(currentTime + (60 * 60 * 1000)).toLocaleString();
+          log(`Next retry attempt after: ${retryTime}`);
+        }
+      } catch (error) {
+        // ✅ FIX: Handle unexpected errors without updating cache
+        log(`❌ Unexpected error during update: ${error.message}`, true);
+        log("Cache timestamp preserved for retry.");
       }
     } else {
-      const timeRemaining = lastUpdateTimestamp + EIGHT_HOURS_MS - currentTime;
+      const timeRemaining = EIGHT_HOURS_MS - timeSinceLastUpdate;
       const minutesRemaining = Math.ceil(timeRemaining / (60 * 1000));
-      console.log(
-        `Cache is valid. Expires in approximately ${minutesRemaining} minutes.`
-      );
+      const hoursRemaining = Math.floor(minutesRemaining / 60);
+      const minsRemaining = minutesRemaining % 60;
+
+      if (hoursRemaining > 0) {
+        console.log(`Cache is valid. Expires in ${hoursRemaining}h ${minsRemaining}m`);
+      } else {
+        console.log(`Cache is valid. Expires in ${minutesRemaining} minutes.`);
+      }
     }
   };
 
-  // 2. Run the check immediately on page load
-  checkAndUpdate();
+  // Log initial status
+  const initialLastUpdate = parseInt(localStorage.getItem(CACHE_KEY) || "0");
+  if (initialLastUpdate === 0) {
+    log("Last Update: Never. Starting initial data fetch now.");
+  } else {
+    const lastUpdateDate = new Date(initialLastUpdate).toLocaleString();
+    const nextExpiry = initialLastUpdate + EIGHT_HOURS_MS;
+    const nextUpdateDate = new Date(nextExpiry).toLocaleString();
+    const timeRemaining = nextExpiry - Date.now();
+    const minutesRemaining = Math.ceil(timeRemaining / (60 * 1000));
 
-  // 3. Set a recurring interval to perform the time check every 15 minutes
+    log(`Last Update: ${lastUpdateDate}`);
+    log(`Next update available after: ${nextUpdateDate}`);
+    log(`Time remaining: ${minutesRemaining} minutes`);
+  }
+
+  // Run immediately and set interval
+  checkAndUpdate();
   setInterval(checkAndUpdate, CHECK_INTERVAL_MS);
 
-  console.log(
-    `Auto-update service started. Checking cache status every ${
-      CHECK_INTERVAL_MS / 60000
-    } minutes.`
-  );
+  console.log(`Auto-update service started. Checking every ${CHECK_INTERVAL_MS / 60000} minutes.`);
 }
 
 // You must call this function when your HTML page loads to start the service:
@@ -1378,9 +1382,8 @@ function startChannelAutoUpdate() {
 function log(message, isError = false) {
   const logArea = document.getElementById("logArea");
   const prefix = isError ? "Error: " : "Info: ";
-  logArea.innerHTML += `<div class="${
-    isError ? "text-red-400" : ""
-  }">${prefix}[${new Date().toLocaleTimeString()}] ${message}</div>`;
+  logArea.innerHTML += `<div class="${isError ? "text-red-400" : ""
+    }">${prefix}[${new Date().toLocaleTimeString()}] ${message}</div>`;
   logArea.scrollTop = logArea.scrollHeight;
 }
 
@@ -1392,4 +1395,77 @@ function updateOrAddChannel(channelObj) {
   } else {
     allChannels.push(channelObj);
   }
+}
+
+function monitorConnectionQuality() {
+  let lastBitrate = 0;
+  let qualityChanges = 0;
+
+  if (playerInstance) {
+    playerInstance.on('loadstart', () => {
+      const connection = navigator.connection;
+      if (connection) {
+        const effectiveType = connection.effectiveType;
+        log(`Network type: ${effectiveType}, Downlink: ${connection.downlink}Mb/s`);
+      }
+    });
+  }
+}
+
+function validateChannelData(channel) {
+  const required = ['url', 'name', 'image'];
+  const missing = required.filter(field => !channel[field]);
+
+  if (missing.length > 0) {
+    console.warn(`Channel ${channel.name} missing fields:`, missing);
+    return false;
+  }
+
+  // Validate URL format
+  try {
+    new URL(channel.url);
+    return true;
+  } catch {
+    console.warn(`Invalid URL for channel: ${channel.url}`);
+    return false;
+  }
+}
+
+function cleanup() {
+  // Clear intervals and timeouts
+  if (retryTimeoutId) clearTimeout(retryTimeoutId);
+  if (fullscreenTimeoutId) clearTimeout(fullscreenTimeoutId);
+  if (overlayTimeoutShow) clearTimeout(overlayTimeoutShow);
+  if (overlayTimeoutHide) clearTimeout(overlayTimeoutHide);
+
+  // Clean up player
+  if (playerInstance) {
+    playerInstance.dispose();
+    playerInstance = null;
+  }
+
+  // Clear caches
+  rssCache.clear();
+}
+
+// Call on page unload
+window.addEventListener('beforeunload', cleanup);
+
+
+function processRSSData(data, feed) {
+  if (!data.items || data.items.length === 0) return;
+
+  // Find the latest NON-Shorts video
+  let latestValid = data.items.find(
+    (item) => !item.link.includes("/shorts/")
+  );
+  if (!latestValid) return;
+
+  const videoId = extractYouTubeID(latestValid.link);
+  if (!videoId) return;
+
+  const channelObj = youtubeItemToChannel(videoId, latestValid.title, feed);
+  updateOrAddChannel(channelObj);
+
+  log(`✅ ${feed.name} Successfully updated`);
 }

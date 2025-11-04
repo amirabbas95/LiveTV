@@ -5,7 +5,6 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
-  <link rel="icon" href="favicon.png" type="image/png" sizes="32x32">
   <title>Live TV Player</title>
   <link href="https://unpkg.com/video.js@8.23.4/dist/video-js.min.css" rel="stylesheet" />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
@@ -17,7 +16,8 @@
 
 <body>
 
-  <header class="bg-[#121212] text-gray-100 py-4 px-6 flex justify-between items-center shadow-lg sticky top-0 z-10">
+  <header class="bg-gray-900 text-gray-100 py-4 px-6 flex justify-between items-center shadow-lg sticky top-0 z-10"
+    style="background-color: #121212;">
     <div class="flex items-center space-x-4">
       <img src="logo.svg" alt="logo" class="h-10 w-10">
       <h1 class="text-2xl font-bold">LiveTV Player</h1>
@@ -32,19 +32,18 @@
         Admin
       </a>
     </nav>
-
   </header>
 
   <main>
 
 
     <div class="container">
-        <!-- Log Area -->
-        <div>
-            <div id="logArea" class="text-white-400 p-4 h-40 overflow-y-scroll rounded-lg text-sm whitespace-pre-wrap">
-                Press **Left/Right** to navigate, **Enter** to play, **Enter** for fullscreen, and **Left** to close.
-            </div>
+      <!-- Log Area -->
+      <div>
+        <div id="logArea" class="text-white-400 p-4 h-40 overflow-y-scroll rounded-lg text-sm whitespace-pre-wrap">
+          Press **Left/Right** to navigate, **Enter** to play, **Enter** for fullscreen, and **Left** to close.
         </div>
+      </div>
 
       <div id="channel-number-overlay">
       </div>
@@ -96,13 +95,9 @@
         <div id="player"></div>
 
 
-
-        <!-- Recent Channels Overlay -->
-        <div id="recent-channel-overlay" class="recent-overlay">
           <div id="recentChannelsGrid" class="recent-grid">
             <!-- Recently watched channels will be rendered here -->
           </div>
-        </div>
       </div>
 
 
