@@ -27,6 +27,7 @@ let allChannels = [];
 let focusedIndex = 0;
 
 const rssCache = new Map();
+const liveCache = new Map();
 const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
 
 // Function to extract YouTube ID
@@ -130,21 +131,6 @@ function selectChannel(url, name, image, description, number, isLive) {
         enablejsapi: 1,
         modestbranding: 1,
       },
-      events: {
-        onReady: function (event) {
-          event.target.playVideo();
-          Android.onPlayerReady();
-          log("Player is ready and video started.");
-        },
-        onError: function (error) {
-          Android.onPlayerError(error.data);
-          if (error.data === 101 || error.data === 150 || error.data === 153) {
-            // Fallback
-            log("Error requires fallback to mobile YouTube link.", true);
-            window.location.href = "https://m.youtube.com/watch?v=$[url]";
-          }
-        },
-      },
     },
   });
 
@@ -169,6 +155,7 @@ function selectChannel(url, name, image, description, number, isLive) {
     const currentSrc = playerInstance.currentSrc();
 
     const isChannelLive = isLive === true || isLive === "true";
+    addRetryListeners(name, isChannelLive);
 
     if (!isChannelLive && !isYouTube) {
       playerInstance.controls(true);
@@ -190,7 +177,7 @@ function selectChannel(url, name, image, description, number, isLive) {
     retryButton.style.display = "none";
   }
 
-  addRetryListeners(name);
+  //addRetryListeners(name);
   retryCount = 0;
 
   startWatching(url);
@@ -198,7 +185,7 @@ function selectChannel(url, name, image, description, number, isLive) {
 
 function showChannelInfoOverlay() {
   const channelInfoOverlay = document.getElementById("channel-info-overlay");
-   if (!channelInfoOverlay) return;
+  if (!channelInfoOverlay) return;
 
   // Clear any previous timers (avoid stacking multiple animations)
   clearTimeout(overlayTimeoutShow);
@@ -273,16 +260,32 @@ function closeModal() {
     clearTimeout(retryTimeoutId);
     retryTimeoutId = null;
   }
+  
   if (playerInstance) {
+    // ✅ Add pause before disposal for smoother cleanup
+    try {
+      playerInstance.pause();
+    } catch (e) {
+      // Ignore pause errors during cleanup
+    }
+    
     playerInstance.off("error", handlePlayerError);
     playerInstance.off("play", handlePlayerSuccess);
     playerInstance.dispose();
     playerInstance = null;
   }
+  
   let currentVideoElement = document.getElementById("player");
   if (currentVideoElement) {
     currentVideoElement.remove();
   }
+  
+  // ✅ Hide retry button when closing modal
+  const retryButton = document.getElementById("retryButton");
+  if (retryButton) {
+    retryButton.style.display = "none";
+  }
+  
   updateAllChannelItems();
 
   if (lastFocusedElement && lastFocusedElement.isConnected) {
@@ -294,6 +297,13 @@ function closeModal() {
 
 function handlePlayerError() {
   console.error("Video player error detected. Showing manual retry button.");
+  
+  // ✅ Get error details for debugging
+  if (playerInstance && playerInstance.error()) {
+    console.error("Error details:", playerInstance.error());
+  }
+  
+  const retryButton = document.getElementById("retryButton");
   if (retryButton) {
     retryButton.style.display = "block";
     retryButton.disabled = false;
@@ -302,16 +312,15 @@ function handlePlayerError() {
 }
 
 function handlePlayerSuccess() {
-  console.log(
-    "Video playback resumed or started successfully. Hiding retry button."
-  );
+  console.log("Video playback resumed or started successfully. Hiding retry button.");
 
+  const retryButton = document.getElementById("retryButton");
   if (retryButton) {
     retryButton.style.display = "none";
     retryButton.disabled = false;
     retryButton.textContent = "Retry";
   }
-  // Clear any pending auto-retry timeouts
+  
   if (retryTimeoutId) {
     clearTimeout(retryTimeoutId);
     retryTimeoutId = null;
@@ -337,6 +346,7 @@ function addRetryListeners(name) {
     });
   }
 }
+
 
 function retryStream(url, name) {
   if (!playerInstance || modal.style.display !== "flex") {
@@ -804,9 +814,6 @@ async function initialize() {
     allChannels = [];
   }
 
-  //await loadYouTubeLatestFeeds();
-  // For live streams (API, quota-based)
-  //await loadYouTubeLiveFeeds();
 
   startChannelAutoUpdate();
 
@@ -1048,7 +1055,7 @@ function extractYouTubeID(url) {
   return match ? match[1] : null;
 } */
 
-function extractChannelId(feedUrl) {
+/* function extractChannelId(feedUrl) {
   const patterns = [
     /channel_id=([^&]+)/,
     /\/channel\/([^/?]+)/,
@@ -1060,6 +1067,11 @@ function extractChannelId(feedUrl) {
     if (match) return match[1];
   }
   return null;
+} */
+
+function extractChannelId(feedUrl) {
+  const match = feedUrl.match(/channel_id=([^&]+)/);
+  return match ? match[1] : null;
 }
 
 // === Convert item (RSS or API) into channel object ===
@@ -1093,7 +1105,7 @@ async function loadYouTubeLatestFeeds() {
     try {
       // ⭐ RATE LIMITING: Add 100ms delay between requests
       if (index > 0) {
-        await new Promise(resolve => setTimeout(resolve, 150));
+        await new Promise(resolve => setTimeout(resolve, 200));
       }
 
       // ✅ CHECK CACHE FIRST
@@ -1151,6 +1163,7 @@ async function loadYouTubeLiveFeeds() {
   let apiQuotaExceeded = false;
   let successfulUpdates = 0;
   let failedUpdates = 0;
+  let cacheHits = 0;
 
   for (const [index, feed] of live.entries()) {
     try {
@@ -1172,7 +1185,23 @@ async function loadYouTubeLiveFeeds() {
         continue;
       }
 
-      //const apiUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&channelId=${channelId}&eventType=live&type=video&key=${API_KEY}`;
+      // ✅ CHECK CACHE FIRST - USING liveCache
+      const cacheKey = `live_${channelId}`;
+      const cached = liveCache.get(cacheKey);
+
+      if (cached && (Date.now() - cached.timestamp < CACHE_DURATION)) {
+        // Use cached data
+        log(`📦 Using cached live data for ${feed.name}`);
+        cacheHits++;
+
+        if (cached.data && cached.data.videoId) {
+          const channelObj = youtubeItemToChannel(cached.data.videoId, cached.data.title, feed);
+          updateOrAddChannel(channelObj);
+          successfulUpdates++;
+        }
+        continue;
+      }
+
       const apiUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&channelId=${channelId}&eventType=live&type=video&order=date&maxResults=1&key=${API_KEY}`;
       const res = await fetch(apiUrl);
 
@@ -1204,20 +1233,35 @@ async function loadYouTubeLiveFeeds() {
         throw new Error(`YouTube API Error for ${feed.name}: ${data.error.message}`);
       }
 
-      if (!data.items || data.items.length === 0) {
+      // ✅ STORE IN CACHE - USING liveCache
+      let cacheData = null;
+
+      if (data.items && data.items.length > 0) {
+        const item = data.items[0];
+        const videoId = item.id.videoId;
+        const title = item.snippet.title;
+
+        cacheData = {
+          videoId: videoId,
+          title: title
+        };
+
+        const channelObj = youtubeItemToChannel(videoId, title, feed);
+        updateOrAddChannel(channelObj);
+        successfulUpdates++;
+
+        log(`✅ ${feed.name} Successfully updated`);
+      } else {
         log(`ℹ️ No live stream found for ${feed.name}`);
-        continue;
+        // Cache "no stream" result too
+        cacheData = null;
       }
 
-      const item = data.items[0];
-      const videoId = item.id.videoId;
-      const title = item.snippet.title;
-
-      const channelObj = youtubeItemToChannel(videoId, title, feed);
-      updateOrAddChannel(channelObj);
-      successfulUpdates++;
-
-      log(`✅ ${feed.name} Successfully updated`);
+      // ✅ STORE IN CACHE - USING liveCache
+      liveCache.set(cacheKey, {
+        data: cacheData,
+        timestamp: Date.now()
+      });
 
     } catch (e) {
       failedUpdates++;
@@ -1231,7 +1275,7 @@ async function loadYouTubeLiveFeeds() {
   }
 
   // ✅ Summary log
-  log(`Live streams update completed: ${successfulUpdates} successful, ${failedUpdates} failed`);
+  log(`Live streams update completed: ${successfulUpdates} successful, ${failedUpdates} failed, ${cacheHits} cache hits`);
 
   // ✅ If ALL updates failed due to quota, throw error to prevent cache update
   if (successfulUpdates === 0 && failedUpdates > 0 && apiQuotaExceeded) {
@@ -1432,7 +1476,9 @@ function validateChannelData(channel) {
 }
 
 function cleanup() {
-  // Clear intervals and timeouts
+  console.log("🧹 Performing cleanup...");
+
+  // Clear all timeouts
   if (retryTimeoutId) clearTimeout(retryTimeoutId);
   if (fullscreenTimeoutId) clearTimeout(fullscreenTimeoutId);
   if (overlayTimeoutShow) clearTimeout(overlayTimeoutShow);
@@ -1444,8 +1490,12 @@ function cleanup() {
     playerInstance = null;
   }
 
-  // Clear caches
-  rssCache.clear();
+  // ✅ CLEAR BOTH CACHES (optional)
+  // rssCache.clear();
+  // liveCache.clear();
+
+  // Stop tracking
+  stopWatching();
 }
 
 // Call on page unload
