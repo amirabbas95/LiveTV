@@ -16,7 +16,7 @@
 
 <body>
 
-  <header class="bg-gray-900 text-gray-100 py-4 px-6 flex justify-between items-center shadow-lg sticky top-0 z-10"
+  <header class="bg-[#121212] text-gray-100 py-4 px-6 flex justify-between items-center shadow-lg sticky top-0 z-10"
     style="background-color: #121212;">
     <div class="flex items-center space-x-4">
       <img src="logo.svg" alt="logo" class="h-10 w-10">
@@ -38,6 +38,7 @@
 
 
     <div class="container">
+
       <!-- Log Area -->
       <div>
         <div id="logArea" class="text-white-400 p-4 h-40 overflow-y-scroll rounded-lg text-sm whitespace-pre-wrap">
@@ -82,6 +83,47 @@
 
 
 
+
+      <!-- API Key Modal -->
+      <div id="apiKeyModal" class="modal">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h2>YouTube API Key Required</h2>
+          </div>
+          <div class="modal-body">
+            <p>To update live channels, you need a YouTube Data API v3 key.</p>
+
+            <div class="api-key-instructions">
+              <h4>How to get your API Key:</h4>
+              <ol>
+                <li>Go to <a href="https://console.cloud.google.com/" target="_blank">Google Cloud Console</a></li>
+                <li>Create a new project or select existing one</li>
+                <li>Enable "YouTube Data API v3"</li>
+                <li>Create credentials (API Key)</li>
+                <li>Paste your API key below</li>
+              </ol>
+            </div>
+
+            <div class="api-key-input">
+              <label for="apiKeyInput">Your YouTube API Key:</label>
+              <input type="password" id="apiKeyInput" placeholder="Enter your API key here..." class="api-key-field" />
+              <div class="api-key-actions">
+                <label class="remember-key">
+                  <input type="checkbox" id="rememberKey" checked>
+                  Save API key for future use
+                </label>
+              </div>
+            </div>
+
+            <div class="modal-footer">
+              <button id="submitApiKey" class="btn-primary">Save API Key</button>
+              <button id="skipApiKey" class="btn-secondary">Skip for Now</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+
   </main>
 
   <div id="videoModal" class="fixed inset-0 bg-black bg-opacity-90 flex justify-center items-center z-50 hidden">
@@ -95,9 +137,9 @@
         <div id="player"></div>
 
 
-          <div id="recentChannelsGrid" class="recent-grid">
-            <!-- Recently watched channels will be rendered here -->
-          </div>
+        <div id="recentChannelsGrid" class="recent-grid">
+          <!-- Recently watched channels will be rendered here -->
+        </div>
       </div>
 
 
@@ -120,19 +162,11 @@
         </div>
       </div>
     </div>
-
-    <button id="retryButton" class="bg-red-600 text-white font-semibold py-2 px-4 rounded-lg mt-4 hidden">
-      <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 inline-block mr-2" viewBox="0 0 20 20" fill="currentColor">
-        <path fill-rule="evenodd"
-          d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z"
-          clip-rule="evenodd" />
-      </svg>
-      Retry
-    </button>
   </div>
   </div>
 
-  <footer class="bg-[#121212] text-gray-400 text-center py-4 px-6 mt-auto shadow-inner">
+  <footer class="bg-[#121212] text-gray-400 text-center py-4 px-6 mt-auto shadow-inner"
+    style="background-color: #121212;">
     <p>&copy; 2025 All Rights Reserved.</p>
   </footer>
 

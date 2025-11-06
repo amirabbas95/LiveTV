@@ -1,5 +1,3 @@
-let retryButton = null;
-let retryTimeoutId = null;
 const MAX_RECENT = 18;
 const favoritesKey = "favorites";
 const recentlyWatchedKey = "recentlyWatched";
@@ -7,16 +5,13 @@ let allChannelItems = [];
 let lastFocusedElement = null;
 let currentSortMethod = "none";
 let playerInstance = null;
-let fullscreenTimeoutId = null;
-let retryCount = 0;
-const maxRetries = 3;
-const retryDelay = 5000;
 let watchStartTime = 0;
 let currentVideoUrl = "";
 let overlayTimeoutShow;
 let overlayTimeoutHide;
 let isRecentOverlayActive = false;
-const API_KEY = "AIzaSyDL6cStGYRBUeewAQntRv85hiz2xkpwun0"; // <-- replace with your API key
+let API_KEY = "";
+const API_KEY_STORAGE_KEY = "youtube_api_key";
 // --- Configuration and Global State ---
 const CACHE_KEY = "lastChannelsUpdate";
 // 8 hours in milliseconds (8 * 60 * 60 * 1000)
@@ -45,143 +40,212 @@ const qualityEl = document.getElementById("video-quality");
 function selectChannel(url, name, image, description, number, isLive) {
   if (!url) return;
 
-  const videoContainer = document.getElementById("player-container");
-  videoContainer.innerHTML = `
-    <div class="loading-state">
-      <div class="spinner"></div>
-      <p>Loading ${name}...</p>
-    </div>
-  `;
-  const imageElement = document.getElementById("content-image");
-  const videoTitleElement = document.getElementById("video-title");
-  const channelInfoElement = document.getElementById("channel-description");
+  try {
 
-  lastFocusedElement = document.activeElement;
 
-  // ✅ show channel number if available
-  const numberEl = document.getElementById("channel-number");
-  numberEl.textContent = number ? number + "." : "";
+    const videoContainer = document.getElementById("player-container");
+    const imageElement = document.getElementById("content-image");
+    const videoTitleElement = document.getElementById("video-title");
+    const channelInfoElement = document.getElementById("channel-description");
 
-  // Clear any existing fullscreen timeout before setting up a new player
-  if (fullscreenTimeoutId) {
-    clearTimeout(fullscreenTimeoutId);
-    fullscreenTimeoutId = null;
-  }
+    lastFocusedElement = document.activeElement;
 
-  if (playerInstance) {
-    playerInstance.dispose();
-    playerInstance = null;
-  }
+    // ✅ show channel number if available
+    const numberEl = document.getElementById("channel-number");
+    numberEl.textContent = number ? number + "." : "";
 
-  // Remove old video element if it exists
-  const oldPlayerEl = document.getElementById("player");
-  if (oldPlayerEl) {
-    oldPlayerEl.remove();
-  }
 
-  // Create a new video element
-  const newVideoEl = document.createElement("video");
-  newVideoEl.id = "player";
-  newVideoEl.className = "video-js vjs-default-skin";
-  newVideoEl.controls = false;
-  newVideoEl.preload = "auto";
-  newVideoEl.setAttribute("data-setup", "{}");
-  videoContainer.appendChild(newVideoEl);
+    // ✅ CLEAN UP PREVIOUS PLAYER COMPLETELY
+    if (playerInstance) {
+      playerInstance.dispose();
+      playerInstance = null;
+    }
 
-  // Update overlay info
-  imageElement.src = image || "";
-  videoTitleElement.textContent = name || "Unknown Channel";
-  channelInfoElement.textContent = description || "";
-  document.getElementById("video-quality").textContent = "";
+    // Remove old video element
+    const oldPlayerEl = document.getElementById("player");
+    if (oldPlayerEl) {
+      oldPlayerEl.remove();
+    }
 
-  // Animate the overlay
-  showChannelInfoOverlay();
 
-  let source;
-  let techOrder;
-  const isYouTube = extractYouTubeID(url);
+    // Create a new video element
+    const newVideoEl = document.createElement("video");
+    newVideoEl.id = "player";
+    newVideoEl.className = "video-js vjs-default-skin";
+    newVideoEl.controls = false;
+    newVideoEl.preload = "auto";
+    newVideoEl.setAttribute("data-setup", "{}");
+    videoContainer.appendChild(newVideoEl);
 
-  if (isYouTube) {
-    source = { src: url, type: "video/youtube" };
-    techOrder = ["youtube", "html5"];
-  } else if (
-    url.includes("imarkaz") ||
-    url.endsWith(".mp4") ||
-    url.endsWith(".mkv")
-  ) {
-    source = { src: url, type: "video/mp4" };
-    techOrder = ["html5"];
-  } else {
-    source = { src: url, type: "application/x-mpegURL" };
-    techOrder = ["html5"];
-  }
+    // Update overlay info
+    imageElement.src = image || "";
+    videoTitleElement.textContent = name || "Unknown Channel";
+    channelInfoElement.textContent = description || "";
+    document.getElementById("video-quality").textContent = "";
 
-  playerInstance = videojs("player", {
-    techOrder: isYouTube ? ["youtube"] : ["html5"],
-    sources: [source],
-    autoplay: true,
-    youtube: {
-      ytControls: true,
-      playerVars: {
-        autoplay: 1,
-        playsinline: 1,
-        controls: 1,
-        mute: 1,
-        rel: 0,
-        enablejsapi: 1,
-        modestbranding: 1,
-      },
-    },
-  });
+    // Animate the overlay
+    showChannelInfoOverlay();
 
-  playerInstance.ready(function () {
-    playerInstance.play().catch((e) => {
-      console.warn("Autoplay blocked:", e);
-    });
-    // ✅ ADD CONNECTION MONITORING
-    monitorConnectionQuality();
-
-    playerInstance.on("loadedmetadata", updateQualityDisplay);
+    let source;
+    let techOrder;
+    const isYouTube = extractYouTubeID(url);
 
     if (isYouTube) {
-      const ytPlayer = playerInstance.tech().ytPlayer;
-      ytPlayer.addEventListener("onPlaybackQualityChange", (e) => {
-        document.getElementById("video-quality").textContent = e.data;
-      });
-    }
-  });
-
-  playerInstance.on("loadedmetadata", function () {
-    const currentSrc = playerInstance.currentSrc();
-
-    const isChannelLive = isLive === true || isLive === "true";
-    addRetryListeners(name, isChannelLive);
-
-    if (!isChannelLive && !isYouTube) {
-      playerInstance.controls(true);
+      source = { src: url, type: "video/youtube" };
+      techOrder = ["youtube", "html5"];
+    } else if (
+      url.includes("imarkaz") ||
+      url.endsWith(".mp4") ||
+      url.endsWith(".mkv")
+    ) {
+      source = { src: url, type: "video/mp4" };
+      techOrder = ["html5"];
     } else {
-      playerInstance.controls(false);
+      source = { src: url, type: "application/x-mpegURL" };
+      techOrder = ["html5"];
     }
 
-    //Clear the handler after execution to prevent duplicate listeners
-    playerInstance.off("loadedmetadata");
-  });
+    playerInstance = videojs("player", {
+      techOrder: isYouTube ? ["youtube"] : ["html5"],
+      sources: [source],
+      autoplay: true,
+      youtube: {
+        ytControls: true,
+        playerVars: {
+          autoplay: 1,
+          playsinline: 1,
+          controls: 1,
+          mute: 1,
+          rel: 0,
+          modestbranding: 1
+        }
+      }
+    });
 
-  // Set up the retry button for manual use only
-  const retryButton = document.getElementById("retryButton");
-  if (retryButton) {
-    retryButton.onclick = function () {
-      console.log("Manual retry triggered by user.");
-      retryStream(url, name);
-    };
-    retryButton.style.display = "none";
+    playerInstance.ready(function () {
+      playerInstance.play().catch((e) => {
+        console.warn("Autoplay blocked:", e);
+                // Add fallback: show play button
+        showPlayButtonFallback();
+      });
+
+
+      playerInstance.on('error', function () {
+        const error = playerInstance.error();
+        handlePlayerError(error, url, name);
+      });
+
+
+      playerInstance.on("loadedmetadata", function () {
+        updateQualityDisplay();
+
+        const currentSrc = playerInstance.currentSrc();
+        const isChannelLive = isLive === true || isLive === "true";
+
+        //log(`Loading stream for ${name}: ${currentSrc}`);
+
+        if (!isChannelLive && !isYouTube) {
+          playerInstance.controls(true);
+        } else {
+          playerInstance.controls(false);
+        }
+      });
+
+      if (isYouTube) {
+        const ytPlayer = playerInstance.tech().ytPlayer;
+        ytPlayer.addEventListener("onPlaybackQualityChange", (e) => {
+          document.getElementById("video-quality").textContent = e.data;
+        });
+      }
+    });
+
+
+  } catch (error) {
+
+    console.error('Failed to select channel:', error);
+    showErrorToUser(`Failed to load ${name}`);
   }
 
-  //addRetryListeners(name);
-  retryCount = 0;
 
   startWatching(url);
 }
+
+function showErrorToUser(message) {
+  // Create a simple error notification
+  const errorDiv = document.createElement('div');
+  errorDiv.className = 'error-notification';
+  errorDiv.textContent = message;
+  errorDiv.style.cssText = `
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    background: #ff4444;
+    color: white;
+    padding: 12px;
+    border-radius: 4px;
+    z-index: 10000;
+  `;
+  
+  document.body.appendChild(errorDiv);
+  
+  // Auto-remove after 5 seconds
+  setTimeout(() => {
+    if (errorDiv.parentNode) {
+      errorDiv.parentNode.removeChild(errorDiv);
+    }
+  }, 5000);
+}
+
+
+
+function handlePlayerError(error, url, channelName) {
+  switch (error?.code) {
+    case 4: // MEDIA_ERR_SRC_NOT_SUPPORTED
+      attemptFallbackSource(url, channelName);
+      break;
+    default:
+      log(`Player error for ${channelName}: ${error?.message || 'Unknown error'}`, true);
+  }
+}
+
+function attemptFallbackSource(url, channelName) {
+  console.log(`Attempting fallback for ${channelName}`);
+  // Implement fallback logic here
+  // For example, try different URL formats or sources
+  showErrorToUser(`Unable to play ${channelName}. Source not supported.`);
+}
+
+
+function showPlayButtonFallback() {
+  // Add a play button overlay when autoplay is blocked
+  const playOverlay = document.createElement('div');
+  playOverlay.className = 'play-fallback-overlay';
+  playOverlay.innerHTML = `
+    <button class="play-button" style="
+      padding: 12px 24px;
+      background: #ff0000;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 16px;
+    ">Click to Play</button>
+  `;
+  
+  const playerContainer = document.getElementById('player-container');
+  playerContainer.appendChild(playOverlay);
+  
+  // Add click handler
+  playOverlay.querySelector('.play-button').addEventListener('click', () => {
+    if (playerInstance) {
+      playerInstance.play().catch(e => {
+        console.error('Still cannot play:', e);
+      });
+    }
+    playOverlay.remove();
+  });
+}
+
 
 function showChannelInfoOverlay() {
   const channelInfoOverlay = document.getElementById("channel-info-overlay");
@@ -256,36 +320,28 @@ function closeModal() {
   stopWatching();
   modal.style.display = "none";
 
-  if (retryTimeoutId) {
-    clearTimeout(retryTimeoutId);
-    retryTimeoutId = null;
-  }
-  
+  // ✅ PROPER PLAYER CLEANUP
   if (playerInstance) {
-    // ✅ Add pause before disposal for smoother cleanup
     try {
       playerInstance.pause();
+      playerInstance.dispose();
     } catch (e) {
-      // Ignore pause errors during cleanup
+      console.warn('Error during player disposal:', e);
     }
-    
-    playerInstance.off("error", handlePlayerError);
-    playerInstance.off("play", handlePlayerSuccess);
-    playerInstance.dispose();
     playerInstance = null;
   }
-  
-  let currentVideoElement = document.getElementById("player");
+
+  // ✅ CLEAN UP DOM ELEMENTS
+  const currentVideoElement = document.getElementById("player");
   if (currentVideoElement) {
     currentVideoElement.remove();
   }
-  
-  // ✅ Hide retry button when closing modal
-  const retryButton = document.getElementById("retryButton");
-  if (retryButton) {
-    retryButton.style.display = "none";
+
+  const videoContainer = document.getElementById("player-container");
+  if (videoContainer) {
+    videoContainer.innerHTML = ''; // Clear any loading states
   }
-  
+
   updateAllChannelItems();
 
   if (lastFocusedElement && lastFocusedElement.isConnected) {
@@ -295,86 +351,7 @@ function closeModal() {
   }
 }
 
-function handlePlayerError() {
-  console.error("Video player error detected. Showing manual retry button.");
-  
-  // ✅ Get error details for debugging
-  if (playerInstance && playerInstance.error()) {
-    console.error("Error details:", playerInstance.error());
-  }
-  
-  const retryButton = document.getElementById("retryButton");
-  if (retryButton) {
-    retryButton.style.display = "block";
-    retryButton.disabled = false;
-    retryButton.textContent = "Retry";
-  }
-}
 
-function handlePlayerSuccess() {
-  console.log("Video playback resumed or started successfully. Hiding retry button.");
-
-  const retryButton = document.getElementById("retryButton");
-  if (retryButton) {
-    retryButton.style.display = "none";
-    retryButton.disabled = false;
-    retryButton.textContent = "Retry";
-  }
-  
-  if (retryTimeoutId) {
-    clearTimeout(retryTimeoutId);
-    retryTimeoutId = null;
-  }
-  retryCount = 0;
-}
-
-function addRetryListeners(name) {
-  if (playerInstance) {
-    playerInstance.off("error", handlePlayerError);
-    playerInstance.off("play", handlePlayerSuccess);
-    playerInstance.on("error", handlePlayerError);
-    playerInstance.on("play", handlePlayerSuccess);
-
-    // ✅ Add network state monitoring
-    playerInstance.on("loadstart", () => {
-      log(`Loading stream for ${name}: ${playerInstance.currentSrc()}`);
-    });
-
-    playerInstance.on("stalled", () => {
-      log("Stream stalled, attempting recovery...", true);
-      setTimeout(() => playerInstance.play().catch(() => { }), 2000);
-    });
-  }
-}
-
-
-function retryStream(url, name) {
-  if (!playerInstance || modal.style.display !== "flex") {
-    return;
-  }
-
-  console.log("Manual retry initiated. Re-initializing player.");
-
-  // Dispose of the old player instance
-  playerInstance.dispose();
-
-  // Pass original channel data to selectChannel to re-initialize it
-  const channel = allChannels.find((c) => c.url === url);
-  if (channel) {
-    selectChannel(
-      channel.url,
-      channel.name,
-      channel.image,
-      channel.description
-    );
-  } else {
-    console.error("Original channel data not found. Cannot retry.");
-  }
-
-  if (retryButton) {
-    retryButton.style.display = "none";
-  }
-}
 
 function saveRecentlyWatched(channel) {
   // Destructure and set defaults for resilience.
@@ -538,6 +515,20 @@ function createChannelItem(channel) {
   //item.appendChild(info);
 
   return item;
+}
+
+
+function cleanupChannelItems() {
+  allChannelItems.forEach(item => {
+    if (item._handlers) {
+      item.removeEventListener("click", item._handlers.clickHandler);
+      const favoriteIcon = item.querySelector('.favorite-icon');
+      if (favoriteIcon && item._handlers.favoriteHandler) {
+        favoriteIcon.removeEventListener('click', item._handlers.favoriteHandler);
+      }
+    }
+  });
+  allChannelItems = [];
 }
 
 function renderChannels(channels) {
@@ -814,7 +805,14 @@ async function initialize() {
     allChannels = [];
   }
 
+  // ✅ LOAD STORED API KEY AT STARTUP
+  API_KEY = getStoredAPIKey();
 
+  if (hasValidAPIKey()) {
+    console.log('✅ Using stored API key');
+  } else {
+    console.log('ℹ️ No valid API key stored');
+  }
   startChannelAutoUpdate();
 
   allChannels.forEach((ch, i) => {
@@ -1047,28 +1045,6 @@ function toggleFullscreen() {
   }
 }
 
-/* // === Helper: Extract videoId from a YouTube link ===
-function extractYouTubeID(url) {
-  const match = url.match(
-    /(?:youtube\.com\/(?:.*v=|live\/|embed\/)|youtu\.be\/)([^&?/]+)/i
-  );
-  return match ? match[1] : null;
-} */
-
-/* function extractChannelId(feedUrl) {
-  const patterns = [
-    /channel_id=([^&]+)/,
-    /\/channel\/([^/?]+)/,
-    /\/user\/([^/?]+)/,
-    /\/c\/([^/?]+)/
-  ];
-  for (const pattern of patterns) {
-    const match = feedUrl.match(pattern);
-    if (match) return match[1];
-  }
-  return null;
-} */
-
 function extractChannelId(feedUrl) {
   const match = feedUrl.match(/channel_id=([^&]+)/);
   return match ? match[1] : null;
@@ -1148,6 +1124,17 @@ async function loadYouTubeLatestFeeds() {
    ---------------------------------------------------- */
 
 async function loadYouTubeLiveFeeds() {
+  // ✅ CHECK FOR API KEY FIRST
+  if (!API_KEY) {
+    API_KEY = getStoredAPIKey();
+  }
+
+  if (!API_KEY || !hasValidAPIKey()) {
+    console.log('🔑 No valid API key found, prompting user...');
+    showAPIKeyModal();
+    return; // Stop execution until API key is provided
+  }
+
   let live = [];
 
   try {
@@ -1441,46 +1428,10 @@ function updateOrAddChannel(channelObj) {
   }
 }
 
-function monitorConnectionQuality() {
-  let lastBitrate = 0;
-  let qualityChanges = 0;
-
-  if (playerInstance) {
-    playerInstance.on('loadstart', () => {
-      const connection = navigator.connection;
-      if (connection) {
-        const effectiveType = connection.effectiveType;
-        log(`Network type: ${effectiveType}, Downlink: ${connection.downlink}Mb/s`);
-      }
-    });
-  }
-}
-
-function validateChannelData(channel) {
-  const required = ['url', 'name', 'image'];
-  const missing = required.filter(field => !channel[field]);
-
-  if (missing.length > 0) {
-    console.warn(`Channel ${channel.name} missing fields:`, missing);
-    return false;
-  }
-
-  // Validate URL format
-  try {
-    new URL(channel.url);
-    return true;
-  } catch {
-    console.warn(`Invalid URL for channel: ${channel.url}`);
-    return false;
-  }
-}
-
 function cleanup() {
   console.log("🧹 Performing cleanup...");
 
   // Clear all timeouts
-  if (retryTimeoutId) clearTimeout(retryTimeoutId);
-  if (fullscreenTimeoutId) clearTimeout(fullscreenTimeoutId);
   if (overlayTimeoutShow) clearTimeout(overlayTimeoutShow);
   if (overlayTimeoutHide) clearTimeout(overlayTimeoutHide);
 
@@ -1491,8 +1442,8 @@ function cleanup() {
   }
 
   // ✅ CLEAR BOTH CACHES (optional)
-  // rssCache.clear();
-  // liveCache.clear();
+  rssCache.clear();
+  liveCache.clear();
 
   // Stop tracking
   stopWatching();
@@ -1518,4 +1469,127 @@ function processRSSData(data, feed) {
   updateOrAddChannel(channelObj);
 
   log(`✅ ${feed.name} Successfully updated`);
+}
+
+// ✅ API KEY MANAGEMENT FUNCTIONS
+function saveAPIKey(apiKey) {
+  if (apiKey && apiKey.trim()) {
+    localStorage.setItem(API_KEY_STORAGE_KEY, apiKey.trim());
+    API_KEY = apiKey.trim();
+    console.log("✅ API Key saved to localStorage");
+    return true;
+  }
+  return false;
+}
+
+function getStoredAPIKey() {
+  return localStorage.getItem(API_KEY_STORAGE_KEY) || "";
+}
+
+function hasValidAPIKey() {
+  const storedKey = getStoredAPIKey();
+  return storedKey && storedKey.length > 10; // Basic validation
+}
+
+function clearAPIKey() {
+  localStorage.removeItem(API_KEY_STORAGE_KEY);
+  API_KEY = "";
+  console.log("🗑️ API Key cleared from localStorage");
+}
+
+// ✅ API KEY MODAL MANAGEMENT
+function showAPIKeyModal() {
+  const modal = document.getElementById('apiKeyModal');
+  if (!modal) return;
+
+  modal.style.display = 'flex';
+
+  // Focus on input
+  const apiKeyInput = document.getElementById('apiKeyInput');
+  if (apiKeyInput) {
+    apiKeyInput.focus();
+  }
+
+  // Set up event listeners
+  setupAPIKeyModalEvents();
+}
+
+function hideAPIKeyModal() {
+  const modal = document.getElementById('apiKeyModal');
+  if (modal) {
+    modal.style.display = 'none';
+  }
+}
+
+function setupAPIKeyModalEvents() {
+  const submitBtn = document.getElementById('submitApiKey');
+  const skipBtn = document.getElementById('skipApiKey');
+  const apiKeyInput = document.getElementById('apiKeyInput');
+
+  if (submitBtn) {
+    submitBtn.onclick = function () {
+      const apiKey = apiKeyInput.value.trim();
+      const remember = document.getElementById('rememberKey').checked;
+
+      if (!apiKey) {
+        alert('Please enter a valid API key');
+        return;
+      }
+
+      if (remember) {
+        saveAPIKey(apiKey);
+      } else {
+        API_KEY = apiKey; // Use temporarily without saving
+      }
+
+      hideAPIKeyModal();
+
+      // Notify user
+      showNotification('API Key saved successfully!', 'success');
+
+      // Optionally start live feeds update
+      setTimeout(() => {
+        loadYouTubeLiveFeeds().catch(console.error);
+      }, 1000);
+    };
+  }
+
+  if (skipBtn) {
+    skipBtn.onclick = function () {
+      hideAPIKeyModal();
+      showNotification('Live channels update skipped. You can add API key later.', 'info');
+    };
+  }
+
+  if (apiKeyInput) {
+    apiKeyInput.addEventListener('keypress', function (e) {
+      if (e.key === 'Enter') {
+        submitBtn.click();
+      }
+    });
+  }
+}
+
+
+// ✅ ADD SETTINGS MANAGEMENT
+function showAPISettings() {
+  const modal = document.getElementById('apiKeyModal');
+  const apiKeyInput = document.getElementById('apiKeyInput');
+  const rememberCheckbox = document.getElementById('rememberKey');
+
+  if (modal && apiKeyInput) {
+    // Pre-fill with current key (masked)
+    const currentKey = getStoredAPIKey();
+    apiKeyInput.value = currentKey ? '••••••••' : '';
+    rememberCheckbox.checked = true;
+
+    modal.style.display = 'flex';
+  }
+}
+
+// ✅ ADD NOTIFICATION FUNCTION
+function showNotification(message, type = 'info') {
+  // Create or use existing notification system
+  console.log(`📢 ${type.toUpperCase()}: ${message}`);
+  // You can implement a proper UI notification here
 }
