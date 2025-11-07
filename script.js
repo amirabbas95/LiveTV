@@ -20,10 +20,16 @@ const EIGHT_HOURS_MS = 8 * 60 * 60 * 1000;
 const CHECK_INTERVAL_MS = 15 * 60 * 1000;
 let allChannels = [];
 let focusedIndex = 0;
+// Network State Management
+let isOnline = navigator.onLine;
+let reconnectAttempts = 0;
+const MAX_RECONNECT_ATTEMPTS = 3;
 
 const rssCache = new Map();
 const liveCache = new Map();
 const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
+
+let sessionId = Date.now();
 
 // Function to extract YouTube ID
 function extractYouTubeID(url) {
@@ -39,6 +45,13 @@ const qualityEl = document.getElementById("video-quality");
 
 function selectChannel(url, name, image, description, number, isLive) {
   if (!url) return;
+
+    const currentSessionId = Date.now();
+  sessionId = currentSessionId;
+  
+  console.log(`🚀 START Session ${currentSessionId}: ${name}`, {
+    url, isLive, timestamp: new Date().toISOString()
+  });
 
   try {
 
@@ -125,31 +138,8 @@ function selectChannel(url, name, image, description, number, isLive) {
     playerInstance.ready(function () {
       playerInstance.play().catch((e) => {
         console.warn("Autoplay blocked:", e);
-                // Add fallback: show play button
-        showPlayButtonFallback();
       });
 
-
-      playerInstance.on('error', function () {
-        const error = playerInstance.error();
-        handlePlayerError(error, url, name);
-      });
-
-
-      playerInstance.on("loadedmetadata", function () {
-        updateQualityDisplay();
-
-        const currentSrc = playerInstance.currentSrc();
-        const isChannelLive = isLive === true || isLive === "true";
-
-        //log(`Loading stream for ${name}: ${currentSrc}`);
-
-        if (!isChannelLive && !isYouTube) {
-          playerInstance.controls(true);
-        } else {
-          playerInstance.controls(false);
-        }
-      });
 
       if (isYouTube) {
         const ytPlayer = playerInstance.tech().ytPlayer;
@@ -159,6 +149,9 @@ function selectChannel(url, name, image, description, number, isLive) {
       }
     });
 
+        // ✅ SETUP ERROR HANDLING SEPARATELY (Clean approach)
+    setupPlayerEventHandlers(name, isLive, isYouTube, currentSessionId);
+
 
   } catch (error) {
 
@@ -167,7 +160,7 @@ function selectChannel(url, name, image, description, number, isLive) {
   }
 
 
-  startWatching(url);
+  startWatching(name);
 }
 
 function showErrorToUser(message) {
@@ -185,9 +178,9 @@ function showErrorToUser(message) {
     border-radius: 4px;
     z-index: 10000;
   `;
-  
+
   document.body.appendChild(errorDiv);
-  
+
   // Auto-remove after 5 seconds
   setTimeout(() => {
     if (errorDiv.parentNode) {
@@ -195,26 +188,6 @@ function showErrorToUser(message) {
     }
   }, 5000);
 }
-
-
-
-function handlePlayerError(error, url, channelName) {
-  switch (error?.code) {
-    case 4: // MEDIA_ERR_SRC_NOT_SUPPORTED
-      attemptFallbackSource(url, channelName);
-      break;
-    default:
-      log(`Player error for ${channelName}: ${error?.message || 'Unknown error'}`, true);
-  }
-}
-
-function attemptFallbackSource(url, channelName) {
-  console.log(`Attempting fallback for ${channelName}`);
-  // Implement fallback logic here
-  // For example, try different URL formats or sources
-  showErrorToUser(`Unable to play ${channelName}. Source not supported.`);
-}
-
 
 function showPlayButtonFallback() {
   // Add a play button overlay when autoplay is blocked
@@ -231,10 +204,10 @@ function showPlayButtonFallback() {
       font-size: 16px;
     ">Click to Play</button>
   `;
-  
+
   const playerContainer = document.getElementById('player-container');
   playerContainer.appendChild(playOverlay);
-  
+
   // Add click handler
   playOverlay.querySelector('.play-button').addEventListener('click', () => {
     if (playerInstance) {
@@ -246,6 +219,106 @@ function showPlayButtonFallback() {
   });
 }
 
+function checkConnectionQuality() {
+  if (!navigator.onLine) return;
+
+  // Simple latency check
+  const start = Date.now();
+  fetch('https://www.google.com/favicon.ico', {
+    mode: 'no-cors',
+    cache: 'no-cache'
+  })
+    .then(() => {
+      const latency = Date.now() - start;
+      if (latency > 2000) { // 2 seconds threshold
+        showNetworkStatus('Poor connection detected', 'warning');
+      }
+    })
+    .catch(() => {
+      // Silent fail
+    });
+}
+
+function setupPlayerEventHandlers(name, isLive, isYouTube, sessionId) {
+  if (!playerInstance) return;
+
+  // Remove any existing handlers first
+  playerInstance.off('error');
+  playerInstance.off('waiting');
+  playerInstance.off('playing');
+  playerInstance.off('loadedmetadata');
+
+  // Error handling
+  playerInstance.on('error', function () {
+    const error = playerInstance.error();
+    console.log('Player error:', error);
+    if (navigator.onLine) attemptPlayerRecovery();
+    else showNetworkStatus('Waiting for network connection...', 'warning');
+  });
+
+  // Buffer monitoring
+  playerInstance.on('waiting', function () {
+    if (navigator.onLine) showNetworkStatus('Buffering...', 'info');
+  });
+
+  playerInstance.on('playing', function () {
+    const existingStatus = document.querySelector('.network-status');
+    if (existingStatus?.textContent.includes('Buffering')) {
+      existingStatus.remove();
+    }
+  });
+
+  // ✅ CORRECTED loadedmetadata handler
+  playerInstance.on('loadedmetadata', function () {
+    const currentSrc = playerInstance.currentSrc();
+    const isChannelLive = isLive === true || isLive === "true";
+
+    // ✅ MOVED INSIDE: Update quality display when metadata loads
+    updateQualityDisplay();
+
+    // Only set controls for non-live, non-YouTube streams
+    if (!isChannelLive && !isYouTube) {
+      playerInstance.controls(true);
+    } else {
+      playerInstance.controls(false);
+    }
+  });
+}
+
+function attemptPlayerRecovery() {
+  if (!playerInstance || !currentVideoUrl) return;
+  
+  console.log('Attempting player recovery...');
+  log('🔄 Attempting player recovery...');
+  showNetworkStatus('Attempting to recover stream...', 'warning');
+  
+  // Strategy: Retry current source after delay
+  setTimeout(() => {
+    try {
+      // For YouTube videos, sometimes we need to reload the entire player
+      if (currentVideoUrl.includes('youtube.com') || currentVideoUrl.includes('youtu.be')) {
+        console.log('YouTube stream detected, attempting full reload...');
+        // Get the current channel info and re-select it
+        const currentItem = lastFocusedElement;
+        if (currentItem && currentItem.dataset) {
+          const { url, name, image, description, number, isLive } = currentItem.dataset;
+          selectChannel(url, name, image, description, number, isLive);
+        }
+      } else {
+        // For other streams, try reloading the source
+        playerInstance.src({ src: currentVideoUrl, type: playerInstance.currentType() });
+        playerInstance.load();
+        playerInstance.play().catch(e => {
+          console.warn('Recovery play failed:', e);
+          showNetworkStatus('Recovery failed', 'error');
+        });
+      }
+    } catch (error) {
+      console.error('Recovery attempt failed:', error);
+      showNetworkStatus('Recovery failed', 'error');
+    }
+  }, 2000);
+}
 
 function showChannelInfoOverlay() {
   const channelInfoOverlay = document.getElementById("channel-info-overlay");
@@ -273,8 +346,8 @@ function showChannelInfoOverlay() {
 }
 
 // Start tracking watch time
-function startWatching(url) {
-  currentVideoUrl = url;
+function startWatching(name) {
+  currentVideoUrl = name;  // ✅ Store channel name for tracking
   watchStartTime = Date.now();
 }
 
@@ -285,8 +358,9 @@ function stopWatching() {
   const watchedMs = Date.now() - watchStartTime;
   const watchedSeconds = Math.floor(watchedMs / 1000);
 
-  const watchData =
-    JSON.parse(localStorage.getItem("watchTimePerChannel")) || {};
+  const watchData = JSON.parse(localStorage.getItem("watchTimePerChannel")) || {};
+  
+  // ✅ Use channel name as key instead of URL
   if (!watchData[currentVideoUrl]) watchData[currentVideoUrl] = 0;
   watchData[currentVideoUrl] += watchedSeconds;
 
@@ -305,9 +379,9 @@ function loadWatchTime() {
 function sortChannelsByWatchTime(channels) {
   const watchData = loadWatchTime();
   return channels.slice().sort((a, b) => {
-    const aTime = watchData[a.url] || 0;
-    const bTime = watchData[b.url] || 0;
-    return bTime - aTime; // highest watch time first
+    const aTime = watchData[a.name] || 0;  
+    const bTime = watchData[b.name] || 0; 
+    return bTime - aTime;
   });
 }
 
@@ -317,40 +391,10 @@ function updateQualityDisplay() {
 }
 
 function closeModal() {
-  stopWatching();
   modal.style.display = "none";
-
-  // ✅ PROPER PLAYER CLEANUP
-  if (playerInstance) {
-    try {
-      playerInstance.pause();
-      playerInstance.dispose();
-    } catch (e) {
-      console.warn('Error during player disposal:', e);
-    }
-    playerInstance = null;
-  }
-
-  // ✅ CLEAN UP DOM ELEMENTS
-  const currentVideoElement = document.getElementById("player");
-  if (currentVideoElement) {
-    currentVideoElement.remove();
-  }
-
-  const videoContainer = document.getElementById("player-container");
-  if (videoContainer) {
-    videoContainer.innerHTML = ''; // Clear any loading states
-  }
-
-  updateAllChannelItems();
-
-  if (lastFocusedElement && lastFocusedElement.isConnected) {
-    lastFocusedElement.focus();
-  } else if (allChannelItems.length > 0) {
-    allChannelItems[0].focus();
-  }
+  cleanup(); // ✅ Good placement
+  updateAllChannelItems(); // ✅ Good placement
 }
-
 
 
 function saveRecentlyWatched(channel) {
@@ -774,6 +818,9 @@ async function initialize() {
     if (event.target === document.getElementById("videoModal")) closeModal();
   });
 
+  // ADD NETWORK MONITORING HERE:
+  setupNetworkMonitoring();
+
   // Sorting dropdown
   document
     .getElementById("sortChannels")
@@ -825,9 +872,9 @@ async function initialize() {
   sortChannelsAndRender(savedSort);
   document.getElementById("sortChannels").value = savedSort;
 
-  renderFavorites();
-  renderRecentlyWatched();
-  updateFavoriteIcons();
+    renderFavorites();
+    renderRecentlyWatched();
+    updateFavoriteIcons();
   updateAllChannelItems();
 
   // 3. Hide the loading animation and show the grid
@@ -1431,22 +1478,56 @@ function updateOrAddChannel(channelObj) {
 function cleanup() {
   console.log("🧹 Performing cleanup...");
 
+  // Stop tracking FIRST
+  stopWatching();
+
   // Clear all timeouts
   if (overlayTimeoutShow) clearTimeout(overlayTimeoutShow);
   if (overlayTimeoutHide) clearTimeout(overlayTimeoutHide);
+  if (numberTimeout) clearTimeout(numberTimeout);
+  if (navigationDebounce) clearTimeout(navigationDebounce);
 
-  // Clean up player
+  // Player cleanup
   if (playerInstance) {
-    playerInstance.dispose();
+    try {
+      playerInstance.pause();
+      // Remove all event listeners first
+      playerInstance.off('error');
+      playerInstance.off('waiting');
+      playerInstance.off('playing');
+      playerInstance.dispose();
+    } catch (e) {
+      console.warn('Error during player disposal:', e);
+    }
     playerInstance = null;
   }
 
-  // ✅ CLEAR BOTH CACHES (optional)
-  rssCache.clear();
-  liveCache.clear();
+  // DOM cleanup
+  const currentVideoElement = document.getElementById("player");
+  if (currentVideoElement) {
+    currentVideoElement.remove();
+  }
 
-  // Stop tracking
-  stopWatching();
+  const videoContainer = document.getElementById("player-container");
+  if (videoContainer) {
+    videoContainer.innerHTML = '';
+  }
+
+  // Clear all status messages and notifications
+  document.querySelectorAll('.network-status, .error-notification, .play-fallback-overlay').forEach(el => {
+    el.remove();
+  });
+
+  // Restore focus
+  if (lastFocusedElement && lastFocusedElement.isConnected) {
+    lastFocusedElement.focus();
+  } else if (allChannelItems.length > 0) {
+    allChannelItems[0].focus();
+  }
+
+  // Optional: Clear caches (be careful with this)
+  // rssCache.clear();
+  // liveCache.clear();
 }
 
 // Call on page unload
@@ -1593,3 +1674,100 @@ function showNotification(message, type = 'info') {
   console.log(`📢 ${type.toUpperCase()}: ${message}`);
   // You can implement a proper UI notification here
 }
+
+
+
+
+function setupNetworkMonitoring() {
+  window.addEventListener('online', handleNetworkRestored);
+  window.addEventListener('offline', handleNetworkLost);
+
+  // Optional: Periodic connection quality check
+  setInterval(checkConnectionQuality, 30000);
+}
+
+function handleNetworkLost() {
+  isOnline = false;
+  console.log('📡 Network connection lost');
+
+  if (playerInstance && !playerInstance.paused()) {
+    playerInstance.pause();
+    showNetworkStatus('Connection lost - video paused', 'error');
+  }
+}
+
+async function handleNetworkRestored() {
+  isOnline = true;
+  reconnectAttempts = 0;
+  console.log('📡 Network connection restored');
+  log('📡 Network connection restored');
+
+  showNetworkStatus('Connection restored', 'success');
+
+  // Try to resume playback
+  if (playerInstance && playerInstance.paused() && currentVideoUrl) {
+    try {
+      // Small delay to ensure network is stable
+      setTimeout(async () => {
+        await playerInstance.play();
+        showNetworkStatus('Resuming playback...', 'success');
+        log('▶️ Resuming playback after network recovery');
+      }, 1000);
+    } catch (error) {
+      console.warn('Could not auto-resume playback:', error);
+      log('❌ Could not auto-resume playback after network recovery');
+      showPlayButtonFallback();
+    }
+  }
+}
+
+function showNetworkStatus(message, type = 'info') {
+  // Remove existing status if any
+  const existingStatus = document.querySelector('.network-status');
+  if (existingStatus) {
+    existingStatus.remove();
+  }
+
+  const statusDiv = document.createElement('div');
+  statusDiv.className = `network-status ${type}`;
+  statusDiv.textContent = message;
+  statusDiv.style.cssText = `
+    position: fixed;
+    top: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: ${type === 'error' ? '#ff4444' : type === 'warning' ? '#ffaa00' : '#44ff44'};
+    color: white;
+    padding: 10px 20px;
+    border-radius: 4px;
+    z-index: 10001;
+    font-weight: bold;
+    transition: opacity 0.3s;
+  `;
+
+  document.body.appendChild(statusDiv);
+
+  setTimeout(() => {
+    if (statusDiv.parentNode) {
+      statusDiv.style.opacity = '0';
+      setTimeout(() => {
+        if (statusDiv.parentNode) {
+          statusDiv.parentNode.removeChild(statusDiv);
+        }
+      }, 300);
+    }
+  }, 3000);
+}
+
+// Add this anywhere in your global scope (recommended at the bottom)
+document.addEventListener('visibilitychange', function() {
+  if (document.hidden) {
+    // Tab hidden - pause player to save resources
+    if (playerInstance && !playerInstance.paused()) {
+      playerInstance.pause();
+      console.log('Video paused due to tab switch');
+    }
+  }
+  // Note: We don't auto-resume when tab becomes visible
+  // as this can be annoying for users
+});
