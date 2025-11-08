@@ -12,26 +12,26 @@ let overlayTimeoutHide;
 let isRecentOverlayActive = false;
 let API_KEY = "";
 const API_KEY_STORAGE_KEY = "youtube_api_key";
-// --- Configuration and Global State ---
+
 const CACHE_KEY = "lastChannelsUpdate";
-// 8 hours in milliseconds (8 * 60 * 60 * 1000)
 const EIGHT_HOURS_MS = 8 * 60 * 60 * 1000;
-// Check status every 15 minutes
 const CHECK_INTERVAL_MS = 15 * 60 * 1000;
 let allChannels = [];
 let focusedIndex = 0;
-// Network State Management
+
 let isOnline = navigator.onLine;
 let reconnectAttempts = 0;
 const MAX_RECONNECT_ATTEMPTS = 3;
 
 const rssCache = new Map();
 const liveCache = new Map();
-const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
+const CACHE_DURATION = 5 * 60 * 1000;
 
 let sessionId = Date.now();
 
-// Function to extract YouTube ID
+const modal = document.getElementById("videoModal");
+const qualityEl = document.getElementById("video-quality");
+
 function extractYouTubeID(url) {
   const match = url.match(
     /(?:youtube\.com\/(?:.*v=|live\/|embed\/)|youtu\.be\/)([^&?/]+)/i
@@ -39,23 +39,17 @@ function extractYouTubeID(url) {
   return match ? match[1] : null;
 }
 
-// UI elements
-const modal = document.getElementById("videoModal");
-const qualityEl = document.getElementById("video-quality");
-
 function selectChannel(url, name, image, description, number, isLive) {
   if (!url) return;
 
-    const currentSessionId = Date.now();
+  const currentSessionId = Date.now();
   sessionId = currentSessionId;
-  
+
   console.log(`🚀 START Session ${currentSessionId}: ${name}`, {
     url, isLive, timestamp: new Date().toISOString()
   });
 
   try {
-
-
     const videoContainer = document.getElementById("player-container");
     const imageElement = document.getElementById("content-image");
     const videoTitleElement = document.getElementById("video-title");
@@ -63,25 +57,19 @@ function selectChannel(url, name, image, description, number, isLive) {
 
     lastFocusedElement = document.activeElement;
 
-    // ✅ show channel number if available
     const numberEl = document.getElementById("channel-number");
-    numberEl.textContent = number ? number + "." : "";
+    if (numberEl) numberEl.textContent = number ? number + "." : "";
 
-
-    // ✅ CLEAN UP PREVIOUS PLAYER COMPLETELY
     if (playerInstance) {
       playerInstance.dispose();
       playerInstance = null;
     }
 
-    // Remove old video element
     const oldPlayerEl = document.getElementById("player");
     if (oldPlayerEl) {
       oldPlayerEl.remove();
     }
 
-
-    // Create a new video element
     const newVideoEl = document.createElement("video");
     newVideoEl.id = "player";
     newVideoEl.className = "video-js vjs-default-skin";
@@ -90,32 +78,26 @@ function selectChannel(url, name, image, description, number, isLive) {
     newVideoEl.setAttribute("data-setup", "{}");
     videoContainer.appendChild(newVideoEl);
 
-    // Update overlay info
-    imageElement.src = image || "";
-    videoTitleElement.textContent = name || "Unknown Channel";
-    channelInfoElement.textContent = description || "";
-    document.getElementById("video-quality").textContent = "";
+    if (imageElement) imageElement.src = image || "";
+    if (videoTitleElement) videoTitleElement.textContent = name || "Unknown Channel";
+    if (channelInfoElement) channelInfoElement.textContent = description || "";
+    if (qualityEl) qualityEl.textContent = "";
 
-    // Animate the overlay
     showChannelInfoOverlay();
 
     let source;
-    let techOrder;
     const isYouTube = extractYouTubeID(url);
 
     if (isYouTube) {
       source = { src: url, type: "video/youtube" };
-      techOrder = ["youtube", "html5"];
     } else if (
       url.includes("imarkaz") ||
       url.endsWith(".mp4") ||
       url.endsWith(".mkv")
     ) {
       source = { src: url, type: "video/mp4" };
-      techOrder = ["html5"];
     } else {
       source = { src: url, type: "application/x-mpegURL" };
-      techOrder = ["html5"];
     }
 
     playerInstance = videojs("player", {
@@ -136,35 +118,34 @@ function selectChannel(url, name, image, description, number, isLive) {
     });
 
     playerInstance.ready(function () {
+      if (sessionId !== currentSessionId) return;
+
       playerInstance.play().catch((e) => {
         console.warn("Autoplay blocked:", e);
+        showPlayButtonFallback();
       });
-
 
       if (isYouTube) {
         const ytPlayer = playerInstance.tech().ytPlayer;
-        ytPlayer.addEventListener("onPlaybackQualityChange", (e) => {
-          document.getElementById("video-quality").textContent = e.data;
-        });
+        if (ytPlayer && ytPlayer.addEventListener) {
+          ytPlayer.addEventListener("onPlaybackQualityChange", (e) => {
+            if (qualityEl) qualityEl.textContent = e.data;
+          });
+        }
       }
     });
 
-        // ✅ SETUP ERROR HANDLING SEPARATELY (Clean approach)
     setupPlayerEventHandlers(name, isLive, isYouTube, currentSessionId);
 
-
   } catch (error) {
-
     console.error('Failed to select channel:', error);
     showErrorToUser(`Failed to load ${name}`);
   }
-
 
   startWatching(name);
 }
 
 function showErrorToUser(message) {
-  // Create a simple error notification
   const errorDiv = document.createElement('div');
   errorDiv.className = 'error-notification';
   errorDiv.textContent = message;
@@ -181,7 +162,6 @@ function showErrorToUser(message) {
 
   document.body.appendChild(errorDiv);
 
-  // Auto-remove after 5 seconds
   setTimeout(() => {
     if (errorDiv.parentNode) {
       errorDiv.parentNode.removeChild(errorDiv);
@@ -190,7 +170,6 @@ function showErrorToUser(message) {
 }
 
 function showPlayButtonFallback() {
-  // Add a play button overlay when autoplay is blocked
   const playOverlay = document.createElement('div');
   playOverlay.className = 'play-fallback-overlay';
   playOverlay.innerHTML = `
@@ -208,7 +187,6 @@ function showPlayButtonFallback() {
   const playerContainer = document.getElementById('player-container');
   playerContainer.appendChild(playOverlay);
 
-  // Add click handler
   playOverlay.querySelector('.play-button').addEventListener('click', () => {
     if (playerInstance) {
       playerInstance.play().catch(e => {
@@ -222,7 +200,6 @@ function showPlayButtonFallback() {
 function checkConnectionQuality() {
   if (!navigator.onLine) return;
 
-  // Simple latency check
   const start = Date.now();
   fetch('https://www.google.com/favicon.ico', {
     mode: 'no-cors',
@@ -230,53 +207,50 @@ function checkConnectionQuality() {
   })
     .then(() => {
       const latency = Date.now() - start;
-      if (latency > 2000) { // 2 seconds threshold
+      if (latency > 2000) {
         showNetworkStatus('Poor connection detected', 'warning');
       }
     })
-    .catch(() => {
-      // Silent fail
-    });
+    .catch(() => { });
 }
 
-function setupPlayerEventHandlers(name, isLive, isYouTube, sessionId) {
+function setupPlayerEventHandlers(name, isLive, isYouTube, currentSessionId) {
   if (!playerInstance) return;
 
-  // Remove any existing handlers first
   playerInstance.off('error');
   playerInstance.off('waiting');
   playerInstance.off('playing');
   playerInstance.off('loadedmetadata');
 
-  // Error handling
   playerInstance.on('error', function () {
+    if (sessionId !== currentSessionId) return;
+
     const error = playerInstance.error();
     console.log('Player error:', error);
     if (navigator.onLine) attemptPlayerRecovery();
     else showNetworkStatus('Waiting for network connection...', 'warning');
   });
 
-  // Buffer monitoring
   playerInstance.on('waiting', function () {
+    if (sessionId !== currentSessionId) return;
     if (navigator.onLine) showNetworkStatus('Buffering...', 'info');
   });
 
   playerInstance.on('playing', function () {
+    if (sessionId !== currentSessionId) return;
+
     const existingStatus = document.querySelector('.network-status');
     if (existingStatus?.textContent.includes('Buffering')) {
       existingStatus.remove();
     }
   });
 
-  // ✅ CORRECTED loadedmetadata handler
   playerInstance.on('loadedmetadata', function () {
-    const currentSrc = playerInstance.currentSrc();
-    const isChannelLive = isLive === true || isLive === "true";
+    if (sessionId !== currentSessionId) return;
 
-    // ✅ MOVED INSIDE: Update quality display when metadata loads
     updateQualityDisplay();
 
-    // Only set controls for non-live, non-YouTube streams
+    const isChannelLive = isLive === true || isLive === "true";
     if (!isChannelLive && !isYouTube) {
       playerInstance.controls(true);
     } else {
@@ -287,25 +261,21 @@ function setupPlayerEventHandlers(name, isLive, isYouTube, sessionId) {
 
 function attemptPlayerRecovery() {
   if (!playerInstance || !currentVideoUrl) return;
-  
+
   console.log('Attempting player recovery...');
   log('🔄 Attempting player recovery...');
   showNetworkStatus('Attempting to recover stream...', 'warning');
-  
-  // Strategy: Retry current source after delay
+
   setTimeout(() => {
     try {
-      // For YouTube videos, sometimes we need to reload the entire player
       if (currentVideoUrl.includes('youtube.com') || currentVideoUrl.includes('youtu.be')) {
         console.log('YouTube stream detected, attempting full reload...');
-        // Get the current channel info and re-select it
         const currentItem = lastFocusedElement;
         if (currentItem && currentItem.dataset) {
           const { url, name, image, description, number, isLive } = currentItem.dataset;
           selectChannel(url, name, image, description, number, isLive);
         }
       } else {
-        // For other streams, try reloading the source
         playerInstance.src({ src: currentVideoUrl, type: playerInstance.currentType() });
         playerInstance.load();
         playerInstance.play().catch(e => {
@@ -324,34 +294,27 @@ function showChannelInfoOverlay() {
   const channelInfoOverlay = document.getElementById("channel-info-overlay");
   if (!channelInfoOverlay) return;
 
-  // Clear any previous timers (avoid stacking multiple animations)
   clearTimeout(overlayTimeoutShow);
   clearTimeout(overlayTimeoutHide);
 
-  // Make sure modal is visible
-  modal.style.display = "flex";
+  if (modal) modal.style.display = "flex";
 
-  // Reset state
   channelInfoOverlay.classList.remove("show");
 
-  // Show overlay with a delay
   overlayTimeoutShow = setTimeout(() => {
     channelInfoOverlay.classList.add("show");
   }, 300);
 
-  // Auto-hide after 10s
   overlayTimeoutHide = setTimeout(() => {
     channelInfoOverlay.classList.remove("show");
   }, 6000);
 }
 
-// Start tracking watch time
 function startWatching(name) {
-  currentVideoUrl = name;  // ✅ Store channel name for tracking
+  currentVideoUrl = name;
   watchStartTime = Date.now();
 }
 
-// Stop tracking and save to localStorage
 function stopWatching() {
   if (!currentVideoUrl) return;
 
@@ -359,19 +322,16 @@ function stopWatching() {
   const watchedSeconds = Math.floor(watchedMs / 1000);
 
   const watchData = JSON.parse(localStorage.getItem("watchTimePerChannel")) || {};
-  
-  // ✅ Use channel name as key instead of URL
+
   if (!watchData[currentVideoUrl]) watchData[currentVideoUrl] = 0;
   watchData[currentVideoUrl] += watchedSeconds;
 
   localStorage.setItem("watchTimePerChannel", JSON.stringify(watchData));
 
-  // Reset
   currentVideoUrl = "";
   watchStartTime = 0;
 }
 
-//Load watch time on page load
 function loadWatchTime() {
   return JSON.parse(localStorage.getItem("watchTimePerChannel")) || {};
 }
@@ -379,44 +339,39 @@ function loadWatchTime() {
 function sortChannelsByWatchTime(channels) {
   const watchData = loadWatchTime();
   return channels.slice().sort((a, b) => {
-    const aTime = watchData[a.name] || 0;  
-    const bTime = watchData[b.name] || 0; 
+    const aTime = watchData[a.name] || 0;
+    const bTime = watchData[b.name] || 0;
     return bTime - aTime;
   });
 }
 
 function updateQualityDisplay() {
+  if (!playerInstance || !qualityEl) return;
   const height = playerInstance.videoHeight();
   qualityEl.textContent = height ? `${height}p` : "Auto";
 }
 
 function closeModal() {
-  modal.style.display = "none";
-  cleanup(); // ✅ Good placement
-  updateAllChannelItems(); // ✅ Good placement
+  if (modal) modal.style.display = "none";
+  cleanup();
+  updateAllChannelItems();
 }
 
-
 function saveRecentlyWatched(channel) {
-  // Destructure and set defaults for resilience.
   const {
     name,
     url,
     image,
     description,
     number,
-    // Ensure isLive defaults to 'false' string if not present
     isLive = "true",
-    // Ensure category defaults to 'Unknown' if not present
     category = "Unknown",
   } = channel;
 
   let recent = JSON.parse(localStorage.getItem(recentlyWatchedKey) || "[]");
 
-  // Remove duplicate by URL
   recent = recent.filter((item) => item.url !== url);
 
-  // Add the full channel object to the front
   recent.unshift({
     name,
     url,
@@ -427,7 +382,6 @@ function saveRecentlyWatched(channel) {
     category,
   });
 
-  // Limit list length
   if (recent.length > MAX_RECENT) {
     recent.pop();
   }
@@ -452,10 +406,8 @@ function toggleFavorite(
   const index = favorites.findIndex((item) => item.url === url);
 
   if (index > -1) {
-    // remove from favorites
     favorites.splice(index, 1);
   } else {
-    // add with full object including channel number
     favorites.unshift({
       name,
       url,
@@ -470,11 +422,11 @@ function toggleFavorite(
   localStorage.setItem(favoritesKey, JSON.stringify(favorites));
   renderFavorites();
   updateFavoriteIcons();
+  updateAllChannelItems();
 }
 
 function createChannelItem(channel) {
   const item = document.createElement("div");
-  // Handle blank number (if undefined or null)
   const numberText = channel.number ? channel.number : "";
 
   item.className = "content-card channel-item";
@@ -483,11 +435,15 @@ function createChannelItem(channel) {
   item.dataset.name = channel.name;
   item.dataset.image = channel.image;
   item.dataset.description = channel.description;
-  item.dataset.number = numberText; // ✅ store number in dataset
+  item.dataset.number = numberText;
   item.dataset.isLive = channel.isLive;
-  item.dataset.category = channel.category;
+  item.dataset.category = channel.category || "Unknown";
 
-  item.addEventListener("click", () => {
+  // ✅ Create and store click handler
+  const clickHandler = (e) => {
+    if (e.target.classList.contains('favorite-icon')) {
+      return; // Don't select channel when clicking favorite
+    }
     selectChannel(
       channel.url,
       channel.name,
@@ -496,30 +452,29 @@ function createChannelItem(channel) {
       channel.number,
       channel.isLive
     );
-
     saveRecentlyWatched(channel);
-  });
+  };
 
-  // ✅ wrapper for image & number
+  item.addEventListener("click", clickHandler);
+  item._clickHandler = clickHandler;
+
   const wrapper = document.createElement("div");
   wrapper.className = "thumb-wrapper";
 
   const img = document.createElement("img");
   img.src = channel.image;
   img.alt = `${channel.name} Logo`;
-
-  // ✅ Add error handling for broken images
+  img.loading = "lazy";
+  img.decoding = "async";
   img.onerror = function () {
     this.src = 'fallback-image.png';
     this.alt = 'Image not available';
   };
 
-  // ✅ number badge
   const numberBadge = document.createElement("span");
   numberBadge.className = "channel-number";
   numberBadge.textContent = channel.number;
 
-  // ✅ live indicator
   if (channel.isLive === true || channel.isLive === "true") {
     const liveIndicator = document.createElement("img");
     liveIndicator.src = "live.webp";
@@ -531,18 +486,12 @@ function createChannelItem(channel) {
   wrapper.appendChild(img);
   wrapper.appendChild(numberBadge);
 
-  //const info = document.createElement("div");
-  //info.className = "channel-name";
-
-  //const nameSpan = document.createElement("h4");
-  //nameSpan.textContent = channel.name;
-
-  //info.appendChild(nameSpan);
-
   const favoriteIcon = document.createElement("span");
   favoriteIcon.className = "favorite-icon";
   favoriteIcon.textContent = "★";
-  favoriteIcon.onclick = (e) =>
+  // ✅ Create and store favorite handler
+  const favoriteHandler = (e) => {
+    e.stopPropagation();
     toggleFavorite(
       channel.url,
       channel.name,
@@ -553,37 +502,48 @@ function createChannelItem(channel) {
       channel.category,
       e
     );
+  };
+
+  favoriteIcon.addEventListener('click', favoriteHandler);
+  item._favoriteHandler = favoriteHandler;
 
   item.appendChild(wrapper);
   item.appendChild(favoriteIcon);
-  //item.appendChild(info);
 
   return item;
 }
 
-
 function cleanupChannelItems() {
+
   allChannelItems.forEach(item => {
-    if (item._handlers) {
-      item.removeEventListener("click", item._handlers.clickHandler);
-      const favoriteIcon = item.querySelector('.favorite-icon');
-      if (favoriteIcon && item._handlers.favoriteHandler) {
-        favoriteIcon.removeEventListener('click', item._handlers.favoriteHandler);
-      }
+    // Remove click handler
+    if (item._clickHandler) {
+      item.removeEventListener("click", item._clickHandler);
+      item._clickHandler = null;
+    }
+
+    // Remove favorite handler
+    const favoriteIcon = item.querySelector('.favorite-icon');
+    if (favoriteIcon && item._favoriteHandler) {
+      favoriteIcon.removeEventListener('click', item._favoriteHandler);
+      item._favoriteHandler = null;
     }
   });
+
   allChannelItems = [];
 }
 
 function renderChannels(channels) {
-  const mainContainer = document.getElementById("channels");
-  const existingGrids = mainContainer.querySelectorAll(".content-grid");
+  cleanupChannelItems();
 
+  const mainContainer = document.getElementById("channels");
+  if (!mainContainer) return;
+
+  const existingGrids = mainContainer.querySelectorAll(".content-grid");
   const existingHeadings = mainContainer.querySelectorAll(
     "h2:not(.sort-container h2)"
   );
 
-  // ✅ Use DocumentFragment for batch DOM updates
   const fragment = document.createDocumentFragment();
 
   existingGrids.forEach((grid) => grid.remove());
@@ -591,7 +551,7 @@ function renderChannels(channels) {
 
   if (currentSortMethod === "none") {
     const categorizedChannels = channels.reduce((acc, channel) => {
-      const category = channel.category;
+      const category = channel.category || "Unknown";
       if (!acc[category]) acc[category] = [];
       acc[category].push(channel);
       return acc;
@@ -611,7 +571,7 @@ function renderChannels(channels) {
         categorizedChannels[category].length > 0
       ) {
         categorizedChannels[category].forEach((channel) => {
-          const item = createChannelItem(channel); // use locked number
+          const item = createChannelItem(channel);
           categoryGrid.appendChild(item);
         });
       }
@@ -620,7 +580,6 @@ function renderChannels(channels) {
       fragment.appendChild(categoryGrid);
     }
 
-    // ✅ APPEND FRAGMENT TO MAIN CONTAINER
     mainContainer.appendChild(fragment);
 
   } else {
@@ -629,25 +588,20 @@ function renderChannels(channels) {
     mainHeading.textContent = `> Channels < (${totalChannelCount})`;
     mainHeading.className = "text-xl font-bold mt-6 mb-4 col-span-full";
 
-    // ✅ ADD HEADING TO FRAGMENT, NOT DIRECTLY TO CONTAINER
     fragment.appendChild(mainHeading);
 
     const categoryGrid = document.createElement("div");
     categoryGrid.className = "content-grid";
 
     channels.forEach((channel) => {
-      const item = createChannelItem(channel); // use locked number
+      const item = createChannelItem(channel);
       categoryGrid.appendChild(item);
     });
 
-    // ✅ ADD GRID TO FRAGMENT
     fragment.appendChild(categoryGrid);
-
-    // ✅ APPEND FRAGMENT TO MAIN CONTAINER
     mainContainer.appendChild(fragment);
   }
 
-  // ✅ UPDATE allChannelItems after rendering
   updateAllChannelItems();
   console.log(`✅ Rendered ${channels.length} channels in ${currentSortMethod} view`);
 }
@@ -660,23 +614,24 @@ document.addEventListener("keydown", (e) => {
     numberBuffer += e.key;
 
     const overlay = document.getElementById("channel-number-overlay");
-    overlay.textContent = numberBuffer || "";
-    overlay.style.display = "block"; // show overlay
+    if (overlay) {
+      overlay.textContent = numberBuffer || "";
+      overlay.style.display = "block";
+    }
 
     clearTimeout(numberTimeout);
     numberTimeout = setTimeout(() => {
-      overlay.style.display = "none"; // hide overlay
+      if (overlay) overlay.style.display = "none";
 
       const channelNumber = parseInt(numberBuffer, 10);
       const channel = allChannels.find((c) => c.number === channelNumber);
 
       if (channel) {
-        // ✅ Focus the corresponding channel item
         const index = allChannelItems.findIndex(
           (item) => parseInt(item.dataset.number, 10) === channelNumber
         );
         if (index !== -1) {
-          focusedIndex = index; // update global focusedIndex
+          focusedIndex = index;
           allChannelItems[focusedIndex].focus();
           allChannelItems[focusedIndex].scrollIntoView({
             behavior: "smooth",
@@ -684,7 +639,6 @@ document.addEventListener("keydown", (e) => {
           });
         }
 
-        // ✅ Play the channel
         selectChannel(
           channel.url,
           channel.name,
@@ -696,8 +650,8 @@ document.addEventListener("keydown", (e) => {
         saveRecentlyWatched(channel);
       }
 
-      numberBuffer = ""; // reset buffer
-    }, 1000); // wait 1s for multi-digit numbers
+      numberBuffer = "";
+    }, 1000);
   }
 });
 
@@ -720,22 +674,24 @@ function sortChannelsAndRender(sortMethod = "none") {
     case "none":
     default:
       currentSortMethod = "none";
-      renderChannels(allChannels); // grouped by category
+      renderChannels(allChannels);
       updateFavoriteIcons();
       updateAllChannelItems();
       return;
   }
 
   currentSortMethod = sortMethod;
-  renderChannels(sortedChannels); // flat sorted list
+  renderChannels(sortedChannels);
   updateFavoriteIcons();
   updateAllChannelItems();
 }
 
 function handleSortChange() {
-  const sortMethod = document.getElementById("sortChannels").value;
+  const sortDropdown = document.getElementById("sortChannels");
+  if (!sortDropdown) return;
 
-  // ✅ Save choice to localStorage
+  const sortMethod = sortDropdown.value;
+
   localStorage.setItem("defaultSortMethod", sortMethod);
 
   sortChannelsAndRender(sortMethod);
@@ -743,12 +699,16 @@ function handleSortChange() {
 
 function renderFavorites() {
   const container = document.getElementById("favoritesGrid");
+  if (!container) return;
+
   const favorites = JSON.parse(localStorage.getItem(favoritesKey) || "[]");
   container.innerHTML = "";
+
+  const favSection = document.getElementById("favorites");
   if (favorites.length === 0) {
-    document.getElementById("favorites").style.display = "none";
+    if (favSection) favSection.style.display = "none";
   } else {
-    document.getElementById("favorites").style.display = "grid";
+    if (favSection) favSection.style.display = "grid";
     favorites.forEach((channel) => {
       const item = createChannelItem(channel);
       container.appendChild(item);
@@ -758,12 +718,16 @@ function renderFavorites() {
 
 function renderRecentlyWatched() {
   const container = document.getElementById("recentlyWatchedGrid");
+  if (!container) return;
+
   const recent = JSON.parse(localStorage.getItem(recentlyWatchedKey) || "[]");
   container.innerHTML = "";
+
+  const recentSection = document.getElementById("recentlyWatched");
   if (recent.length === 0) {
-    document.getElementById("recentlyWatched").style.display = "none";
+    if (recentSection) recentSection.style.display = "none";
   } else {
-    document.getElementById("recentlyWatched").style.display = "grid";
+    if (recentSection) recentSection.style.display = "grid";
     recent.forEach((channel) => {
       const item = createChannelItem(channel);
       container.appendChild(item);
@@ -791,120 +755,17 @@ function updateAllChannelItems() {
   allChannelItems = Array.from(document.querySelectorAll(".channel-item"));
 }
 
-function nextTrack() {
-  if (playerInstance && playerInstance.tech().featuresVolumeControl) {
-    playerInstance.tech().nextVideo();
-  }
-}
-
-function previousTrack() {
-  if (playerInstance && playerInstance.tech().featuresVolumeControl) {
-    playerInstance.tech().previousVideo();
-  }
-}
-
-// Main initialize function
-async function initialize() {
-  const contentGrid = document.querySelector(".content-grid");
-  const loadingElement = document.getElementById("loading-spinner"); // Assume you have an element with this ID for your animation
-
-  // 1. Show the loading animation and hide the grid
-  if (contentGrid) contentGrid.style.display = "none";
-  if (loadingElement) loadingElement.style.display = "block";
-
-  // Modal controls
-  document.querySelector(".closeModal").addEventListener("click", closeModal);
-  document.getElementById("videoModal").addEventListener("click", (event) => {
-    if (event.target === document.getElementById("videoModal")) closeModal();
-  });
-
-  // ADD NETWORK MONITORING HERE:
-  setupNetworkMonitoring();
-
-  // Sorting dropdown
-  document
-    .getElementById("sortChannels")
-    .addEventListener("change", handleSortChange);
-
-  // 2. Perform all the loading tasks
-  let savedChannels = localStorage.getItem("allChannelsData");
-
-  if (savedChannels) {
-    try {
-      allChannels = JSON.parse(savedChannels);
-      log(
-        `Successfully loaded ${allChannels.length} channels from localStorage.`
-      );
-    } catch (e) {
-      // Log the error using your custom error handler
-      log(
-        "Invalid 'allChannelsData' found in localStorage. The data will be ignored.",
-        true
-      );
-      log(`Error details: ${e.message}`, true);
-
-      console.warn("Invalid allChannelsData in localStorage, ignoring.", e);
-      allChannels = [];
-    }
-  } else {
-    // Log if no data was found
-    log("No previous 'allChannelsData' found in localStorage. Starting fresh.");
-    allChannels = [];
-  }
-
-  // ✅ LOAD STORED API KEY AT STARTUP
-  API_KEY = getStoredAPIKey();
-
-  if (hasValidAPIKey()) {
-    console.log('✅ Using stored API key');
-  } else {
-    console.log('ℹ️ No valid API key stored');
-  }
-  startChannelAutoUpdate();
-
-  allChannels.forEach((ch, i) => {
-    if (!ch.number) ch.number = i + 1;
-  });
-
-  loadWatchTime?.();
-
-  const savedSort = localStorage.getItem("defaultSortMethod") || "none";
-  sortChannelsAndRender(savedSort);
-  document.getElementById("sortChannels").value = savedSort;
-
-    renderFavorites();
-    renderRecentlyWatched();
-    updateFavoriteIcons();
-  updateAllChannelItems();
-
-  // 3. Hide the loading animation and show the grid
-  if (loadingElement) loadingElement.style.display = "none";
-  if (contentGrid) contentGrid.style.display = "grid"; // Or "flex", or whatever your original display property is
-
-  // 4. Focus first channel if available
-  if (lastFocusedElement && lastFocusedElement.isConnected) {
-    lastFocusedElement.focus();
-  } else if (allChannelItems.length > 0) {
-    allChannelItems[0].focus();
-  }
-}
-
 function getGridColumns() {
   const grid = document.querySelector(".content-grid");
-  if (!grid) {
-    return 1;
-  }
+  if (!grid) return 1;
 
   const gridComputedStyle = window.getComputedStyle(grid);
   const gridTemplateColumns = gridComputedStyle.getPropertyValue(
     "grid-template-columns"
   );
 
-  if (!gridTemplateColumns) {
-    return 1;
-  }
+  if (!gridTemplateColumns) return 1;
 
-  // Split the computed style string by spaces to count the columns
   const columnArray = gridTemplateColumns.split(" ");
   return columnArray.length;
 }
@@ -912,19 +773,16 @@ function getGridColumns() {
 let navigationDebounce;
 
 document.addEventListener("keydown", (event) => {
-  // Clear the previous timeout
   clearTimeout(navigationDebounce);
 
-  // Set new timeout - will only execute after 50ms of no keypresses
   navigationDebounce = setTimeout(() => {
     const GRID_COLUMNS = getGridColumns();
-    const isModalOpen = modal.style.display === "flex";
+    const isModalOpen = modal && modal.style.display === "flex";
     let focusedElement = document.activeElement;
-    let focusedIndex = allChannelItems.findIndex(
+    let currentFocusedIndex = allChannelItems.findIndex(
       (item) => item === focusedElement
     );
 
-    // --- IF MODAL IS OPEN ---
     if (isModalOpen) {
       if (event.key === "Enter") {
         event.preventDefault();
@@ -986,11 +844,10 @@ document.addEventListener("keydown", (event) => {
       return;
     }
 
-    // --- IF MODAL IS CLOSED (GRID NAVIGATION) ---
     if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)) {
       if (allChannelItems.length === 0) return;
 
-      if (focusedIndex === -1) {
+      if (currentFocusedIndex === -1) {
         allChannelItems[0].focus();
         allChannelItems[0].scrollIntoView({
           behavior: "smooth",
@@ -1000,19 +857,19 @@ document.addEventListener("keydown", (event) => {
         return;
       }
 
-      let newIndex = focusedIndex;
+      let newIndex = currentFocusedIndex;
       if (event.key === "ArrowRight")
-        newIndex = (focusedIndex + 1) % allChannelItems.length;
+        newIndex = (currentFocusedIndex + 1) % allChannelItems.length;
       else if (event.key === "ArrowLeft")
         newIndex =
-          (focusedIndex - 1 + allChannelItems.length) % allChannelItems.length;
+          (currentFocusedIndex - 1 + allChannelItems.length) % allChannelItems.length;
       else if (event.key === "ArrowDown")
         newIndex = Math.min(
-          focusedIndex + GRID_COLUMNS,
+          currentFocusedIndex + GRID_COLUMNS,
           allChannelItems.length - 1
         );
       else if (event.key === "ArrowUp")
-        newIndex = Math.max(focusedIndex - GRID_COLUMNS, 0);
+        newIndex = Math.max(currentFocusedIndex - GRID_COLUMNS, 0);
 
       const newCard = allChannelItems[newIndex];
       newCard.focus();
@@ -1022,19 +879,19 @@ document.addEventListener("keydown", (event) => {
       event.preventDefault();
     } else if (["PageUp", "PageDown", "Home", "End"].includes(event.key)) {
       event.preventDefault();
-      if (focusedIndex === -1 && allChannelItems.length > 0) {
+      if (currentFocusedIndex === -1 && allChannelItems.length > 0) {
         allChannelItems[0].focus();
         allChannelItems[0].scrollIntoView({
           behavior: "smooth",
           block: "center",
         });
       } else {
-        let newIndex = focusedIndex;
+        let newIndex = currentFocusedIndex;
         if (event.key === "PageUp") {
-          newIndex = Math.max(focusedIndex - GRID_COLUMNS, 0);
+          newIndex = Math.max(currentFocusedIndex - GRID_COLUMNS, 0);
         } else if (event.key === "PageDown") {
           newIndex = Math.min(
-            focusedIndex + GRID_COLUMNS,
+            currentFocusedIndex + GRID_COLUMNS,
             allChannelItems.length - 1
           );
         } else if (event.key === "Home") {
@@ -1049,9 +906,9 @@ document.addEventListener("keydown", (event) => {
 
         focusedIndex = newIndex;
       }
-    } else if (event.key === "Enter" && focusedIndex !== -1) {
+    } else if (event.key === "Enter" && currentFocusedIndex !== -1) {
       event.preventDefault();
-      const card = allChannelItems[focusedIndex];
+      const card = allChannelItems[currentFocusedIndex];
       const {
         url,
         name,
@@ -1075,12 +932,83 @@ document.addEventListener("keydown", (event) => {
       });
     }
 
-  }, 50); // Wait 50ms after last keypress
+  }, 50);
 });
 
-window.addEventListener("DOMContentLoaded", async () => {
-  await initialize();
-});
+async function initialize() {
+  const contentGrid = document.querySelector(".content-grid");
+  const loadingElement = document.getElementById("loading-spinner");
+
+  if (contentGrid) contentGrid.style.display = "none";
+  if (loadingElement) loadingElement.style.display = "block";
+
+  const closeBtn = document.querySelector(".closeModal");
+  if (closeBtn) closeBtn.addEventListener("click", closeModal);
+
+  if (modal) {
+    modal.addEventListener("click", (event) => {
+      if (event.target === modal) closeModal();
+    });
+  }
+
+  setupNetworkMonitoring();
+
+  const sortDropdown = document.getElementById("sortChannels");
+  if (sortDropdown) {
+    sortDropdown.addEventListener("change", handleSortChange);
+  }
+
+  let savedChannels = localStorage.getItem("allChannelsData");
+
+  if (savedChannels) {
+    try {
+      allChannels = JSON.parse(savedChannels);
+      log(`Successfully loaded ${allChannels.length} channels from localStorage.`);
+    } catch (e) {
+      log("Invalid 'allChannelsData' found in localStorage. The data will be ignored.", true);
+      log(`Error details: ${e.message}`, true);
+      console.warn("Invalid allChannelsData in localStorage, ignoring.", e);
+      allChannels = [];
+    }
+  } else {
+    log("No previous 'allChannelsData' found in localStorage. Starting fresh.");
+    allChannels = [];
+  }
+
+  API_KEY = getStoredAPIKey();
+
+  if (hasValidAPIKey()) {
+    console.log('✅ Using stored API key');
+  } else {
+    console.log('ℹ️ No valid API key stored');
+  }
+
+  startChannelAutoUpdate();
+
+  allChannels.forEach((ch, i) => {
+    if (!ch.number) ch.number = i + 1;
+  });
+
+  loadWatchTime();
+
+  const savedSort = localStorage.getItem("defaultSortMethod") || "none";
+  sortChannelsAndRender(savedSort);
+  if (sortDropdown) sortDropdown.value = savedSort;
+
+  renderFavorites();
+  renderRecentlyWatched();
+  updateFavoriteIcons();
+  updateAllChannelItems();
+
+  if (loadingElement) loadingElement.style.display = "none";
+  if (contentGrid) contentGrid.style.display = "grid";
+
+  if (lastFocusedElement && lastFocusedElement.isConnected) {
+    lastFocusedElement.focus();
+  } else if (allChannelItems.length > 0) {
+    allChannelItems[0].focus();
+  }
+}
 
 function toggleFullscreen() {
   if (playerInstance) {
@@ -1097,7 +1025,6 @@ function extractChannelId(feedUrl) {
   return match ? match[1] : null;
 }
 
-// === Convert item (RSS or API) into channel object ===
 function youtubeItemToChannel(videoId, title, feed) {
   return {
     url: `https://www.youtube.com/watch?v=${videoId}`,
@@ -1108,9 +1035,6 @@ function youtubeItemToChannel(videoId, title, feed) {
   };
 }
 
-/* ----------------------------------------------------
-   📌 1. Load latest uploads (via RSS)
-   ---------------------------------------------------- */
 async function loadYouTubeLatestFeeds() {
   let feeds = [];
 
@@ -1126,24 +1050,20 @@ async function loadYouTubeLatestFeeds() {
 
   for (const [index, feed] of feeds.entries()) {
     try {
-      // ⭐ RATE LIMITING: Add 100ms delay between requests
       if (index > 0) {
         await new Promise(resolve => setTimeout(resolve, 200));
       }
 
-      // ✅ CHECK CACHE FIRST
       const cacheKey = `rss_${feed.url}`;
       const cached = rssCache.get(cacheKey);
 
       if (cached && (Date.now() - cached.timestamp < CACHE_DURATION)) {
-        // Use cached data
         log(`📦 Using cached data for ${feed.name}`);
         processRSSData(cached.data, feed);
         continue;
       }
 
       const feedUrl = "https://api.rss2json.com/v1/api.json?rss_url=" + encodeURIComponent(feed.url);
-
       const res = await fetch(feedUrl);
 
       if (!res.ok) {
@@ -1152,7 +1072,6 @@ async function loadYouTubeLatestFeeds() {
 
       const data = await res.json();
 
-      // ✅ STORE IN CACHE
       rssCache.set(cacheKey, {
         data: data,
         timestamp: Date.now()
@@ -1166,12 +1085,7 @@ async function loadYouTubeLatestFeeds() {
   }
 }
 
-/* ----------------------------------------------------
-   📌 2. Load live streams (via YouTube API v3)
-   ---------------------------------------------------- */
-
 async function loadYouTubeLiveFeeds() {
-  // ✅ CHECK FOR API KEY FIRST
   if (!API_KEY) {
     API_KEY = getStoredAPIKey();
   }
@@ -1179,7 +1093,7 @@ async function loadYouTubeLiveFeeds() {
   if (!API_KEY || !hasValidAPIKey()) {
     console.log('🔑 No valid API key found, prompting user...');
     showAPIKeyModal();
-    return; // Stop execution until API key is provided
+    return;
   }
 
   let live = [];
@@ -1201,12 +1115,10 @@ async function loadYouTubeLiveFeeds() {
 
   for (const [index, feed] of live.entries()) {
     try {
-      // ⭐ RATE LIMITING: Add 200ms delay for YouTube API
       if (index > 0) {
         await new Promise(resolve => setTimeout(resolve, 200));
       }
 
-      // ✅ STOP if API quota exceeded
       if (apiQuotaExceeded) {
         log(`⏸️ Skipping ${feed.name} - API quota exceeded`);
         failedUpdates++;
@@ -1219,12 +1131,10 @@ async function loadYouTubeLiveFeeds() {
         continue;
       }
 
-      // ✅ CHECK CACHE FIRST - USING liveCache
       const cacheKey = `live_${channelId}`;
       const cached = liveCache.get(cacheKey);
 
       if (cached && (Date.now() - cached.timestamp < CACHE_DURATION)) {
-        // Use cached data
         log(`📦 Using cached live data for ${feed.name}`);
         cacheHits++;
 
@@ -1241,7 +1151,6 @@ async function loadYouTubeLiveFeeds() {
 
       if (!res.ok) {
         if (res.status === 403) {
-          // ✅ MARK quota exceeded and skip remaining channels
           apiQuotaExceeded = true;
           log("🚫 YouTube API quota exceeded. Stopping live stream updates.");
           failedUpdates++;
@@ -1256,7 +1165,6 @@ async function loadYouTubeLiveFeeds() {
 
       const data = await res.json();
 
-      // Check for YouTube API specific errors
       if (data.error) {
         if (data.error.code === 403) {
           apiQuotaExceeded = true;
@@ -1267,7 +1175,6 @@ async function loadYouTubeLiveFeeds() {
         throw new Error(`YouTube API Error for ${feed.name}: ${data.error.message}`);
       }
 
-      // ✅ STORE IN CACHE - USING liveCache
       let cacheData = null;
 
       if (data.items && data.items.length > 0) {
@@ -1287,11 +1194,9 @@ async function loadYouTubeLiveFeeds() {
         log(`✅ ${feed.name} Successfully updated`);
       } else {
         log(`ℹ️ No live stream found for ${feed.name}`);
-        // Cache "no stream" result too
         cacheData = null;
       }
 
-      // ✅ STORE IN CACHE - USING liveCache
       liveCache.set(cacheKey, {
         data: cacheData,
         timestamp: Date.now()
@@ -1308,23 +1213,12 @@ async function loadYouTubeLiveFeeds() {
     }
   }
 
-  // ✅ Summary log
   log(`Live streams update completed: ${successfulUpdates} successful, ${failedUpdates} failed, ${cacheHits} cache hits`);
 
-  // ✅ If ALL updates failed due to quota, throw error to prevent cache update
   if (successfulUpdates === 0 && failedUpdates > 0 && apiQuotaExceeded) {
     throw new Error("YouTube API quota exceeded - no live streams updated");
   }
 }
-
-
-/* ----------------------------------------------------
-   MASTER FUNCTION: Combines All Updates
-   ---------------------------------------------------- */
-/**
- * Executes both the RSS and Live API updates, then saves and renders the final data.
- * @returns {Promise<boolean>} True if all updates were successful, false otherwise.
- */
 
 async function loadAllChannelFeeds() {
   log("Starting full channel update (RSS and Live API)...");
@@ -1338,11 +1232,9 @@ async function loadAllChannelFeeds() {
     await loadYouTubeLiveFeeds();
     log("2/2: Live streams loaded successfully.");
 
-    // Final steps executed ONLY ONCE after both methods complete
     log("Saving updated channel data to localStorage...");
     localStorage.setItem("allChannelsData", JSON.stringify(allChannels));
 
-    // Execute all rendering and UI update functions
     log("Rendering UI and updating components...");
     renderChannels(allChannels);
     updateFavoriteIcons();
@@ -1355,7 +1247,6 @@ async function loadAllChannelFeeds() {
   } catch (e) {
     log(`❌ Critical error during full channel update: ${e.message}`, true);
 
-    // ✅ Still update the UI with whatever data we have
     log("Updating UI with available data...");
     localStorage.setItem("allChannelsData", JSON.stringify(allChannels));
     renderChannels(allChannels);
@@ -1367,13 +1258,6 @@ async function loadAllChannelFeeds() {
   }
 }
 
-/* ----------------------------------------------------
-   AUTO-TRIGGER MECHANISM
-   ---------------------------------------------------- */
-/**
- * Initializes a recurring check to automatically trigger the channel update
- * when the 8-hour cache window has expired.
- */
 function startChannelAutoUpdate() {
   console.log(`Auto-update service initializing. Check interval set to ${CHECK_INTERVAL_MS / 60000} minutes.`);
 
@@ -1381,7 +1265,6 @@ function startChannelAutoUpdate() {
     const lastUpdateTimestamp = parseInt(localStorage.getItem(CACHE_KEY) || "0");
     const currentTime = Date.now();
 
-    // ✅ FIXED: Calculate time since last SUCCESSFUL update
     const timeSinceLastUpdate = currentTime - lastUpdateTimestamp;
     const shouldUpdate = lastUpdateTimestamp === 0 || timeSinceLastUpdate >= EIGHT_HOURS_MS;
 
@@ -1404,15 +1287,12 @@ function startChannelAutoUpdate() {
           log(`New Last Update Time: ${newLastUpdateDate}`);
           log(`Next Scheduled Check (Expiry): ${newNextUpdateDate}`);
         } else {
-          // ✅ FIX: Don't update cache timestamp if update failed
           log("❌ Update failed. Cache timestamp preserved for retry.", true);
 
-          // ✅ Calculate when we can retry (wait at least 1 hour before retrying after quota error)
           const retryTime = new Date(currentTime + (60 * 60 * 1000)).toLocaleString();
           log(`Next retry attempt after: ${retryTime}`);
         }
       } catch (error) {
-        // ✅ FIX: Handle unexpected errors without updating cache
         log(`❌ Unexpected error during update: ${error.message}`, true);
         log("Cache timestamp preserved for retry.");
       }
@@ -1430,7 +1310,6 @@ function startChannelAutoUpdate() {
     }
   };
 
-  // Log initial status
   const initialLastUpdate = parseInt(localStorage.getItem(CACHE_KEY) || "0");
   if (initialLastUpdate === 0) {
     log("Last Update: Never. Starting initial data fetch now.");
@@ -1446,25 +1325,20 @@ function startChannelAutoUpdate() {
     log(`Time remaining: ${minutesRemaining} minutes`);
   }
 
-  // Run immediately and set interval
   checkAndUpdate();
   setInterval(checkAndUpdate, CHECK_INTERVAL_MS);
 
   console.log(`Auto-update service started. Checking every ${CHECK_INTERVAL_MS / 60000} minutes.`);
 }
 
-// You must call this function when your HTML page loads to start the service:
-// startChannelAutoUpdate();
-
-// Utility to log messages to the UI
 function log(message, isError = false) {
   const logArea = document.getElementById("logArea");
+  if (!logArea) return;
+
   const prefix = isError ? "Error: " : "Info: ";
-  logArea.innerHTML += `<div class="${isError ? "text-red-400" : ""
-    }">${prefix}[${new Date().toLocaleTimeString()}] ${message}</div>`;
+  logArea.innerHTML += `<div class="${isError ? "text-red-400" : ""}">${prefix}[${new Date().toLocaleTimeString()}] ${message}</div>`;
   logArea.scrollTop = logArea.scrollHeight;
 }
-
 
 function updateOrAddChannel(channelObj) {
   const existingIndex = allChannels.findIndex(ch => ch.name === channelObj.name);
@@ -1478,23 +1352,21 @@ function updateOrAddChannel(channelObj) {
 function cleanup() {
   console.log("🧹 Performing cleanup...");
 
-  // Stop tracking FIRST
   stopWatching();
 
-  // Clear all timeouts
   if (overlayTimeoutShow) clearTimeout(overlayTimeoutShow);
   if (overlayTimeoutHide) clearTimeout(overlayTimeoutHide);
   if (numberTimeout) clearTimeout(numberTimeout);
   if (navigationDebounce) clearTimeout(navigationDebounce);
 
-  // Player cleanup
+
   if (playerInstance) {
     try {
       playerInstance.pause();
-      // Remove all event listeners first
       playerInstance.off('error');
       playerInstance.off('waiting');
       playerInstance.off('playing');
+      playerInstance.off('loadedmetadata');
       playerInstance.dispose();
     } catch (e) {
       console.warn('Error during player disposal:', e);
@@ -1502,7 +1374,6 @@ function cleanup() {
     playerInstance = null;
   }
 
-  // DOM cleanup
   const currentVideoElement = document.getElementById("player");
   if (currentVideoElement) {
     currentVideoElement.remove();
@@ -1513,31 +1384,28 @@ function cleanup() {
     videoContainer.innerHTML = '';
   }
 
-  // Clear all status messages and notifications
+    // Remove modal event listeners
+  const closeBtn = document.querySelector(".closeModal");
+  if (closeBtn) {
+    closeBtn.removeEventListener("click", closeModal);
+  }
+
   document.querySelectorAll('.network-status, .error-notification, .play-fallback-overlay').forEach(el => {
     el.remove();
   });
 
-  // Restore focus
   if (lastFocusedElement && lastFocusedElement.isConnected) {
     lastFocusedElement.focus();
   } else if (allChannelItems.length > 0) {
     allChannelItems[0].focus();
   }
 
-  // Optional: Clear caches (be careful with this)
-  // rssCache.clear();
-  // liveCache.clear();
+
 }
-
-// Call on page unload
-window.addEventListener('beforeunload', cleanup);
-
 
 function processRSSData(data, feed) {
   if (!data.items || data.items.length === 0) return;
 
-  // Find the latest NON-Shorts video
   let latestValid = data.items.find(
     (item) => !item.link.includes("/shorts/")
   );
@@ -1552,10 +1420,9 @@ function processRSSData(data, feed) {
   log(`✅ ${feed.name} Successfully updated`);
 }
 
-// ✅ API KEY MANAGEMENT FUNCTIONS
 function saveAPIKey(apiKey) {
   if (apiKey && apiKey.trim()) {
-    localStorage.setItem(API_KEY_STORAGE_KEY, apiKey.trim());
+    localStorage.setItem(API_KEY_STORAGE_KEY, btoa(apiKey.trim()));
     API_KEY = apiKey.trim();
     console.log("✅ API Key saved to localStorage");
     return true;
@@ -1569,7 +1436,7 @@ function getStoredAPIKey() {
 
 function hasValidAPIKey() {
   const storedKey = getStoredAPIKey();
-  return storedKey && storedKey.length > 10; // Basic validation
+  return storedKey && storedKey.length > 10;
 }
 
 function clearAPIKey() {
@@ -1578,27 +1445,24 @@ function clearAPIKey() {
   console.log("🗑️ API Key cleared from localStorage");
 }
 
-// ✅ API KEY MODAL MANAGEMENT
 function showAPIKeyModal() {
-  const modal = document.getElementById('apiKeyModal');
-  if (!modal) return;
+  const apiModal = document.getElementById('apiKeyModal');
+  if (!apiModal) return;
 
-  modal.style.display = 'flex';
+  apiModal.style.display = 'flex';
 
-  // Focus on input
   const apiKeyInput = document.getElementById('apiKeyInput');
   if (apiKeyInput) {
     apiKeyInput.focus();
   }
 
-  // Set up event listeners
   setupAPIKeyModalEvents();
 }
 
 function hideAPIKeyModal() {
-  const modal = document.getElementById('apiKeyModal');
-  if (modal) {
-    modal.style.display = 'none';
+  const apiModal = document.getElementById('apiKeyModal');
+  if (apiModal) {
+    apiModal.style.display = 'none';
   }
 }
 
@@ -1610,7 +1474,7 @@ function setupAPIKeyModalEvents() {
   if (submitBtn) {
     submitBtn.onclick = function () {
       const apiKey = apiKeyInput.value.trim();
-      const remember = document.getElementById('rememberKey').checked;
+      const remember = document.getElementById('rememberKey')?.checked;
 
       if (!apiKey) {
         alert('Please enter a valid API key');
@@ -1620,15 +1484,12 @@ function setupAPIKeyModalEvents() {
       if (remember) {
         saveAPIKey(apiKey);
       } else {
-        API_KEY = apiKey; // Use temporarily without saving
+        API_KEY = apiKey;
       }
 
       hideAPIKeyModal();
-
-      // Notify user
       showNotification('API Key saved successfully!', 'success');
 
-      // Optionally start live feeds update
       setTimeout(() => {
         loadYouTubeLiveFeeds().catch(console.error);
       }, 1000);
@@ -1651,38 +1512,28 @@ function setupAPIKeyModalEvents() {
   }
 }
 
-
-// ✅ ADD SETTINGS MANAGEMENT
 function showAPISettings() {
-  const modal = document.getElementById('apiKeyModal');
+  const apiModal = document.getElementById('apiKeyModal');
   const apiKeyInput = document.getElementById('apiKeyInput');
   const rememberCheckbox = document.getElementById('rememberKey');
 
-  if (modal && apiKeyInput) {
-    // Pre-fill with current key (masked)
+  if (apiModal && apiKeyInput) {
     const currentKey = getStoredAPIKey();
     apiKeyInput.value = currentKey ? '••••••••' : '';
-    rememberCheckbox.checked = true;
+    if (rememberCheckbox) rememberCheckbox.checked = true;
 
-    modal.style.display = 'flex';
+    apiModal.style.display = 'flex';
   }
 }
 
-// ✅ ADD NOTIFICATION FUNCTION
 function showNotification(message, type = 'info') {
-  // Create or use existing notification system
   console.log(`📢 ${type.toUpperCase()}: ${message}`);
-  // You can implement a proper UI notification here
+  log(message, type === 'error');
 }
-
-
-
 
 function setupNetworkMonitoring() {
   window.addEventListener('online', handleNetworkRestored);
   window.addEventListener('offline', handleNetworkLost);
-
-  // Optional: Periodic connection quality check
   setInterval(checkConnectionQuality, 30000);
 }
 
@@ -1704,10 +1555,8 @@ async function handleNetworkRestored() {
 
   showNetworkStatus('Connection restored', 'success');
 
-  // Try to resume playback
   if (playerInstance && playerInstance.paused() && currentVideoUrl) {
     try {
-      // Small delay to ensure network is stable
       setTimeout(async () => {
         await playerInstance.play();
         showNetworkStatus('Resuming playback...', 'success');
@@ -1722,7 +1571,6 @@ async function handleNetworkRestored() {
 }
 
 function showNetworkStatus(message, type = 'info') {
-  // Remove existing status if any
   const existingStatus = document.querySelector('.network-status');
   if (existingStatus) {
     existingStatus.remove();
@@ -1736,7 +1584,7 @@ function showNetworkStatus(message, type = 'info') {
     top: 20px;
     left: 50%;
     transform: translateX(-50%);
-    background: ${type === 'error' ? '#9b2c2c' : type === 'warning' ? '#ef6c00' : '#276749'};
+    background: ${type === 'error' ? '#9b2c2c' : type === 'warning' ? '#ef6c00' : '#3c6300'};
     color: white;
     padding: 10px 20px;
     border-radius: 4px;
@@ -1759,15 +1607,17 @@ function showNetworkStatus(message, type = 'info') {
   }, 3000);
 }
 
-// Add this anywhere in your global scope (recommended at the bottom)
-document.addEventListener('visibilitychange', function() {
+window.addEventListener("DOMContentLoaded", async () => {
+  await initialize();
+});
+
+window.addEventListener('beforeunload', cleanup);
+
+document.addEventListener('visibilitychange', function () {
   if (document.hidden) {
-    // Tab hidden - pause player to save resources
     if (playerInstance && !playerInstance.paused()) {
       playerInstance.pause();
       console.log('Video paused due to tab switch');
     }
   }
-  // Note: We don't auto-resume when tab becomes visible
-  // as this can be annoying for users
 });
