@@ -44,7 +44,7 @@ function selectChannel(url, name, image, description, number, isLive) {
 
   const currentSessionId = Date.now();
   sessionId = currentSessionId;
-
+  
   console.log(`🚀 START Session ${currentSessionId}: ${name}`, {
     url, isLive, timestamp: new Date().toISOString()
   });
@@ -60,24 +60,22 @@ function selectChannel(url, name, image, description, number, isLive) {
     const numberEl = document.getElementById("channel-number");
     if (numberEl) numberEl.textContent = number ? number + "." : "";
 
+    // ✅ Clean up old player FIRST
     if (playerInstance) {
       playerInstance.dispose();
       playerInstance = null;
     }
 
+    // Remove old video element
     const oldPlayerEl = document.getElementById("player");
     if (oldPlayerEl) {
       oldPlayerEl.remove();
     }
 
-    const newVideoEl = document.createElement("video");
-    newVideoEl.id = "player";
-    newVideoEl.className = "video-js vjs-default-skin";
-    newVideoEl.controls = false;
-    newVideoEl.preload = "auto";
-    newVideoEl.setAttribute("data-setup", "{}");
-    videoContainer.appendChild(newVideoEl);
+    // ✅ SHOW LOADING STATE
+    showLoadingState(videoContainer, name);
 
+    // Update overlay info
     if (imageElement) imageElement.src = image || "";
     if (videoTitleElement) videoTitleElement.textContent = name || "Unknown Channel";
     if (channelInfoElement) channelInfoElement.textContent = description || "";
@@ -100,6 +98,19 @@ function selectChannel(url, name, image, description, number, isLive) {
       source = { src: url, type: "application/x-mpegURL" };
     }
 
+    // ✅ Create new video element AFTER showing loading
+    const newVideoEl = document.createElement("video");
+    newVideoEl.id = "player";
+    newVideoEl.className = "video-js vjs-default-skin";
+    newVideoEl.controls = false;
+    newVideoEl.preload = "auto";
+    newVideoEl.setAttribute("data-setup", "{}");
+    
+    // ✅ CLEAR loading and add video element
+    videoContainer.innerHTML = '';
+    videoContainer.appendChild(newVideoEl);
+
+    // ✅ Initialize Video.js AFTER element is in DOM
     playerInstance = videojs("player", {
       techOrder: isYouTube ? ["youtube"] : ["html5"],
       sources: [source],
@@ -119,7 +130,7 @@ function selectChannel(url, name, image, description, number, isLive) {
 
     playerInstance.ready(function () {
       if (sessionId !== currentSessionId) return;
-
+      
       playerInstance.play().catch((e) => {
         console.warn("Autoplay blocked:", e);
         showPlayButtonFallback();
@@ -143,6 +154,23 @@ function selectChannel(url, name, image, description, number, isLive) {
   }
 
   startWatching(name);
+}
+
+// ✅ Helper function for loading state
+function showLoadingState(container, channelName) {
+  const loadingDiv = document.createElement('div');
+  loadingDiv.className = 'loading-state';
+
+  const spinner = document.createElement('div');
+  spinner.className = 'spinner';
+
+  const text = document.createElement('p');
+  text.textContent = `Loading ${channelName}...`;
+
+  loadingDiv.appendChild(spinner);
+  loadingDiv.appendChild(text);
+
+  container.appendChild(loadingDiv); // ✅ APPEND, don't replace
 }
 
 function showErrorToUser(message) {
@@ -1384,11 +1412,6 @@ function cleanup() {
     videoContainer.innerHTML = '';
   }
 
-    // Remove modal event listeners
-  const closeBtn = document.querySelector(".closeModal");
-  if (closeBtn) {
-    closeBtn.removeEventListener("click", closeModal);
-  }
 
   document.querySelectorAll('.network-status, .error-notification, .play-fallback-overlay').forEach(el => {
     el.remove();
