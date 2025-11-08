@@ -1736,7 +1736,7 @@ function showNetworkStatus(message, type = 'info') {
     top: 20px;
     left: 50%;
     transform: translateX(-50%);
-    background: ${type === 'error' ? '#ff4444' : type === 'warning' ? '#ffaa00' : '#44ff44'};
+    background: ${type === 'error' ? '#9b2c2c' : type === 'warning' ? '#ef6c00' : '#276749'};
     color: white;
     padding: 10px 20px;
     border-radius: 4px;
