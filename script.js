@@ -1,3 +1,9 @@
+// At the top with your other constants
+const AUTO_UPDATE_KEY = "autoUpdateEnabled";
+const UPDATE_INTERVAL_KEY = "updateIntervalHours";
+let autoUpdateInterval = null;
+let isAutoUpdateEnabled = true;
+let updateIntervalHours = 8;
 const MAX_RECENT = 18;
 const favoritesKey = "favorites";
 const recentlyWatchedKey = "recentlyWatched";
@@ -986,6 +992,9 @@ async function initialize() {
     sortDropdown.addEventListener("change", handleSortChange);
   }
 
+  // ✅ Setup Settings Modal
+  setupSettingsModal();
+
   let savedChannels = localStorage.getItem("allChannelsData");
 
   if (savedChannels) {
@@ -1286,15 +1295,33 @@ async function loadAllChannelFeeds() {
   }
 }
 
+// ✅ Modified startChannelAutoUpdate function
 function startChannelAutoUpdate() {
-  console.log(`Auto-update service initializing. Check interval set to ${CHECK_INTERVAL_MS / 60000} minutes.`);
+  // Load settings from localStorage
+  const savedAutoUpdate = localStorage.getItem(AUTO_UPDATE_KEY);
+  const savedInterval = localStorage.getItem(UPDATE_INTERVAL_KEY);
+
+  isAutoUpdateEnabled = savedAutoUpdate === null ? true : savedAutoUpdate === "true";
+  updateIntervalHours = savedInterval ? parseInt(savedInterval) : 8;
+
+  // Calculate interval in milliseconds
+  const intervalMs = updateIntervalHours * 60 * 60 * 1000;
+  const cacheExpiryMs = updateIntervalHours * 60 * 60 * 1000;
+
+  console.log(`Auto-update service initializing. Enabled: ${isAutoUpdateEnabled}, Interval: ${updateIntervalHours}h`);
 
   const checkAndUpdate = async () => {
+    // Check if auto-update is still enabled
+    if (!isAutoUpdateEnabled) {
+      console.log('Auto-update is disabled. Skipping check.');
+      return;
+    }
+
     const lastUpdateTimestamp = parseInt(localStorage.getItem(CACHE_KEY) || "0");
     const currentTime = Date.now();
 
     const timeSinceLastUpdate = currentTime - lastUpdateTimestamp;
-    const shouldUpdate = lastUpdateTimestamp === 0 || timeSinceLastUpdate >= EIGHT_HOURS_MS;
+    const shouldUpdate = lastUpdateTimestamp === 0 || timeSinceLastUpdate >= cacheExpiryMs;
 
     console.log(`[DEBUG] Last update: ${lastUpdateTimestamp}, Current: ${currentTime}, Time since: ${timeSinceLastUpdate}, Should update: ${shouldUpdate}`);
 
@@ -1309,7 +1336,7 @@ function startChannelAutoUpdate() {
           localStorage.setItem(CACHE_KEY, newTimestamp.toString());
 
           const newLastUpdateDate = new Date(newTimestamp).toLocaleString();
-          const newNextUpdateDate = new Date(newTimestamp + EIGHT_HOURS_MS).toLocaleString();
+          const newNextUpdateDate = new Date(newTimestamp + cacheExpiryMs).toLocaleString();
 
           log("✅ Channels updated successfully.");
           log(`New Last Update Time: ${newLastUpdateDate}`);
@@ -1325,7 +1352,7 @@ function startChannelAutoUpdate() {
         log("Cache timestamp preserved for retry.");
       }
     } else {
-      const timeRemaining = EIGHT_HOURS_MS - timeSinceLastUpdate;
+      const timeRemaining = cacheExpiryMs - timeSinceLastUpdate;
       const minutesRemaining = Math.ceil(timeRemaining / (60 * 1000));
       const hoursRemaining = Math.floor(minutesRemaining / 60);
       const minsRemaining = minutesRemaining % 60;
@@ -1343,7 +1370,7 @@ function startChannelAutoUpdate() {
     log("Last Update: Never. Starting initial data fetch now.");
   } else {
     const lastUpdateDate = new Date(initialLastUpdate).toLocaleString();
-    const nextExpiry = initialLastUpdate + EIGHT_HOURS_MS;
+    const nextExpiry = initialLastUpdate + cacheExpiryMs;
     const nextUpdateDate = new Date(nextExpiry).toLocaleString();
     const timeRemaining = nextExpiry - Date.now();
     const minutesRemaining = Math.ceil(timeRemaining / (60 * 1000));
@@ -1353,11 +1380,17 @@ function startChannelAutoUpdate() {
     log(`Time remaining: ${minutesRemaining} minutes`);
   }
 
-  checkAndUpdate();
-  setInterval(checkAndUpdate, CHECK_INTERVAL_MS);
+  // Run immediately if enabled
+  if (isAutoUpdateEnabled) {
+    checkAndUpdate();
+  }
 
-  console.log(`Auto-update service started. Checking every ${CHECK_INTERVAL_MS / 60000} minutes.`);
+  // Store interval ID so we can clear it
+  autoUpdateInterval = setInterval(checkAndUpdate, intervalMs);
+
+  console.log(`Auto-update service started. Checking every ${updateIntervalHours} hours. Status: ${isAutoUpdateEnabled ? 'Enabled' : 'Disabled'}`);
 }
+
 
 function log(message, isError = false) {
   const logArea = document.getElementById("logArea");
@@ -1381,12 +1414,14 @@ function cleanup() {
   console.log("🧹 Performing cleanup...");
 
   stopWatching();
+  stopAutoUpdateService(); // ✅ Stop auto-update service
 
   if (overlayTimeoutShow) clearTimeout(overlayTimeoutShow);
   if (overlayTimeoutHide) clearTimeout(overlayTimeoutHide);
   if (numberTimeout) clearTimeout(numberTimeout);
   if (navigationDebounce) clearTimeout(navigationDebounce);
 
+  //cleanupChannelItems();
 
   if (playerInstance) {
     try {
@@ -1412,7 +1447,6 @@ function cleanup() {
     videoContainer.innerHTML = '';
   }
 
-
   document.querySelectorAll('.network-status, .error-notification, .play-fallback-overlay').forEach(el => {
     el.remove();
   });
@@ -1422,8 +1456,6 @@ function cleanup() {
   } else if (allChannelItems.length > 0) {
     allChannelItems[0].focus();
   }
-
-
 }
 
 function processRSSData(data, feed) {
@@ -1468,6 +1500,7 @@ function clearAPIKey() {
   console.log("🗑️ API Key cleared from localStorage");
 }
 
+// ✅ Show API Key Modal (UPDATED)
 function showAPIKeyModal() {
   const apiModal = document.getElementById('apiKeyModal');
   if (!apiModal) return;
@@ -1476,12 +1509,23 @@ function showAPIKeyModal() {
 
   const apiKeyInput = document.getElementById('apiKeyInput');
   if (apiKeyInput) {
-    apiKeyInput.focus();
+    // Clear input or show masked existing key
+    const existingKey = getStoredAPIKey();
+    if (existingKey) {
+      apiKeyInput.value = existingKey;
+      apiKeyInput.type = 'password';
+    } else {
+      apiKeyInput.value = '';
+    }
+    
+    // Focus on input after a small delay for animation
+    setTimeout(() => apiKeyInput.focus(), 100);
   }
 
   setupAPIKeyModalEvents();
 }
 
+// ✅ Hide API Key Modal (UPDATED)
 function hideAPIKeyModal() {
   const apiModal = document.getElementById('apiKeyModal');
   if (apiModal) {
@@ -1489,18 +1533,36 @@ function hideAPIKeyModal() {
   }
 }
 
+// ✅ Setup API Key Modal Events (UPDATED)
 function setupAPIKeyModalEvents() {
   const submitBtn = document.getElementById('submitApiKey');
   const skipBtn = document.getElementById('skipApiKey');
   const apiKeyInput = document.getElementById('apiKeyInput');
+  const toggleVisibilityBtn = document.getElementById('toggleApiKeyVisibility');
+  const apiModal = document.getElementById('apiKeyModal');
 
+  // Remove existing listeners to prevent duplicates
   if (submitBtn) {
-    submitBtn.onclick = function () {
+    const newSubmitBtn = submitBtn.cloneNode(true);
+    submitBtn.parentNode.replaceChild(newSubmitBtn, submitBtn);
+    
+    newSubmitBtn.addEventListener('click', function () {
       const apiKey = apiKeyInput.value.trim();
       const remember = document.getElementById('rememberKey')?.checked;
 
+      // Validate API key
       if (!apiKey) {
-        alert('Please enter a valid API key');
+        apiKeyInput.classList.add('invalid');
+        showNotification('Please enter a valid API key', 'error');
+        setTimeout(() => apiKeyInput.classList.remove('invalid'), 400);
+        return;
+      }
+
+      // Basic validation - YouTube API keys are usually 39 characters
+      if (apiKey.length < 30) {
+        apiKeyInput.classList.add('invalid');
+        showNotification('API key seems too short. Please check it.', 'error');
+        setTimeout(() => apiKeyInput.classList.remove('invalid'), 400);
         return;
       }
 
@@ -1511,42 +1573,75 @@ function setupAPIKeyModalEvents() {
       }
 
       hideAPIKeyModal();
-      showNotification('API Key saved successfully!', 'success');
+      showNotification('✅ API Key saved successfully!', 'success');
 
+      // Start live feeds update after a short delay
       setTimeout(() => {
+        log('🔄 Starting live feeds update with new API key...');
         loadYouTubeLiveFeeds().catch(console.error);
       }, 1000);
-    };
+    });
   }
 
   if (skipBtn) {
-    skipBtn.onclick = function () {
+    const newSkipBtn = skipBtn.cloneNode(true);
+    skipBtn.parentNode.replaceChild(newSkipBtn, skipBtn);
+    
+    newSkipBtn.addEventListener('click', function () {
       hideAPIKeyModal();
-      showNotification('Live channels update skipped. You can add API key later.', 'info');
-    };
+      showNotification('⏭️ Live channels update skipped', 'info');
+      log('ℹ️ User skipped API key configuration');
+    });
   }
 
-  if (apiKeyInput) {
-    apiKeyInput.addEventListener('keypress', function (e) {
-      if (e.key === 'Enter') {
-        submitBtn.click();
+  // Toggle password visibility
+  if (toggleVisibilityBtn && apiKeyInput) {
+    const newToggleBtn = toggleVisibilityBtn.cloneNode(true);
+    toggleVisibilityBtn.parentNode.replaceChild(newToggleBtn, toggleVisibilityBtn);
+    
+    newToggleBtn.addEventListener('click', function () {
+      if (apiKeyInput.type === 'password') {
+        apiKeyInput.type = 'text';
+        newToggleBtn.textContent = '🙈 Hide';
+      } else {
+        apiKeyInput.type = 'password';
+        newToggleBtn.textContent = '👁️ Show';
       }
     });
   }
+
+  // Enter key to submit
+  if (apiKeyInput) {
+    apiKeyInput.addEventListener('keypress', function (e) {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        document.getElementById('submitApiKey').click();
+      }
+    });
+  }
+
+  // Close on backdrop click
+  if (apiModal) {
+    apiModal.addEventListener('click', (e) => {
+      if (e.target === apiModal) {
+        hideAPIKeyModal();
+      }
+    });
+  }
+
+  // ESC key to close
+  document.addEventListener('keydown', function escapeHandler(e) {
+    if (e.key === 'Escape' && apiModal.style.display === 'flex') {
+      hideAPIKeyModal();
+      document.removeEventListener('keydown', escapeHandler);
+    }
+  });
 }
 
+
+// ✅ Add API Key management to Settings Modal
 function showAPISettings() {
-  const apiModal = document.getElementById('apiKeyModal');
-  const apiKeyInput = document.getElementById('apiKeyInput');
-  const rememberCheckbox = document.getElementById('rememberKey');
-
-  if (apiModal && apiKeyInput) {
-    const currentKey = getStoredAPIKey();
-    apiKeyInput.value = currentKey ? '••••••••' : '';
-    if (rememberCheckbox) rememberCheckbox.checked = true;
-
-    apiModal.style.display = 'flex';
-  }
+  showAPIKeyModal();
 }
 
 function showNotification(message, type = 'info') {
@@ -1644,3 +1739,224 @@ document.addEventListener('visibilitychange', function () {
     }
   }
 });
+
+// ✅ Show Settings Modal
+function showSettingsModal() {
+  const settingsModal = document.getElementById('settingsModal');
+  if (!settingsModal) return;
+
+  settingsModal.style.display = 'flex';
+
+  // Load current settings
+  const autoUpdateToggle = document.getElementById('autoUpdateToggle');
+  const updateIntervalSelect = document.getElementById('updateInterval');
+
+  if (autoUpdateToggle) {
+    autoUpdateToggle.checked = isAutoUpdateEnabled;
+  }
+
+  if (updateIntervalSelect) {
+    updateIntervalSelect.value = updateIntervalHours.toString();
+  }
+
+  // ✅ Update description text when opening modal
+  updateIntervalDescriptionText(updateIntervalHours);
+
+  // Update last update display
+  updateLastUpdateDisplay();
+}
+
+// ✅ Hide Settings Modal
+function hideSettingsModal() {
+  const settingsModal = document.getElementById('settingsModal');
+  if (settingsModal) {
+    settingsModal.style.display = 'none';
+  }
+}
+
+// ✅ Toggle Auto-Update
+function toggleAutoUpdate(enabled) {
+  isAutoUpdateEnabled = enabled;
+  localStorage.setItem(AUTO_UPDATE_KEY, enabled.toString());
+
+  if (enabled) {
+    log('✅ Auto-update enabled');
+    showNotification('Auto-update enabled', 'success');
+    
+    // Restart auto-update service
+    stopAutoUpdateService();
+    startChannelAutoUpdate();
+  } else {
+    log('⏸️ Auto-update disabled');
+    showNotification('Auto-update disabled', 'info');
+  }
+}
+
+// ✅ Change Update Interval (UPDATED)
+function changeUpdateInterval(hours) {
+  updateIntervalHours = parseInt(hours);
+  localStorage.setItem(UPDATE_INTERVAL_KEY, hours.toString());
+
+  // ✅ Update the description text dynamically
+  updateIntervalDescriptionText(hours);
+
+  log(`⏱️ Update interval changed to ${hours} hours`);
+  showNotification(`Update interval set to ${hours} hours`, 'success');
+
+  // Restart auto-update service with new interval
+  if (isAutoUpdateEnabled) {
+    stopAutoUpdateService();
+    startChannelAutoUpdate();
+  }
+}
+
+// ✅ Manual Update
+async function manualUpdate() {
+  const manualUpdateBtn = document.getElementById('manualUpdateBtn');
+  if (!manualUpdateBtn) return;
+
+  // Disable button and show loading state
+  manualUpdateBtn.disabled = true;
+  const originalText = manualUpdateBtn.textContent;
+  manualUpdateBtn.textContent = 'Updating...';
+
+  try {
+    log('🔄 Manual update initiated...');
+    
+    const success = await loadAllChannelFeeds();
+
+    if (success) {
+      const newTimestamp = Date.now();
+      localStorage.setItem(CACHE_KEY, newTimestamp.toString());
+      
+      log('✅ Manual update completed successfully');
+      showNotification('Channels updated successfully!', 'success');
+      
+      updateLastUpdateDisplay();
+    } else {
+      log('❌ Manual update failed', true);
+      showNotification('Update failed. Please try again.', 'error');
+    }
+  } catch (error) {
+    log(`❌ Manual update error: ${error.message}`, true);
+    showNotification('Update failed. Check console for details.', 'error');
+  } finally {
+    // Re-enable button
+    manualUpdateBtn.disabled = false;
+    manualUpdateBtn.textContent = originalText;
+  }
+}
+
+// ✅ Update Last Update Display
+function updateLastUpdateDisplay() {
+  const lastUpdate = parseInt(localStorage.getItem(CACHE_KEY) || "0");
+  const lastUpdateEl = document.getElementById('lastUpdateDisplay');
+
+  if (!lastUpdateEl) return;
+
+  if (lastUpdate === 0) {
+    lastUpdateEl.textContent = 'Never updated';
+    lastUpdateEl.style.color = '#ff9800';
+  } else {
+    const timeAgo = getTimeAgo(lastUpdate);
+    const date = new Date(lastUpdate);
+    const formattedDate = date.toLocaleString();
+    
+    lastUpdateEl.textContent = `Last updated: ${timeAgo} (${formattedDate})`;
+    lastUpdateEl.style.color = '#4caf50';
+  }
+}
+
+
+// ✅ Get Time Ago String
+function getTimeAgo(timestamp) {
+  const seconds = Math.floor((Date.now() - timestamp) / 1000);
+
+  if (seconds < 60) return 'just now';
+  
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes} minute${minutes > 1 ? 's' : ''} ago`;
+  
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours} hour${hours > 1 ? 's' : ''} ago`;
+  
+  const days = Math.floor(hours / 24);
+  return `${days} day${days > 1 ? 's' : ''} ago`;
+}
+
+// ✅ Stop Auto-Update Service
+function stopAutoUpdateService() {
+  if (autoUpdateInterval) {
+    clearInterval(autoUpdateInterval);
+    autoUpdateInterval = null;
+    console.log('Auto-update service stopped');
+  }
+}
+
+// ✅ Setup Settings Modal Event Listeners
+function setupSettingsModal() {
+  const settingsBtn = document.getElementById('settingsBtn');
+  const closeSettings = document.getElementById('closeSettings');
+  const settingsModal = document.getElementById('settingsModal');
+  const autoUpdateToggle = document.getElementById('autoUpdateToggle');
+  const updateIntervalSelect = document.getElementById('updateInterval');
+  const manualUpdateBtn = document.getElementById('manualUpdateBtn');
+
+  // Open settings
+  if (settingsBtn) {
+    settingsBtn.addEventListener('click', showSettingsModal);
+  }
+
+  // Close settings
+  if (closeSettings) {
+    closeSettings.addEventListener('click', hideSettingsModal);
+  }
+
+  // Close on backdrop click
+  if (settingsModal) {
+    settingsModal.addEventListener('click', (e) => {
+      if (e.target === settingsModal) {
+        hideSettingsModal();
+      }
+    });
+  }
+
+  // Auto-update toggle
+  if (autoUpdateToggle) {
+    autoUpdateToggle.addEventListener('change', (e) => {
+      toggleAutoUpdate(e.target.checked);
+    });
+  }
+
+  // Update interval change
+  if (updateIntervalSelect) {
+    updateIntervalSelect.addEventListener('change', (e) => {
+      changeUpdateInterval(e.target.value);
+    });
+  }
+
+  // Manual update button
+  if (manualUpdateBtn) {
+    manualUpdateBtn.addEventListener('click', manualUpdate);
+  }
+
+  // ✅ Set initial description text on page load
+  updateIntervalDescriptionText(updateIntervalHours);
+
+    // ✅ Manage API Key button
+  const manageApiKeyBtn = document.getElementById('manageApiKeyBtn');
+  if (manageApiKeyBtn) {
+    manageApiKeyBtn.addEventListener('click', () => {
+      hideSettingsModal(); // Close settings first
+      setTimeout(showAPIKeyModal, 300); // Open API modal
+    });
+  }
+}
+
+// ✅ NEW FUNCTION: Update description text
+function updateIntervalDescriptionText(hours) {
+  const descriptionEl = document.getElementById('updateIntervalDescription');
+  if (descriptionEl) {
+    descriptionEl.textContent = `Automatically check for new content every ${hours} hour${hours > 1 ? 's' : ''}`;
+  }
+}
