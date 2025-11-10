@@ -1,4 +1,3 @@
-// At the top with your other constants
 const AUTO_UPDATE_KEY = "autoUpdateEnabled";
 const UPDATE_INTERVAL_KEY = "updateIntervalHours";
 let autoUpdateInterval = null;
@@ -38,6 +37,13 @@ let sessionId = Date.now();
 const modal = document.getElementById("videoModal");
 const qualityEl = document.getElementById("video-quality");
 
+// Storage Keys
+const STORAGE_KEYS = {
+  channels: "allChannelsData",
+  live: "liveChannelsData",
+  feeds: "rssFeedsData",
+};
+
 function extractYouTubeID(url) {
   const match = url.match(
     /(?:youtube\.com\/(?:.*v=|live\/|embed\/)|youtu\.be\/)([^&?/]+)/i
@@ -50,9 +56,11 @@ function selectChannel(url, name, image, description, number, isLive) {
 
   const currentSessionId = Date.now();
   sessionId = currentSessionId;
-  
+
   console.log(`🚀 START Session ${currentSessionId}: ${name}`, {
-    url, isLive, timestamp: new Date().toISOString()
+    url,
+    isLive,
+    timestamp: new Date().toISOString(),
   });
 
   try {
@@ -83,7 +91,8 @@ function selectChannel(url, name, image, description, number, isLive) {
 
     // Update overlay info
     if (imageElement) imageElement.src = image || "";
-    if (videoTitleElement) videoTitleElement.textContent = name || "Unknown Channel";
+    if (videoTitleElement)
+      videoTitleElement.textContent = name || "Unknown Channel";
     if (channelInfoElement) channelInfoElement.textContent = description || "";
     if (qualityEl) qualityEl.textContent = "";
 
@@ -111,9 +120,9 @@ function selectChannel(url, name, image, description, number, isLive) {
     newVideoEl.controls = false;
     newVideoEl.preload = "auto";
     newVideoEl.setAttribute("data-setup", "{}");
-    
+
     // ✅ CLEAR loading and add video element
-    videoContainer.innerHTML = '';
+    videoContainer.innerHTML = "";
     videoContainer.appendChild(newVideoEl);
 
     // ✅ Initialize Video.js AFTER element is in DOM
@@ -129,14 +138,14 @@ function selectChannel(url, name, image, description, number, isLive) {
           controls: 1,
           mute: 1,
           rel: 0,
-          modestbranding: 1
-        }
-      }
+          modestbranding: 1,
+        },
+      },
     });
 
     playerInstance.ready(function () {
       if (sessionId !== currentSessionId) return;
-      
+
       playerInstance.play().catch((e) => {
         console.warn("Autoplay blocked:", e);
         showPlayButtonFallback();
@@ -153,9 +162,8 @@ function selectChannel(url, name, image, description, number, isLive) {
     });
 
     setupPlayerEventHandlers(name, isLive, isYouTube, currentSessionId);
-
   } catch (error) {
-    console.error('Failed to select channel:', error);
+    console.error("Failed to select channel:", error);
     showErrorToUser(`Failed to load ${name}`);
   }
 
@@ -164,13 +172,13 @@ function selectChannel(url, name, image, description, number, isLive) {
 
 // ✅ Helper function for loading state
 function showLoadingState(container, channelName) {
-  const loadingDiv = document.createElement('div');
-  loadingDiv.className = 'loading-state';
+  const loadingDiv = document.createElement("div");
+  loadingDiv.className = "loading-state";
 
-  const spinner = document.createElement('div');
-  spinner.className = 'spinner';
+  const spinner = document.createElement("div");
+  spinner.className = "spinner";
 
-  const text = document.createElement('p');
+  const text = document.createElement("p");
   text.textContent = `Loading ${channelName}...`;
 
   loadingDiv.appendChild(spinner);
@@ -180,8 +188,8 @@ function showLoadingState(container, channelName) {
 }
 
 function showErrorToUser(message) {
-  const errorDiv = document.createElement('div');
-  errorDiv.className = 'error-notification';
+  const errorDiv = document.createElement("div");
+  errorDiv.className = "error-notification";
   errorDiv.textContent = message;
   errorDiv.style.cssText = `
     position: fixed;
@@ -204,8 +212,8 @@ function showErrorToUser(message) {
 }
 
 function showPlayButtonFallback() {
-  const playOverlay = document.createElement('div');
-  playOverlay.className = 'play-fallback-overlay';
+  const playOverlay = document.createElement("div");
+  playOverlay.className = "play-fallback-overlay";
   playOverlay.innerHTML = `
     <button class="play-button" style="
       padding: 12px 24px;
@@ -218,13 +226,13 @@ function showPlayButtonFallback() {
     ">Click to Play</button>
   `;
 
-  const playerContainer = document.getElementById('player-container');
+  const playerContainer = document.getElementById("player-container");
   playerContainer.appendChild(playOverlay);
 
-  playOverlay.querySelector('.play-button').addEventListener('click', () => {
+  playOverlay.querySelector(".play-button").addEventListener("click", () => {
     if (playerInstance) {
-      playerInstance.play().catch(e => {
-        console.error('Still cannot play:', e);
+      playerInstance.play().catch((e) => {
+        console.error("Still cannot play:", e);
       });
     }
     playOverlay.remove();
@@ -235,51 +243,51 @@ function checkConnectionQuality() {
   if (!navigator.onLine) return;
 
   const start = Date.now();
-  fetch('https://www.google.com/favicon.ico', {
-    mode: 'no-cors',
-    cache: 'no-cache'
+  fetch("https://www.google.com/favicon.ico", {
+    mode: "no-cors",
+    cache: "no-cache",
   })
     .then(() => {
       const latency = Date.now() - start;
       if (latency > 2000) {
-        showNetworkStatus('Poor connection detected', 'warning');
+        showNetworkStatus("Poor connection detected", "warning");
       }
     })
-    .catch(() => { });
+    .catch(() => {});
 }
 
 function setupPlayerEventHandlers(name, isLive, isYouTube, currentSessionId) {
   if (!playerInstance) return;
 
-  playerInstance.off('error');
-  playerInstance.off('waiting');
-  playerInstance.off('playing');
-  playerInstance.off('loadedmetadata');
+  playerInstance.off("error");
+  playerInstance.off("waiting");
+  playerInstance.off("playing");
+  playerInstance.off("loadedmetadata");
 
-  playerInstance.on('error', function () {
+  playerInstance.on("error", function () {
     if (sessionId !== currentSessionId) return;
 
     const error = playerInstance.error();
-    console.log('Player error:', error);
+    console.log("Player error:", error);
     if (navigator.onLine) attemptPlayerRecovery();
-    else showNetworkStatus('Waiting for network connection...', 'warning');
+    else showNetworkStatus("Waiting for network connection...", "warning");
   });
 
-  playerInstance.on('waiting', function () {
+  playerInstance.on("waiting", function () {
     if (sessionId !== currentSessionId) return;
-    if (navigator.onLine) showNetworkStatus('Buffering...', 'info');
+    if (navigator.onLine) showNetworkStatus("Buffering...", "info");
   });
 
-  playerInstance.on('playing', function () {
+  playerInstance.on("playing", function () {
     if (sessionId !== currentSessionId) return;
 
-    const existingStatus = document.querySelector('.network-status');
-    if (existingStatus?.textContent.includes('Buffering')) {
+    const existingStatus = document.querySelector(".network-status");
+    if (existingStatus?.textContent.includes("Buffering")) {
       existingStatus.remove();
     }
   });
 
-  playerInstance.on('loadedmetadata', function () {
+  playerInstance.on("loadedmetadata", function () {
     if (sessionId !== currentSessionId) return;
 
     updateQualityDisplay();
@@ -296,30 +304,40 @@ function setupPlayerEventHandlers(name, isLive, isYouTube, currentSessionId) {
 function attemptPlayerRecovery() {
   if (!playerInstance || !currentVideoUrl) return;
 
-  console.log('Attempting player recovery...');
-  log('🔄 Attempting player recovery...');
-  showNetworkStatus('Attempting to recover stream...', 'warning');
+  const currentSource = playerInstance.currentSrc();
+  const message = `🔄 Attempting to recover streaming link... (${currentSource})`;
+
+  console.log(message);
+  log(message);
+  showNetworkStatus("Attempting to recover streaming link...", "warning");
 
   setTimeout(() => {
     try {
-      if (currentVideoUrl.includes('youtube.com') || currentVideoUrl.includes('youtu.be')) {
-        console.log('YouTube stream detected, attempting full reload...');
+      if (
+        currentVideoUrl.includes("youtube.com") ||
+        currentVideoUrl.includes("youtu.be")
+      ) {
+        console.log("YouTube stream detected, attempting full reload...");
         const currentItem = lastFocusedElement;
         if (currentItem && currentItem.dataset) {
-          const { url, name, image, description, number, isLive } = currentItem.dataset;
+          const { url, name, image, description, number, isLive } =
+            currentItem.dataset;
           selectChannel(url, name, image, description, number, isLive);
         }
       } else {
-        playerInstance.src({ src: currentVideoUrl, type: playerInstance.currentType() });
+        playerInstance.src({
+          src: currentVideoUrl,
+          type: playerInstance.currentType(),
+        });
         playerInstance.load();
-        playerInstance.play().catch(e => {
-          console.warn('Recovery play failed:', e);
-          showNetworkStatus('Recovery failed', 'error');
+        playerInstance.play().catch((e) => {
+          console.warn("Recovery play failed:", e);
+          showNetworkStatus("Recovery failed", "error");
         });
       }
     } catch (error) {
-      console.error('Recovery attempt failed:', error);
-      showNetworkStatus('Recovery failed', 'error');
+      console.error("Recovery attempt failed:", error);
+      showNetworkStatus("Recovery failed", "error");
     }
   }, 2000);
 }
@@ -355,7 +373,8 @@ function stopWatching() {
   const watchedMs = Date.now() - watchStartTime;
   const watchedSeconds = Math.floor(watchedMs / 1000);
 
-  const watchData = JSON.parse(localStorage.getItem("watchTimePerChannel")) || {};
+  const watchData =
+    JSON.parse(localStorage.getItem("watchTimePerChannel")) || {};
 
   if (!watchData[currentVideoUrl]) watchData[currentVideoUrl] = 0;
   watchData[currentVideoUrl] += watchedSeconds;
@@ -475,7 +494,7 @@ function createChannelItem(channel) {
 
   // ✅ Create and store click handler
   const clickHandler = (e) => {
-    if (e.target.classList.contains('favorite-icon')) {
+    if (e.target.classList.contains("favorite-icon")) {
       return; // Don't select channel when clicking favorite
     }
     selectChannel(
@@ -501,8 +520,8 @@ function createChannelItem(channel) {
   img.loading = "lazy";
   img.decoding = "async";
   img.onerror = function () {
-    this.src = 'fallback-image.png';
-    this.alt = 'Image not available';
+    this.src = "fallback-image.png";
+    this.alt = "Image not available";
   };
 
   const numberBadge = document.createElement("span");
@@ -538,7 +557,7 @@ function createChannelItem(channel) {
     );
   };
 
-  favoriteIcon.addEventListener('click', favoriteHandler);
+  favoriteIcon.addEventListener("click", favoriteHandler);
   item._favoriteHandler = favoriteHandler;
 
   item.appendChild(wrapper);
@@ -548,8 +567,7 @@ function createChannelItem(channel) {
 }
 
 function cleanupChannelItems() {
-
-  allChannelItems.forEach(item => {
+  allChannelItems.forEach((item) => {
     // Remove click handler
     if (item._clickHandler) {
       item.removeEventListener("click", item._clickHandler);
@@ -557,9 +575,9 @@ function cleanupChannelItems() {
     }
 
     // Remove favorite handler
-    const favoriteIcon = item.querySelector('.favorite-icon');
+    const favoriteIcon = item.querySelector(".favorite-icon");
     if (favoriteIcon && item._favoriteHandler) {
-      favoriteIcon.removeEventListener('click', item._favoriteHandler);
+      favoriteIcon.removeEventListener("click", item._favoriteHandler);
       item._favoriteHandler = null;
     }
   });
@@ -615,7 +633,6 @@ function renderChannels(channels) {
     }
 
     mainContainer.appendChild(fragment);
-
   } else {
     const totalChannelCount = channels.length;
     const mainHeading = document.createElement("h2");
@@ -637,7 +654,9 @@ function renderChannels(channels) {
   }
 
   updateAllChannelItems();
-  console.log(`✅ Rendered ${channels.length} channels in ${currentSortMethod} view`);
+  console.log(
+    `✅ Rendered ${channels.length} channels in ${currentSortMethod} view`
+  );
 }
 
 let numberBuffer = "";
@@ -878,7 +897,9 @@ document.addEventListener("keydown", (event) => {
       return;
     }
 
-    if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)) {
+    if (
+      ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)
+    ) {
       if (allChannelItems.length === 0) return;
 
       if (currentFocusedIndex === -1) {
@@ -896,7 +917,8 @@ document.addEventListener("keydown", (event) => {
         newIndex = (currentFocusedIndex + 1) % allChannelItems.length;
       else if (event.key === "ArrowLeft")
         newIndex =
-          (currentFocusedIndex - 1 + allChannelItems.length) % allChannelItems.length;
+          (currentFocusedIndex - 1 + allChannelItems.length) %
+          allChannelItems.length;
       else if (event.key === "ArrowDown")
         newIndex = Math.min(
           currentFocusedIndex + GRID_COLUMNS,
@@ -965,7 +987,6 @@ document.addEventListener("keydown", (event) => {
         category,
       });
     }
-
   }, 50);
 });
 
@@ -995,14 +1016,19 @@ async function initialize() {
   // ✅ Setup Settings Modal
   setupSettingsModal();
 
-  let savedChannels = localStorage.getItem("allChannelsData");
+  let savedChannels = localStorage.getItem(STORAGE_KEYS.channels);
 
   if (savedChannels) {
     try {
       allChannels = JSON.parse(savedChannels);
-      log(`Successfully loaded ${allChannels.length} channels from localStorage.`);
+      log(
+        `Successfully loaded ${allChannels.length} channels from localStorage.`
+      );
     } catch (e) {
-      log("Invalid 'allChannelsData' found in localStorage. The data will be ignored.", true);
+      log(
+        "Invalid 'allChannelsData' found in localStorage. The data will be ignored.",
+        true
+      );
       log(`Error details: ${e.message}`, true);
       console.warn("Invalid allChannelsData in localStorage, ignoring.", e);
       allChannels = [];
@@ -1015,9 +1041,9 @@ async function initialize() {
   API_KEY = getStoredAPIKey();
 
   if (hasValidAPIKey()) {
-    console.log('✅ Using stored API key');
+    console.log("✅ Using stored API key");
   } else {
-    console.log('ℹ️ No valid API key stored');
+    console.log("ℹ️ No valid API key stored");
   }
 
   startChannelAutoUpdate();
@@ -1073,13 +1099,19 @@ function youtubeItemToChannel(videoId, title, feed) {
 }
 
 async function loadYouTubeLatestFeeds() {
-  let feeds = [];
+  // Load RSS feeds
+  const storedFeeds = localStorage.getItem(STORAGE_KEYS.feeds);
+  if (!storedFeeds) {
+    showNotification("No RSS feeds found in localStorage.", "warning");
+    return;
+  }
 
+  let feeds = [];
   try {
-    const response = await fetch("feeds.json");
-    feeds = await response.json();
+    feeds = JSON.parse(storedFeeds);
   } catch (error) {
-    console.error("Failed to load feeds.json:", error);
+    console.error("Failed to parse RSS feeds:", error);
+    showNotification("Error loading RSS feeds data.", "error");
     return;
   }
 
@@ -1088,19 +1120,21 @@ async function loadYouTubeLatestFeeds() {
   for (const [index, feed] of feeds.entries()) {
     try {
       if (index > 0) {
-        await new Promise(resolve => setTimeout(resolve, 200));
+        await new Promise((resolve) => setTimeout(resolve, 200));
       }
 
       const cacheKey = `rss_${feed.url}`;
       const cached = rssCache.get(cacheKey);
 
-      if (cached && (Date.now() - cached.timestamp < CACHE_DURATION)) {
+      if (cached && Date.now() - cached.timestamp < CACHE_DURATION) {
         log(`📦 Using cached data for ${feed.name}`);
         processRSSData(cached.data, feed);
         continue;
       }
 
-      const feedUrl = "https://api.rss2json.com/v1/api.json?rss_url=" + encodeURIComponent(feed.url);
+      const feedUrl =
+        "https://api.rss2json.com/v1/api.json?rss_url=" +
+        encodeURIComponent(feed.url);
       const res = await fetch(feedUrl);
 
       if (!res.ok) {
@@ -1111,11 +1145,10 @@ async function loadYouTubeLatestFeeds() {
 
       rssCache.set(cacheKey, {
         data: data,
-        timestamp: Date.now()
+        timestamp: Date.now(),
       });
 
       processRSSData(data, feed);
-
     } catch (e) {
       log(`❌ Error loading RSS feed for ${feed.name}: ${e.message}`, true);
     }
@@ -1128,18 +1161,24 @@ async function loadYouTubeLiveFeeds() {
   }
 
   if (!API_KEY || !hasValidAPIKey()) {
-    console.log('🔑 No valid API key found, prompting user...');
+    console.log("🔑 No valid API key found, prompting user...");
     showAPIKeyModal();
     return;
   }
 
-  let live = [];
+  // Load live channels
+  const storedLive = localStorage.getItem(STORAGE_KEYS.live);
+  if (!storedLive) {
+    showNotification("No live channels found in localStorage.", "warning");
+    return;
+  }
 
+  let live = [];
   try {
-    const response = await fetch("live.json");
-    live = await response.json();
+    live = JSON.parse(storedLive);
   } catch (error) {
-    console.error("Failed to load live.json:", error);
+    console.error("Failed to parse live channels:", error);
+    showNotification("Error loading live channels data.", "error");
     return;
   }
 
@@ -1153,7 +1192,7 @@ async function loadYouTubeLiveFeeds() {
   for (const [index, feed] of live.entries()) {
     try {
       if (index > 0) {
-        await new Promise(resolve => setTimeout(resolve, 200));
+        await new Promise((resolve) => setTimeout(resolve, 200));
       }
 
       if (apiQuotaExceeded) {
@@ -1171,12 +1210,16 @@ async function loadYouTubeLiveFeeds() {
       const cacheKey = `live_${channelId}`;
       const cached = liveCache.get(cacheKey);
 
-      if (cached && (Date.now() - cached.timestamp < CACHE_DURATION)) {
+      if (cached && Date.now() - cached.timestamp < CACHE_DURATION) {
         log(`📦 Using cached live data for ${feed.name}`);
         cacheHits++;
 
         if (cached.data && cached.data.videoId) {
-          const channelObj = youtubeItemToChannel(cached.data.videoId, cached.data.title, feed);
+          const channelObj = youtubeItemToChannel(
+            cached.data.videoId,
+            cached.data.title,
+            feed
+          );
           updateOrAddChannel(channelObj);
           successfulUpdates++;
         }
@@ -1205,11 +1248,15 @@ async function loadYouTubeLiveFeeds() {
       if (data.error) {
         if (data.error.code === 403) {
           apiQuotaExceeded = true;
-          log("🚫 YouTube API quota exceeded (in response). Stopping live stream updates.");
+          log(
+            "🚫 YouTube API quota exceeded (in response). Stopping live stream updates."
+          );
           failedUpdates++;
           continue;
         }
-        throw new Error(`YouTube API Error for ${feed.name}: ${data.error.message}`);
+        throw new Error(
+          `YouTube API Error for ${feed.name}: ${data.error.message}`
+        );
       }
 
       let cacheData = null;
@@ -1221,7 +1268,7 @@ async function loadYouTubeLiveFeeds() {
 
         cacheData = {
           videoId: videoId,
-          title: title
+          title: title,
         };
 
         const channelObj = youtubeItemToChannel(videoId, title, feed);
@@ -1236,12 +1283,11 @@ async function loadYouTubeLiveFeeds() {
 
       liveCache.set(cacheKey, {
         data: cacheData,
-        timestamp: Date.now()
+        timestamp: Date.now(),
       });
-
     } catch (e) {
       failedUpdates++;
-      if (e.message.includes('quota exceeded') || e.message.includes('403')) {
+      if (e.message.includes("quota exceeded") || e.message.includes("403")) {
         apiQuotaExceeded = true;
         log("🚫 YouTube API quota exceeded. Stopping live stream updates.");
       } else {
@@ -1250,7 +1296,9 @@ async function loadYouTubeLiveFeeds() {
     }
   }
 
-  log(`Live streams update completed: ${successfulUpdates} successful, ${failedUpdates} failed, ${cacheHits} cache hits`);
+  log(
+    `Live streams update completed: ${successfulUpdates} successful, ${failedUpdates} failed, ${cacheHits} cache hits`
+  );
 
   if (successfulUpdates === 0 && failedUpdates > 0 && apiQuotaExceeded) {
     throw new Error("YouTube API quota exceeded - no live streams updated");
@@ -1270,7 +1318,7 @@ async function loadAllChannelFeeds() {
     log("2/2: Live streams loaded successfully.");
 
     log("Saving updated channel data to localStorage...");
-    localStorage.setItem("allChannelsData", JSON.stringify(allChannels));
+    localStorage.setItem(STORAGE_KEYS.channels, JSON.stringify(allChannels));
 
     log("Rendering UI and updating components...");
     renderChannels(allChannels);
@@ -1280,12 +1328,11 @@ async function loadAllChannelFeeds() {
 
     log("✅ Full channels update COMPLETE.");
     return true;
-
   } catch (e) {
     log(`❌ Critical error during full channel update: ${e.message}`, true);
 
     log("Updating UI with available data...");
-    localStorage.setItem("allChannelsData", JSON.stringify(allChannels));
+    localStorage.setItem(STORAGE_KEYS.channels, JSON.stringify(allChannels));
     renderChannels(allChannels);
     updateFavoriteIcons();
     renderRecentlyWatched();
@@ -1301,29 +1348,37 @@ function startChannelAutoUpdate() {
   const savedAutoUpdate = localStorage.getItem(AUTO_UPDATE_KEY);
   const savedInterval = localStorage.getItem(UPDATE_INTERVAL_KEY);
 
-  isAutoUpdateEnabled = savedAutoUpdate === null ? true : savedAutoUpdate === "true";
+  isAutoUpdateEnabled =
+    savedAutoUpdate === null ? true : savedAutoUpdate === "true";
   updateIntervalHours = savedInterval ? parseInt(savedInterval) : 8;
 
   // Calculate interval in milliseconds
   const intervalMs = updateIntervalHours * 60 * 60 * 1000;
   const cacheExpiryMs = updateIntervalHours * 60 * 60 * 1000;
 
-  console.log(`Auto-update service initializing. Enabled: ${isAutoUpdateEnabled}, Interval: ${updateIntervalHours}h`);
+  console.log(
+    `Auto-update service initializing. Enabled: ${isAutoUpdateEnabled}, Interval: ${updateIntervalHours}h`
+  );
 
   const checkAndUpdate = async () => {
     // Check if auto-update is still enabled
     if (!isAutoUpdateEnabled) {
-      console.log('Auto-update is disabled. Skipping check.');
+      console.log("Auto-update is disabled. Skipping check.");
       return;
     }
 
-    const lastUpdateTimestamp = parseInt(localStorage.getItem(CACHE_KEY) || "0");
+    const lastUpdateTimestamp = parseInt(
+      localStorage.getItem(CACHE_KEY) || "0"
+    );
     const currentTime = Date.now();
 
     const timeSinceLastUpdate = currentTime - lastUpdateTimestamp;
-    const shouldUpdate = lastUpdateTimestamp === 0 || timeSinceLastUpdate >= cacheExpiryMs;
+    const shouldUpdate =
+      lastUpdateTimestamp === 0 || timeSinceLastUpdate >= cacheExpiryMs;
 
-    console.log(`[DEBUG] Last update: ${lastUpdateTimestamp}, Current: ${currentTime}, Time since: ${timeSinceLastUpdate}, Should update: ${shouldUpdate}`);
+    console.log(
+      `[DEBUG] Last update: ${lastUpdateTimestamp}, Current: ${currentTime}, Time since: ${timeSinceLastUpdate}, Should update: ${shouldUpdate}`
+    );
 
     if (shouldUpdate) {
       log("Cache has expired. Initiating full data update now.");
@@ -1336,7 +1391,9 @@ function startChannelAutoUpdate() {
           localStorage.setItem(CACHE_KEY, newTimestamp.toString());
 
           const newLastUpdateDate = new Date(newTimestamp).toLocaleString();
-          const newNextUpdateDate = new Date(newTimestamp + cacheExpiryMs).toLocaleString();
+          const newNextUpdateDate = new Date(
+            newTimestamp + cacheExpiryMs
+          ).toLocaleString();
 
           log("✅ Channels updated successfully.");
           log(`New Last Update Time: ${newLastUpdateDate}`);
@@ -1344,7 +1401,9 @@ function startChannelAutoUpdate() {
         } else {
           log("❌ Update failed. Cache timestamp preserved for retry.", true);
 
-          const retryTime = new Date(currentTime + (60 * 60 * 1000)).toLocaleString();
+          const retryTime = new Date(
+            currentTime + 60 * 60 * 1000
+          ).toLocaleString();
           log(`Next retry attempt after: ${retryTime}`);
         }
       } catch (error) {
@@ -1358,7 +1417,9 @@ function startChannelAutoUpdate() {
       const minsRemaining = minutesRemaining % 60;
 
       if (hoursRemaining > 0) {
-        console.log(`Cache is valid. Expires in ${hoursRemaining}h ${minsRemaining}m`);
+        console.log(
+          `Cache is valid. Expires in ${hoursRemaining}h ${minsRemaining}m`
+        );
       } else {
         console.log(`Cache is valid. Expires in ${minutesRemaining} minutes.`);
       }
@@ -1388,23 +1449,33 @@ function startChannelAutoUpdate() {
   // Store interval ID so we can clear it
   autoUpdateInterval = setInterval(checkAndUpdate, intervalMs);
 
-  console.log(`Auto-update service started. Checking every ${updateIntervalHours} hours. Status: ${isAutoUpdateEnabled ? 'Enabled' : 'Disabled'}`);
+  console.log(
+    `Auto-update service started. Checking every ${updateIntervalHours} hours. Status: ${
+      isAutoUpdateEnabled ? "Enabled" : "Disabled"
+    }`
+  );
 }
-
 
 function log(message, isError = false) {
   const logArea = document.getElementById("logArea");
   if (!logArea) return;
 
   const prefix = isError ? "Error: " : "Info: ";
-  logArea.innerHTML += `<div class="${isError ? "text-red-400" : ""}">${prefix}[${new Date().toLocaleTimeString()}] ${message}</div>`;
+  logArea.innerHTML += `<div class="${
+    isError ? "text-red-400" : ""
+  }">${prefix}[${new Date().toLocaleTimeString()}] ${message}</div>`;
   logArea.scrollTop = logArea.scrollHeight;
 }
 
 function updateOrAddChannel(channelObj) {
-  const existingIndex = allChannels.findIndex(ch => ch.name === channelObj.name);
+  const existingIndex = allChannels.findIndex(
+    (ch) => ch.name === channelObj.name
+  );
   if (existingIndex !== -1) {
-    allChannels[existingIndex] = { ...allChannels[existingIndex], ...channelObj };
+    allChannels[existingIndex] = {
+      ...allChannels[existingIndex],
+      ...channelObj,
+    };
   } else {
     allChannels.push(channelObj);
   }
@@ -1426,13 +1497,13 @@ function cleanup() {
   if (playerInstance) {
     try {
       playerInstance.pause();
-      playerInstance.off('error');
-      playerInstance.off('waiting');
-      playerInstance.off('playing');
-      playerInstance.off('loadedmetadata');
+      playerInstance.off("error");
+      playerInstance.off("waiting");
+      playerInstance.off("playing");
+      playerInstance.off("loadedmetadata");
       playerInstance.dispose();
     } catch (e) {
-      console.warn('Error during player disposal:', e);
+      console.warn("Error during player disposal:", e);
     }
     playerInstance = null;
   }
@@ -1444,12 +1515,16 @@ function cleanup() {
 
   const videoContainer = document.getElementById("player-container");
   if (videoContainer) {
-    videoContainer.innerHTML = '';
+    videoContainer.innerHTML = "";
   }
 
-  document.querySelectorAll('.network-status, .error-notification, .play-fallback-overlay').forEach(el => {
-    el.remove();
-  });
+  document
+    .querySelectorAll(
+      ".network-status, .error-notification, .play-fallback-overlay"
+    )
+    .forEach((el) => {
+      el.remove();
+    });
 
   if (lastFocusedElement && lastFocusedElement.isConnected) {
     lastFocusedElement.focus();
@@ -1461,9 +1536,7 @@ function cleanup() {
 function processRSSData(data, feed) {
   if (!data.items || data.items.length === 0) return;
 
-  let latestValid = data.items.find(
-    (item) => !item.link.includes("/shorts/")
-  );
+  let latestValid = data.items.find((item) => !item.link.includes("/shorts/"));
   if (!latestValid) return;
 
   const videoId = extractYouTubeID(latestValid.link);
@@ -1502,22 +1575,22 @@ function clearAPIKey() {
 
 // ✅ Show API Key Modal (UPDATED)
 function showAPIKeyModal() {
-  const apiModal = document.getElementById('apiKeyModal');
+  const apiModal = document.getElementById("apiKeyModal");
   if (!apiModal) return;
 
-  apiModal.style.display = 'flex';
+  apiModal.style.display = "flex";
 
-  const apiKeyInput = document.getElementById('apiKeyInput');
+  const apiKeyInput = document.getElementById("apiKeyInput");
   if (apiKeyInput) {
     // Clear input or show masked existing key
     const existingKey = getStoredAPIKey();
     if (existingKey) {
       apiKeyInput.value = existingKey;
-      apiKeyInput.type = 'password';
+      apiKeyInput.type = "password";
     } else {
-      apiKeyInput.value = '';
+      apiKeyInput.value = "";
     }
-    
+
     // Focus on input after a small delay for animation
     setTimeout(() => apiKeyInput.focus(), 100);
   }
@@ -1527,42 +1600,42 @@ function showAPIKeyModal() {
 
 // ✅ Hide API Key Modal (UPDATED)
 function hideAPIKeyModal() {
-  const apiModal = document.getElementById('apiKeyModal');
+  const apiModal = document.getElementById("apiKeyModal");
   if (apiModal) {
-    apiModal.style.display = 'none';
+    apiModal.style.display = "none";
   }
 }
 
 // ✅ Setup API Key Modal Events (UPDATED)
 function setupAPIKeyModalEvents() {
-  const submitBtn = document.getElementById('submitApiKey');
-  const skipBtn = document.getElementById('skipApiKey');
-  const apiKeyInput = document.getElementById('apiKeyInput');
-  const toggleVisibilityBtn = document.getElementById('toggleApiKeyVisibility');
-  const apiModal = document.getElementById('apiKeyModal');
+  const submitBtn = document.getElementById("submitApiKey");
+  const skipBtn = document.getElementById("skipApiKey");
+  const apiKeyInput = document.getElementById("apiKeyInput");
+  const toggleVisibilityBtn = document.getElementById("toggleApiKeyVisibility");
+  const apiModal = document.getElementById("apiKeyModal");
 
   // Remove existing listeners to prevent duplicates
   if (submitBtn) {
     const newSubmitBtn = submitBtn.cloneNode(true);
     submitBtn.parentNode.replaceChild(newSubmitBtn, submitBtn);
-    
-    newSubmitBtn.addEventListener('click', function () {
+
+    newSubmitBtn.addEventListener("click", function () {
       const apiKey = apiKeyInput.value.trim();
-      const remember = document.getElementById('rememberKey')?.checked;
+      const remember = document.getElementById("rememberKey")?.checked;
 
       // Validate API key
       if (!apiKey) {
-        apiKeyInput.classList.add('invalid');
-        showNotification('Please enter a valid API key', 'error');
-        setTimeout(() => apiKeyInput.classList.remove('invalid'), 400);
+        apiKeyInput.classList.add("invalid");
+        showNotification("Please enter a valid API key", "error");
+        setTimeout(() => apiKeyInput.classList.remove("invalid"), 400);
         return;
       }
 
       // Basic validation - YouTube API keys are usually 39 characters
       if (apiKey.length < 30) {
-        apiKeyInput.classList.add('invalid');
-        showNotification('API key seems too short. Please check it.', 'error');
-        setTimeout(() => apiKeyInput.classList.remove('invalid'), 400);
+        apiKeyInput.classList.add("invalid");
+        showNotification("API key seems too short. Please check it.", "error");
+        setTimeout(() => apiKeyInput.classList.remove("invalid"), 400);
         return;
       }
 
@@ -1573,11 +1646,11 @@ function setupAPIKeyModalEvents() {
       }
 
       hideAPIKeyModal();
-      showNotification('✅ API Key saved successfully!', 'success');
+      showNotification("✅ API Key saved successfully!", "success");
 
       // Start live feeds update after a short delay
       setTimeout(() => {
-        log('🔄 Starting live feeds update with new API key...');
+        log("🔄 Starting live feeds update with new API key...");
         loadYouTubeLiveFeeds().catch(console.error);
       }, 1000);
     });
@@ -1586,43 +1659,46 @@ function setupAPIKeyModalEvents() {
   if (skipBtn) {
     const newSkipBtn = skipBtn.cloneNode(true);
     skipBtn.parentNode.replaceChild(newSkipBtn, skipBtn);
-    
-    newSkipBtn.addEventListener('click', function () {
+
+    newSkipBtn.addEventListener("click", function () {
       hideAPIKeyModal();
-      showNotification('⏭️ Live channels update skipped', 'info');
-      log('ℹ️ User skipped API key configuration');
+      showNotification("⏭️ Live channels update skipped", "info");
+      log("ℹ️ User skipped API key configuration");
     });
   }
 
   // Toggle password visibility
   if (toggleVisibilityBtn && apiKeyInput) {
     const newToggleBtn = toggleVisibilityBtn.cloneNode(true);
-    toggleVisibilityBtn.parentNode.replaceChild(newToggleBtn, toggleVisibilityBtn);
-    
-    newToggleBtn.addEventListener('click', function () {
-      if (apiKeyInput.type === 'password') {
-        apiKeyInput.type = 'text';
-        newToggleBtn.textContent = '🙈 Hide';
+    toggleVisibilityBtn.parentNode.replaceChild(
+      newToggleBtn,
+      toggleVisibilityBtn
+    );
+
+    newToggleBtn.addEventListener("click", function () {
+      if (apiKeyInput.type === "password") {
+        apiKeyInput.type = "text";
+        newToggleBtn.textContent = "🙈 Hide";
       } else {
-        apiKeyInput.type = 'password';
-        newToggleBtn.textContent = '👁️ Show';
+        apiKeyInput.type = "password";
+        newToggleBtn.textContent = "👁️ Show";
       }
     });
   }
 
   // Enter key to submit
   if (apiKeyInput) {
-    apiKeyInput.addEventListener('keypress', function (e) {
-      if (e.key === 'Enter') {
+    apiKeyInput.addEventListener("keypress", function (e) {
+      if (e.key === "Enter") {
         e.preventDefault();
-        document.getElementById('submitApiKey').click();
+        document.getElementById("submitApiKey").click();
       }
     });
   }
 
   // Close on backdrop click
   if (apiModal) {
-    apiModal.addEventListener('click', (e) => {
+    apiModal.addEventListener("click", (e) => {
       if (e.target === apiModal) {
         hideAPIKeyModal();
       }
@@ -1630,71 +1706,70 @@ function setupAPIKeyModalEvents() {
   }
 
   // ESC key to close
-  document.addEventListener('keydown', function escapeHandler(e) {
-    if (e.key === 'Escape' && apiModal.style.display === 'flex') {
+  document.addEventListener("keydown", function escapeHandler(e) {
+    if (e.key === "Escape" && apiModal.style.display === "flex") {
       hideAPIKeyModal();
-      document.removeEventListener('keydown', escapeHandler);
+      document.removeEventListener("keydown", escapeHandler);
     }
   });
 }
-
 
 // ✅ Add API Key management to Settings Modal
 function showAPISettings() {
   showAPIKeyModal();
 }
 
-function showNotification(message, type = 'info') {
+function showNotification(message, type = "info") {
   console.log(`📢 ${type.toUpperCase()}: ${message}`);
-  log(message, type === 'error');
+  log(message, type === "error");
 }
 
 function setupNetworkMonitoring() {
-  window.addEventListener('online', handleNetworkRestored);
-  window.addEventListener('offline', handleNetworkLost);
+  window.addEventListener("online", handleNetworkRestored);
+  window.addEventListener("offline", handleNetworkLost);
   setInterval(checkConnectionQuality, 30000);
 }
 
 function handleNetworkLost() {
   isOnline = false;
-  console.log('📡 Network connection lost');
+  console.log("📡 Network connection lost");
 
   if (playerInstance && !playerInstance.paused()) {
     playerInstance.pause();
-    showNetworkStatus('Connection lost - video paused', 'error');
+    showNetworkStatus("Connection lost - video paused", "error");
   }
 }
 
 async function handleNetworkRestored() {
   isOnline = true;
   reconnectAttempts = 0;
-  console.log('📡 Network connection restored');
-  log('📡 Network connection restored');
+  console.log("📡 Network connection restored");
+  log("📡 Network connection restored");
 
-  showNetworkStatus('Connection restored', 'success');
+  showNetworkStatus("Connection restored", "success");
 
   if (playerInstance && playerInstance.paused() && currentVideoUrl) {
     try {
       setTimeout(async () => {
         await playerInstance.play();
-        showNetworkStatus('Resuming playback...', 'success');
-        log('▶️ Resuming playback after network recovery');
+        showNetworkStatus("Resuming playback...", "success");
+        log("▶️ Resuming playback after network recovery");
       }, 1000);
     } catch (error) {
-      console.warn('Could not auto-resume playback:', error);
-      log('❌ Could not auto-resume playback after network recovery');
+      console.warn("Could not auto-resume playback:", error);
+      log("❌ Could not auto-resume playback after network recovery");
       showPlayButtonFallback();
     }
   }
 }
 
-function showNetworkStatus(message, type = 'info') {
-  const existingStatus = document.querySelector('.network-status');
+function showNetworkStatus(message, type = "info") {
+  const existingStatus = document.querySelector(".network-status");
   if (existingStatus) {
     existingStatus.remove();
   }
 
-  const statusDiv = document.createElement('div');
+  const statusDiv = document.createElement("div");
   statusDiv.className = `network-status ${type}`;
   statusDiv.textContent = message;
   statusDiv.style.cssText = `
@@ -1702,7 +1777,9 @@ function showNetworkStatus(message, type = 'info') {
     top: 20px;
     left: 50%;
     transform: translateX(-50%);
-    background: ${type === 'error' ? '#9b2c2c' : type === 'warning' ? '#ef6c00' : '#3c6300'};
+    background: ${
+      type === "error" ? "#9b2c2c" : type === "warning" ? "#ef6c00" : "#3c6300"
+    };
     color: white;
     padding: 10px 20px;
     border-radius: 4px;
@@ -1715,7 +1792,7 @@ function showNetworkStatus(message, type = 'info') {
 
   setTimeout(() => {
     if (statusDiv.parentNode) {
-      statusDiv.style.opacity = '0';
+      statusDiv.style.opacity = "0";
       setTimeout(() => {
         if (statusDiv.parentNode) {
           statusDiv.parentNode.removeChild(statusDiv);
@@ -1729,27 +1806,27 @@ window.addEventListener("DOMContentLoaded", async () => {
   await initialize();
 });
 
-window.addEventListener('beforeunload', cleanup);
+window.addEventListener("beforeunload", cleanup);
 
-document.addEventListener('visibilitychange', function () {
+document.addEventListener("visibilitychange", function () {
   if (document.hidden) {
     if (playerInstance && !playerInstance.paused()) {
       playerInstance.pause();
-      console.log('Video paused due to tab switch');
+      console.log("Video paused due to tab switch");
     }
   }
 });
 
 // ✅ Show Settings Modal
 function showSettingsModal() {
-  const settingsModal = document.getElementById('settingsModal');
+  const settingsModal = document.getElementById("settingsModal");
   if (!settingsModal) return;
 
-  settingsModal.style.display = 'flex';
+  settingsModal.style.display = "flex";
 
   // Load current settings
-  const autoUpdateToggle = document.getElementById('autoUpdateToggle');
-  const updateIntervalSelect = document.getElementById('updateInterval');
+  const autoUpdateToggle = document.getElementById("autoUpdateToggle");
+  const updateIntervalSelect = document.getElementById("updateInterval");
 
   if (autoUpdateToggle) {
     autoUpdateToggle.checked = isAutoUpdateEnabled;
@@ -1768,9 +1845,9 @@ function showSettingsModal() {
 
 // ✅ Hide Settings Modal
 function hideSettingsModal() {
-  const settingsModal = document.getElementById('settingsModal');
+  const settingsModal = document.getElementById("settingsModal");
   if (settingsModal) {
-    settingsModal.style.display = 'none';
+    settingsModal.style.display = "none";
   }
 }
 
@@ -1780,15 +1857,15 @@ function toggleAutoUpdate(enabled) {
   localStorage.setItem(AUTO_UPDATE_KEY, enabled.toString());
 
   if (enabled) {
-    log('✅ Auto-update enabled');
-    showNotification('Auto-update enabled', 'success');
-    
+    log("✅ Auto-update enabled");
+    showNotification("Auto-update enabled", "success");
+
     // Restart auto-update service
     stopAutoUpdateService();
     startChannelAutoUpdate();
   } else {
-    log('⏸️ Auto-update disabled');
-    showNotification('Auto-update disabled', 'info');
+    log("⏸️ Auto-update disabled");
+    showNotification("Auto-update disabled", "info");
   }
 }
 
@@ -1801,7 +1878,7 @@ function changeUpdateInterval(hours) {
   updateIntervalDescriptionText(hours);
 
   log(`⏱️ Update interval changed to ${hours} hours`);
-  showNotification(`Update interval set to ${hours} hours`, 'success');
+  showNotification(`Update interval set to ${hours} hours`, "success");
 
   // Restart auto-update service with new interval
   if (isAutoUpdateEnabled) {
@@ -1812,34 +1889,34 @@ function changeUpdateInterval(hours) {
 
 // ✅ Manual Update
 async function manualUpdate() {
-  const manualUpdateBtn = document.getElementById('manualUpdateBtn');
+  const manualUpdateBtn = document.getElementById("manualUpdateBtn");
   if (!manualUpdateBtn) return;
 
   // Disable button and show loading state
   manualUpdateBtn.disabled = true;
   const originalText = manualUpdateBtn.textContent;
-  manualUpdateBtn.textContent = 'Updating...';
+  manualUpdateBtn.textContent = "Updating...";
 
   try {
-    log('🔄 Manual update initiated...');
-    
+    log("🔄 Manual update initiated...");
+
     const success = await loadAllChannelFeeds();
 
     if (success) {
       const newTimestamp = Date.now();
       localStorage.setItem(CACHE_KEY, newTimestamp.toString());
-      
-      log('✅ Manual update completed successfully');
-      showNotification('Channels updated successfully!', 'success');
-      
+
+      log("✅ Manual update completed successfully");
+      showNotification("Channels updated successfully!", "success");
+
       updateLastUpdateDisplay();
     } else {
-      log('❌ Manual update failed', true);
-      showNotification('Update failed. Please try again.', 'error');
+      log("❌ Manual update failed", true);
+      showNotification("Update failed. Please try again.", "error");
     }
   } catch (error) {
     log(`❌ Manual update error: ${error.message}`, true);
-    showNotification('Update failed. Check console for details.', 'error');
+    showNotification("Update failed. Check console for details.", "error");
   } finally {
     // Re-enable button
     manualUpdateBtn.disabled = false;
@@ -1850,38 +1927,37 @@ async function manualUpdate() {
 // ✅ Update Last Update Display
 function updateLastUpdateDisplay() {
   const lastUpdate = parseInt(localStorage.getItem(CACHE_KEY) || "0");
-  const lastUpdateEl = document.getElementById('lastUpdateDisplay');
+  const lastUpdateEl = document.getElementById("lastUpdateDisplay");
 
   if (!lastUpdateEl) return;
 
   if (lastUpdate === 0) {
-    lastUpdateEl.textContent = 'Never updated';
-    lastUpdateEl.style.color = '#ff9800';
+    lastUpdateEl.textContent = "Never updated";
+    lastUpdateEl.style.color = "#ff9800";
   } else {
     const timeAgo = getTimeAgo(lastUpdate);
     const date = new Date(lastUpdate);
     const formattedDate = date.toLocaleString();
-    
+
     lastUpdateEl.textContent = `Last updated: ${timeAgo} (${formattedDate})`;
-    lastUpdateEl.style.color = '#4caf50';
+    lastUpdateEl.style.color = "#4caf50";
   }
 }
-
 
 // ✅ Get Time Ago String
 function getTimeAgo(timestamp) {
   const seconds = Math.floor((Date.now() - timestamp) / 1000);
 
-  if (seconds < 60) return 'just now';
-  
+  if (seconds < 60) return "just now";
+
   const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes} minute${minutes > 1 ? 's' : ''} ago`;
-  
+  if (minutes < 60) return `${minutes} minute${minutes > 1 ? "s" : ""} ago`;
+
   const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours} hour${hours > 1 ? 's' : ''} ago`;
-  
+  if (hours < 24) return `${hours} hour${hours > 1 ? "s" : ""} ago`;
+
   const days = Math.floor(hours / 24);
-  return `${days} day${days > 1 ? 's' : ''} ago`;
+  return `${days} day${days > 1 ? "s" : ""} ago`;
 }
 
 // ✅ Stop Auto-Update Service
@@ -1889,32 +1965,32 @@ function stopAutoUpdateService() {
   if (autoUpdateInterval) {
     clearInterval(autoUpdateInterval);
     autoUpdateInterval = null;
-    console.log('Auto-update service stopped');
+    console.log("Auto-update service stopped");
   }
 }
 
 // ✅ Setup Settings Modal Event Listeners
 function setupSettingsModal() {
-  const settingsBtn = document.getElementById('settingsBtn');
-  const closeSettings = document.getElementById('closeSettings');
-  const settingsModal = document.getElementById('settingsModal');
-  const autoUpdateToggle = document.getElementById('autoUpdateToggle');
-  const updateIntervalSelect = document.getElementById('updateInterval');
-  const manualUpdateBtn = document.getElementById('manualUpdateBtn');
+  const settingsBtn = document.getElementById("settingsBtn");
+  const closeSettings = document.getElementById("closeSettings");
+  const settingsModal = document.getElementById("settingsModal");
+  const autoUpdateToggle = document.getElementById("autoUpdateToggle");
+  const updateIntervalSelect = document.getElementById("updateInterval");
+  const manualUpdateBtn = document.getElementById("manualUpdateBtn");
 
   // Open settings
   if (settingsBtn) {
-    settingsBtn.addEventListener('click', showSettingsModal);
+    settingsBtn.addEventListener("click", showSettingsModal);
   }
 
   // Close settings
   if (closeSettings) {
-    closeSettings.addEventListener('click', hideSettingsModal);
+    closeSettings.addEventListener("click", hideSettingsModal);
   }
 
   // Close on backdrop click
   if (settingsModal) {
-    settingsModal.addEventListener('click', (e) => {
+    settingsModal.addEventListener("click", (e) => {
       if (e.target === settingsModal) {
         hideSettingsModal();
       }
@@ -1923,30 +1999,30 @@ function setupSettingsModal() {
 
   // Auto-update toggle
   if (autoUpdateToggle) {
-    autoUpdateToggle.addEventListener('change', (e) => {
+    autoUpdateToggle.addEventListener("change", (e) => {
       toggleAutoUpdate(e.target.checked);
     });
   }
 
   // Update interval change
   if (updateIntervalSelect) {
-    updateIntervalSelect.addEventListener('change', (e) => {
+    updateIntervalSelect.addEventListener("change", (e) => {
       changeUpdateInterval(e.target.value);
     });
   }
 
   // Manual update button
   if (manualUpdateBtn) {
-    manualUpdateBtn.addEventListener('click', manualUpdate);
+    manualUpdateBtn.addEventListener("click", manualUpdate);
   }
 
   // ✅ Set initial description text on page load
   updateIntervalDescriptionText(updateIntervalHours);
 
-    // ✅ Manage API Key button
-  const manageApiKeyBtn = document.getElementById('manageApiKeyBtn');
+  // ✅ Manage API Key button
+  const manageApiKeyBtn = document.getElementById("manageApiKeyBtn");
   if (manageApiKeyBtn) {
-    manageApiKeyBtn.addEventListener('click', () => {
+    manageApiKeyBtn.addEventListener("click", () => {
       hideSettingsModal(); // Close settings first
       setTimeout(showAPIKeyModal, 300); // Open API modal
     });
@@ -1955,8 +2031,10 @@ function setupSettingsModal() {
 
 // ✅ NEW FUNCTION: Update description text
 function updateIntervalDescriptionText(hours) {
-  const descriptionEl = document.getElementById('updateIntervalDescription');
+  const descriptionEl = document.getElementById("updateIntervalDescription");
   if (descriptionEl) {
-    descriptionEl.textContent = `Automatically check for new content every ${hours} hour${hours > 1 ? 's' : ''}`;
+    descriptionEl.textContent = `Automatically check for new content every ${hours} hour${
+      hours > 1 ? "s" : ""
+    }`;
   }
 }
