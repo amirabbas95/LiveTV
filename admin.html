@@ -570,28 +570,6 @@
       ::-webkit-scrollbar-thumb:hover {
         background: var(--text-color-secondary);
       }
-
-      .btn-import {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        color: white;
-        padding: 10px 20px;
-        border: none;
-        border-radius: 8px;
-        cursor: pointer;
-        font-size: 14px;
-        font-weight: 600;
-        transition: all 0.3s ease;
-        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-      }
-
-      .btn-import:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 6px 12px rgba(0, 0, 0, 0.15);
-      }
-
-      .btn-import:active {
-        transform: translateY(0);
-      }
     </style>
   </head>
 
@@ -1851,7 +1829,9 @@
             const liveIndicator =
               channel.isLive === true || channel.isLive === "true" ? " 🔴" : "";
             item.innerHTML = `
-                    <img src="${channel.image || "placeholder.png"}" alt="${channel.name} logo">
+                    <img src="${channel.image || "placeholder.png"}" alt="${
+              channel.name
+            } logo">
                     <div>
                         <strong>${channel.name}${liveIndicator}</strong><br>
                         <small>${channel.category}</small>
@@ -2262,7 +2242,9 @@
                   : "";
 
               channelItem.innerHTML = `
-                    <img src="${channel.image || "placeholder.png"}" alt="${channel.name} logo">
+                    <img src="${channel.image || "placeholder.png"}" alt="${
+                channel.name
+              } logo">
                     <div>
                         <strong>${channel.name}${liveIndicator}</strong><br>
                         <small>${channel.category}</small>
@@ -2278,7 +2260,6 @@
             previewDiv.appendChild(categorySection);
           });
       }
-
 
       function toggleClearButton() {
         const input = document.getElementById("searchInput");

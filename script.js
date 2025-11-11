@@ -520,7 +520,7 @@ function createChannelItem(channel) {
   img.loading = "lazy";
   img.decoding = "async";
   img.onerror = function () {
-    this.src =  "placeholder.png";
+    this.src = "placeholder.png";
     this.alt = "Image not available";
   };
 
@@ -1810,9 +1810,24 @@ window.addEventListener("beforeunload", cleanup);
 
 document.addEventListener("visibilitychange", function () {
   if (document.hidden) {
+    // Tab is hidden → pause video
     if (playerInstance && !playerInstance.paused()) {
       playerInstance.pause();
       console.log("Video paused due to tab switch");
+    }
+  } else {
+    // Tab is visible again → resume video
+    if (playerInstance && playerInstance.paused()) {
+      const playPromise = playerInstance.play();
+      if (playPromise !== undefined) {
+        playPromise
+          .then(() => {
+            console.log("Video resumed after returning to tab");
+          })
+          .catch((error) => {
+            console.error("Resume failed:", error);
+          });
+      }
     }
   }
 });
