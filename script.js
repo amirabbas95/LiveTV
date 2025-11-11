@@ -520,7 +520,7 @@ function createChannelItem(channel) {
   img.loading = "lazy";
   img.decoding = "async";
   img.onerror = function () {
-    this.src = "fallback-image.png";
+    this.src =  "placeholder.png";
     this.alt = "Image not available";
   };
 

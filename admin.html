@@ -1851,7 +1851,7 @@
             const liveIndicator =
               channel.isLive === true || channel.isLive === "true" ? " 🔴" : "";
             item.innerHTML = `
-                    <img src="${channel.image}" alt="${channel.name} logo">
+                    <img src="${channel.image || "placeholder.png"}" alt="${channel.name} logo">
                     <div>
                         <strong>${channel.name}${liveIndicator}</strong><br>
                         <small>${channel.category}</small>
@@ -2262,7 +2262,7 @@
                   : "";
 
               channelItem.innerHTML = `
-                    <img src="${channel.image}" alt="${channel.name} logo">
+                    <img src="${channel.image || "placeholder.png"}" alt="${channel.name} logo">
                     <div>
                         <strong>${channel.name}${liveIndicator}</strong><br>
                         <small>${channel.category}</small>
