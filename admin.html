@@ -62,11 +62,11 @@
       }
 
       .controls-panel {
-        min-width: 300px;
+        min-width: 40%;
       }
 
       .preview-panel {
-        min-width: 400px;
+        min-width: 60%;
       }
 
       form {
@@ -752,7 +752,7 @@
                 "
               >
                 <button
-                  class="btn-secondary channel-item-button"
+                  class="btn-secondary"
                   type="button"
                   id="prevChannelBtn"
                   onclick="navigateChannel(-1)"
@@ -769,7 +769,7 @@
                   🗑️ Delete
                 </button>
                 <button
-                  class="btn-secondary channel-item-button"
+                  class="btn-secondary"
                   type="button"
                   onclick="clearChannelForm()"
                 >
@@ -777,7 +777,7 @@
                 </button>
 
                 <button
-                  class="btn-secondary channel-item-button"
+                  class="btn-secondary"
                   type="button"
                   id="nextChannelBtn"
                   onclick="navigateChannel(1)"
@@ -866,6 +866,47 @@
             <div class="stat-label">Categories</div>
             <div class="stat-value" id="totalCategoriesCount">0</div>
           </div>
+        </div>
+
+        <!-- Search Box -->
+        <div
+          class="search-container"
+          style="position: relative; margin: 20px 0"
+        >
+          <input
+            type="text"
+            id="searchInput"
+            placeholder="🔍 Search channels by name, category, or URL..."
+            oninput="toggleClearButton(); searchChannels();"
+            style="
+              width: 96%;
+              padding: 12px 35px 12px 15px;
+              border-radius: 8px;
+              border: 1px solid var(--border-color);
+              background-color: var(--bg-color-light);
+              color: var(--text-color-primary);
+              font-size: 14px;
+            "
+          />
+          <!-- Clear Button -->
+          <button
+            id="clearBtn"
+            onclick="clearSearch()"
+            style="
+              position: absolute;
+              right: 15px;
+              top: 50%;
+              transform: translateY(-50%);
+              border: none;
+              background: none;
+              font-size: 16px;
+              color: var(--text-color-secondary, #888);
+              cursor: pointer;
+              display: none;
+            "
+          >
+            ✕
+          </button>
         </div>
 
         <div class="visual-preview">
@@ -2138,6 +2179,120 @@
             closeFeedsEditor();
           }
         });
+
+      // Search channels by name only
+      function searchChannels() {
+        const searchTerm = document
+          .getElementById("searchInput")
+          .value.toLowerCase()
+          .trim();
+
+        if (searchTerm === "") {
+          // If search is empty, show all channels
+          renderUI();
+          return;
+        }
+
+        // Filter channels based on search term
+        const filteredChannels = channelsData.filter((channel) => {
+          const name = (channel.name || "").toLowerCase();
+          const category = (channel.category || "").toLowerCase();
+          const url = (channel.url || "").toLowerCase();
+
+          return (
+            name.includes(searchTerm) ||
+            category.includes(searchTerm) ||
+            url.includes(searchTerm)
+          );
+        });
+
+        // Render filtered results
+        renderChannelsFiltered(filteredChannels, searchTerm);
+      }
+
+      // Render filtered channels with existing styles
+      function renderChannelsFiltered(filteredChannels, searchTerm) {
+        const previewDiv = document.getElementById("channelListPreview");
+        previewDiv.innerHTML = "";
+
+        if (filteredChannels.length === 0) {
+          previewDiv.innerHTML = `
+      <div style="text-align: center; padding: 40px; color: var(--text-color-secondary);">
+        <div style="font-size: 48px; margin-bottom: 10px;">🔍</div>
+        <div style="font-size: 18px;">No channels found for "${searchTerm}"</div>
+      </div>
+    `;
+          return;
+        }
+
+        // Show search results count
+        const resultInfo = document.createElement("div");
+        resultInfo.className = "info-box";
+        resultInfo.innerHTML = `<p>Found ${filteredChannels.length} channel(s) matching "${searchTerm}"</p>`;
+        previewDiv.appendChild(resultInfo);
+
+        // Group by category
+        const grouped = {};
+        filteredChannels.forEach((channel) => {
+          const cat = channel.category || "Uncategorized";
+          if (!grouped[cat]) grouped[cat] = [];
+          grouped[cat].push(channel);
+        });
+
+        // Render grouped channels
+        Object.keys(grouped)
+          .sort()
+          .forEach((category) => {
+            const categorySection = document.createElement("div");
+            categorySection.className = "category-list-preview";
+            categorySection.style.marginBottom = "20px";
+
+            const categoryTitle = document.createElement("h3");
+            categoryTitle.textContent = `${category} (${grouped[category].length})`;
+            categoryTitle.style.width = "100%";
+            categorySection.appendChild(categoryTitle);
+
+            grouped[category].forEach((channel) => {
+              const channelItem = document.createElement("div");
+              const index = channelsData.indexOf(channel);
+              channelItem.className = "channel-preview-item";
+              const liveIndicator =
+                channel.isLive === true || channel.isLive === "true"
+                  ? " 🔴"
+                  : "";
+
+              channelItem.innerHTML = `
+                    <img src="${channel.image}" alt="${channel.name} logo">
+                    <div>
+                        <strong>${channel.name}${liveIndicator}</strong><br>
+                        <small>${channel.category}</small>
+                    </div>
+                    <div class="actions">
+                        <button class="btn-secondary channel-item-button" onclick="editChannel(${index})">Edit</button>
+                    </div>
+                `;
+
+              categorySection.appendChild(channelItem);
+            });
+
+            previewDiv.appendChild(categorySection);
+          });
+      }
+
+
+      function toggleClearButton() {
+        const input = document.getElementById("searchInput");
+        const clearBtn = document.getElementById("clearBtn");
+        clearBtn.style.display = input.value ? "block" : "none";
+      }
+
+      function clearSearch() {
+        const input = document.getElementById("searchInput");
+        input.value = "";
+        toggleClearButton();
+        searchChannels(); // re-run your search function to reset the results
+        input.focus(); // keep focus in the input field
+      }
     </script>
   </body>
 </html>
