@@ -9,6 +9,7 @@
   <link href="https://unpkg.com/video.js@8.23.4/dist/video-js.min.css" rel="stylesheet" />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
   <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
 
   <link rel="stylesheet" href="styles.css">
 
@@ -16,17 +17,24 @@
 
 <body>
 
-  <header class="bg-[#121212] text-gray-100 py-4 px-6 flex justify-between items-center shadow-lg sticky top-0 z-10"
-    style="background-color: #121212;">
-    <div class="flex items-center space-x-4">
-      <img src="logo.svg" alt="logo" class="h-10 w-10">
-      <h1 class="text-2xl font-bold">LiveTV Player</h1>
-    </div>
-    <nav class="flex items-center space-x-4">
-      <a href="admin.html" class="settings-btn">⚙️ Admin</a>
-      <button id="settingsBtn" class="settings-btn">⚙️ Settings</button>
-    </nav>
-  </header>
+<header class="bg-[#121212] text-gray-100 py-4 px-6 flex justify-between items-center shadow-lg sticky top-0 z-10"
+  style="background-color: #121212;">
+  <div class="flex items-center space-x-4">
+    <img src="logo.svg" alt="logo" class="h-10 w-10">
+    <h1 class="text-2xl font-bold">LiveTV Player</h1>
+  </div>
+  <nav class="flex items-center space-x-4">
+    <!-- Admin link with icon -->
+    <a href="admin.html" class="settings-btn" title="Admin Panel">
+      <i class="fas fa-user-shield"></i>
+    </a>
+    <!-- Settings button with icon -->
+    <button id="settingsBtn" class="settings-btn" title="Settings">
+      <i class="fas fa-cog"></i>
+    </button>
+  </nav>
+</header>
+
 
   <main>
 

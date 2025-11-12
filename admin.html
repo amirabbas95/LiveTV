@@ -1778,15 +1778,18 @@
         categoriesData.forEach((category) => {
           const categorySection = document.createElement("div");
           categorySection.innerHTML = `
-            <div style="display: flex; justify-content: space-between; align-items: center;">
-              <h3>${category}</h3>
-              <button class="btn-secondary" onclick="sortChannelsByName('${category.replace(
-                /'/g,
-                "\\'"
-              )}')">Sort A-Z</button>
-            </div>
-            <div class="channel-list-category"></div>
-          `;
+  <div style="display: flex; justify-content: space-between; align-items: center;">
+    <h3>${category}</h3>
+    <button class="btn-secondary" onclick="sortChannelsByName('${category.replace(
+      /'/g,
+      "\\'"
+    )}')" title="Sort A-Z">
+      <i class="fas fa-sort-alpha-down"></i>
+    </button>
+  </div>
+  <div class="channel-list-category"></div>
+`;
+
           els.channelListPreview.appendChild(categorySection);
 
           const channelsInCategory = channelsData.filter(
