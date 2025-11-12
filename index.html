@@ -71,19 +71,20 @@
           <h2 class="text-xl font-bold mt-6 mb-4 col-span-full">All Channels</h2>
 
           <div class="sort-controls">
-            <button onclick="sortChannelsAndRender('none')" title="No Sort">
+            <button onclick="handleSortChange('none')" title="No Sort">
               <i class="fas fa-ban"></i>
             </button>
-            <button onclick="sortChannelsAndRender('asc')" title="Sort Name A-Z">
+            <button onclick="handleSortChange('asc')" title="Sort Name A-Z">
               <i class="fas fa-sort-alpha-down"></i>
             </button>
-            <button onclick="sortChannelsAndRender('desc')" title="Sort Name Z-A">
+            <button onclick="handleSortChange('desc')" title="Sort Name Z-A">
               <i class="fas fa-sort-alpha-up"></i>
             </button>
-            <button onclick="sortChannelsAndRender('watchTime')" title="Sort by Watch Time">
+            <button onclick="handleSortChange('watchTime')" title="Sort by Watch Time">
               <i class="fas fa-clock"></i>
             </button>
           </div>
+
 
         </div>
       </div>

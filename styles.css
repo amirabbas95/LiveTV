@@ -29,8 +29,6 @@
   --color-green-800: #276749;
   --color-red-800: #9b2c2c;
   --color-orange-800: #ef6c00;
-  
-
 }
 
 /* ====================================== 
@@ -268,7 +266,6 @@ main {
   opacity: 1;
 }
 
-
 #channelListPreview {
   scroll-behavior: smooth;
   overflow-y: auto;
@@ -331,19 +328,17 @@ main {
   color: #a0aec0;
 }
 
-
 .sort-dropdown {
   font-family: "Font Awesome 6 Free", Arial, sans-serif;
   font-weight: 900; /* required for solid icons */
   font-size: 18px;
   padding: 4px 8px;
-    background-color: var(--bg-color-medium);
+  background-color: var(--bg-color-medium);
   color: #cbd5e0;
-    border-radius: 0.375rem;
-      border: none;
+  border-radius: 0.375rem;
+  border: none;
   outline: none;
 }
-
 
 .sort-dropdown:focus {
   outline: 2px solid var(--accent-color);
@@ -362,7 +357,10 @@ main {
   color: var(--accent-color);
 }
 
-
+.sort-controls button.active {
+  color: var(--accent-color); /* highlight color */
+  border-bottom: 2px solid var(--accent-color); /* underline effect */
+}
 
 /* ====================================== 
     8. Modals & Video Player 
@@ -500,7 +498,9 @@ main {
 }
 
 @keyframes spin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .loading-state p {
@@ -880,7 +880,6 @@ main {
   }
 }
 
-
 /* API Key Modal Specific Styles */
 .api-key-input {
   width: 100%;
@@ -890,7 +889,7 @@ main {
   border-radius: 8px;
   color: white;
   font-size: 14px;
-  font-family: 'Courier New', monospace;
+  font-family: "Courier New", monospace;
   margin-top: 8px;
   transition: all 0.3s ease;
 }
@@ -995,9 +994,16 @@ main {
 
 /* Animation for invalid input */
 @keyframes shake {
-  0%, 100% { transform: translateX(0); }
-  25% { transform: translateX(-10px); }
-  75% { transform: translateX(10px); }
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  25% {
+    transform: translateX(-10px);
+  }
+  75% {
+    transform: translateX(10px);
+  }
 }
 
 .api-key-input.invalid {
@@ -1036,8 +1042,12 @@ main {
 }
 
 @keyframes fadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 .settings-content {

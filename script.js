@@ -739,15 +739,27 @@ function sortChannelsAndRender(sortMethod = "none") {
   updateAllChannelItems();
 }
 
-function handleSortChange() {
-  const sortDropdown = document.getElementById("sortChannels");
-  if (!sortDropdown) return;
-
-  const sortMethod = sortDropdown.value;
-
+function handleSortChange(sortMethod) {
+  // Save to localStorage
   localStorage.setItem("defaultSortMethod", sortMethod);
 
+  // Render channels with chosen sort
   sortChannelsAndRender(sortMethod);
+
+  // Update button states
+  updateSortButtons(sortMethod);
+}
+
+function updateSortButtons(method) {
+  const buttons = document.querySelectorAll(".sort-controls button");
+  buttons.forEach((btn) => btn.classList.remove("active"));
+
+  const activeBtn = [...buttons].find((btn) =>
+    btn.getAttribute("onclick").includes(method)
+  );
+  if (activeBtn) {
+    activeBtn.classList.add("active");
+  }
 }
 
 function renderFavorites() {
@@ -1008,11 +1020,6 @@ async function initialize() {
 
   setupNetworkMonitoring();
 
-  const sortDropdown = document.getElementById("sortChannels");
-  if (sortDropdown) {
-    sortDropdown.addEventListener("change", handleSortChange);
-  }
-
   // ✅ Setup Settings Modal
   setupSettingsModal();
 
@@ -1055,8 +1062,7 @@ async function initialize() {
   loadWatchTime();
 
   const savedSort = localStorage.getItem("defaultSortMethod") || "none";
-  sortChannelsAndRender(savedSort);
-  if (sortDropdown) sortDropdown.value = savedSort;
+  handleSortChange(savedSort);
 
   renderFavorites();
   renderRecentlyWatched();
