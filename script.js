@@ -11,7 +11,7 @@ let lastFocusedElement = null;
 let currentSortMethod = "none";
 let playerInstance = null;
 let watchStartTime = 0;
-let currentVideoUrl = "";
+let currentChannelId = "";
 let overlayTimeoutShow;
 let overlayTimeoutHide;
 let isRecentOverlayActive = false;
@@ -362,13 +362,13 @@ function showChannelInfoOverlay() {
   }, 6000);
 }
 
-function startWatching(name) {
-  currentVideoUrl = name;
+function startWatching(channelId) {
+  currentChannelId = channelId;
   watchStartTime = Date.now();
 }
 
 function stopWatching() {
-  if (!currentVideoUrl) return;
+  if (!currentChannelId) return;
 
   const watchedMs = Date.now() - watchStartTime;
   const watchedSeconds = Math.floor(watchedMs / 1000);
@@ -376,12 +376,12 @@ function stopWatching() {
   const watchData =
     JSON.parse(localStorage.getItem("watchTimePerChannel")) || {};
 
-  if (!watchData[currentVideoUrl]) watchData[currentVideoUrl] = 0;
-  watchData[currentVideoUrl] += watchedSeconds;
+  watchData[currentChannelId] =
+    (watchData[currentChannelId] || 0) + watchedSeconds;
 
   localStorage.setItem("watchTimePerChannel", JSON.stringify(watchData));
 
-  currentVideoUrl = "";
+  currentChannelId = "";
   watchStartTime = 0;
 }
 
