@@ -330,19 +330,38 @@ main {
   color: #a0aec0;
 }
 
+
 .sort-dropdown {
-  background-color: var(--bg-color-medium);
+  font-family: "Font Awesome 6 Free", Arial, sans-serif;
+  font-weight: 900; /* required for solid icons */
+  font-size: 18px;
+  padding: 4px 8px;
+    background-color: var(--bg-color-medium);
   color: #cbd5e0;
-  border-radius: 0.375rem;
-  padding: 0.25rem 0.5rem;
-  border: none;
+    border-radius: 0.375rem;
+      border: none;
   outline: none;
 }
+
 
 .sort-dropdown:focus {
   outline: 2px solid var(--accent-color);
   outline-offset: 2px;
 }
+
+.sort-controls button {
+  background: none;
+  border: none;
+  font-size: 20px;
+  cursor: pointer;
+  margin: 0 5px;
+  color: #cbd5e0;
+}
+.sort-controls button:hover {
+  color: var(--accent-color);
+}
+
+
 
 /* ====================================== 
     8. Modals & Video Player 

@@ -17,23 +17,23 @@
 
 <body>
 
-<header class="bg-[#121212] text-gray-100 py-4 px-6 flex justify-between items-center shadow-lg sticky top-0 z-10"
-  style="background-color: #121212;">
-  <div class="flex items-center space-x-4">
-    <img src="logo.svg" alt="logo" class="h-10 w-10">
-    <h1 class="text-2xl font-bold">LiveTV Player</h1>
-  </div>
-  <nav class="flex items-center space-x-4">
-    <!-- Admin link with icon -->
-    <a href="admin.html" class="settings-btn" title="Admin Panel">
-      <i class="fas fa-user-shield"></i>
-    </a>
-    <!-- Settings button with icon -->
-    <button id="settingsBtn" class="settings-btn" title="Settings">
-      <i class="fas fa-cog"></i>
-    </button>
-  </nav>
-</header>
+  <header class="bg-[#121212] text-gray-100 py-4 px-6 flex justify-between items-center shadow-lg sticky top-0 z-10"
+    style="background-color: #121212;">
+    <div class="flex items-center space-x-4">
+      <img src="logo.svg" alt="logo" class="h-10 w-10">
+      <h1 class="text-2xl font-bold">LiveTV Player</h1>
+    </div>
+    <nav class="flex items-center space-x-4">
+      <!-- Admin link with icon -->
+      <a href="admin.html" class="settings-btn" title="Admin Panel">
+        <i class="fas fa-user-shield"></i>
+      </a>
+      <!-- Settings button with icon -->
+      <button id="settingsBtn" class="settings-btn" title="Settings">
+        <i class="fas fa-cog"></i>
+      </button>
+    </nav>
+  </header>
 
 
   <main>
@@ -71,14 +71,20 @@
           <h2 class="text-xl font-bold mt-6 mb-4 col-span-full">All Channels</h2>
 
           <div class="sort-controls">
-            <label for="sortChannels">Sort by:</label>
-            <select id="sortChannels" class="sort-dropdown">
-              <option value="none">None</option>
-              <option value="asc">Name (A-Z)</option>
-              <option value="desc">Name (Z-A)</option>
-              <option value="watchTime">Watch Time</option>
-            </select>
+            <button onclick="sortChannelsAndRender('none')" title="No Sort">
+              <i class="fas fa-ban"></i>
+            </button>
+            <button onclick="sortChannelsAndRender('asc')" title="Sort Name A-Z">
+              <i class="fas fa-sort-alpha-down"></i>
+            </button>
+            <button onclick="sortChannelsAndRender('desc')" title="Sort Name Z-A">
+              <i class="fas fa-sort-alpha-up"></i>
+            </button>
+            <button onclick="sortChannelsAndRender('watchTime')" title="Sort by Watch Time">
+              <i class="fas fa-clock"></i>
+            </button>
           </div>
+
         </div>
       </div>
 
