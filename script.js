@@ -307,7 +307,7 @@ function attemptPlayerRecovery() {
   const currentSource = playerInstance.currentSrc();
   const message = `🔄 Attempting to recover streaming link... (${currentSource})`;
 
-  console.log(message);
+  //console.log(message);
   log(message);
   showNetworkStatus("Attempting to recover streaming link...", "warning");
 
@@ -1552,14 +1552,25 @@ function saveAPIKey(apiKey) {
   if (apiKey && apiKey.trim()) {
     localStorage.setItem(API_KEY_STORAGE_KEY, btoa(apiKey.trim()));
     API_KEY = apiKey.trim();
-    console.log("✅ API Key saved to localStorage");
+    //console.log("✅ API Key saved to localStorage");
     return true;
   }
   return false;
 }
 
 function getStoredAPIKey() {
-  return localStorage.getItem(API_KEY_STORAGE_KEY) || "";
+  const encoded = localStorage.getItem(API_KEY_STORAGE_KEY);
+  if (encoded) {
+    try {
+      API_KEY = atob(encoded); // Decode from Base64
+      //console.log("✅ API Key loaded from localStorage");
+      return API_KEY;
+    } catch (e) {
+      console.error("Error decoding API key:", e);
+      return null;
+    }
+  }
+  return null;
 }
 
 function hasValidAPIKey() {
@@ -1570,7 +1581,7 @@ function hasValidAPIKey() {
 function clearAPIKey() {
   localStorage.removeItem(API_KEY_STORAGE_KEY);
   API_KEY = "";
-  console.log("🗑️ API Key cleared from localStorage");
+  //console.log("🗑️ API Key cleared from localStorage");
 }
 
 // ✅ Show API Key Modal (UPDATED)
