@@ -875,10 +875,12 @@ document.addEventListener("keydown", (event) => {
         let newIndex = currentChannelIndex;
         if (event.key === "ArrowDown" || event.key === "PageDown") {
           newIndex = (currentChannelIndex + 1) % allChannelItems.length;
+          stopWatching();
         } else if (event.key === "ArrowUp" || event.key === "PageUp") {
           newIndex =
             (currentChannelIndex - 1 + allChannelItems.length) %
             allChannelItems.length;
+          stopWatching();
         }
 
         const newChannelCard = allChannelItems[newIndex];
