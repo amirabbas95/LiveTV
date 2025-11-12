@@ -541,7 +541,7 @@ function createChannelItem(channel) {
 
   const favoriteIcon = document.createElement("span");
   favoriteIcon.className = "favorite-icon";
-  favoriteIcon.textContent = "★";
+  favoriteIcon.innerHTML = '<i class="fas fa-star"></i>';
   // ✅ Create and store favorite handler
   const favoriteHandler = (e) => {
     e.stopPropagation();
