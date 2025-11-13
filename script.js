@@ -10,8 +10,9 @@ let allChannelItems = [];
 let lastFocusedElement = null;
 let currentSortMethod = "none";
 let playerInstance = null;
-let watchStartTime = 0;
 let currentChannelId = "";
+let watchStartTime = 0;
+let watchInterval = null;
 let overlayTimeoutShow;
 let overlayTimeoutHide;
 let isRecentOverlayActive = false;
@@ -53,7 +54,6 @@ function extractYouTubeID(url) {
 
 function selectChannel(url, name, image, description, number, isLive) {
   if (!url) return;
-
   const currentSessionId = Date.now();
   sessionId = currentSessionId;
 
@@ -167,7 +167,6 @@ function selectChannel(url, name, image, description, number, isLive) {
     showErrorToUser(`Failed to load ${name}`);
   }
 
-  startWatching(name);
 }
 
 // ✅ Helper function for loading state
@@ -253,7 +252,7 @@ function checkConnectionQuality() {
         showNetworkStatus("Poor connection detected", "warning");
       }
     })
-    .catch(() => {});
+    .catch(() => { });
 }
 
 function setupPlayerEventHandlers(name, isLive, isYouTube, currentSessionId) {
@@ -262,13 +261,15 @@ function setupPlayerEventHandlers(name, isLive, isYouTube, currentSessionId) {
   playerInstance.off("error");
   playerInstance.off("waiting");
   playerInstance.off("playing");
+  playerInstance.off("pause");
+  playerInstance.off("ended");
   playerInstance.off("loadedmetadata");
 
   playerInstance.on("error", function () {
     if (sessionId !== currentSessionId) return;
-
     const error = playerInstance.error();
     console.log("Player error:", error);
+    stopWatching();
     if (navigator.onLine) attemptPlayerRecovery();
     else showNetworkStatus("Waiting for network connection...", "warning");
   });
@@ -280,18 +281,30 @@ function setupPlayerEventHandlers(name, isLive, isYouTube, currentSessionId) {
 
   playerInstance.on("playing", function () {
     if (sessionId !== currentSessionId) return;
-
+    console.log('Video is now playing');
+    startWatching(name); // Start tracking when video plays
     const existingStatus = document.querySelector(".network-status");
     if (existingStatus?.textContent.includes("Buffering")) {
       existingStatus.remove();
     }
   });
 
+  playerInstance.on('pause', function () {
+    if (sessionId !== currentSessionId) return;
+    console.log('Video paused');
+    stopWatching();
+  });
+
+  playerInstance.on('ended', function () {
+    if (sessionId !== currentSessionId) return;
+    console.log('Video ended');
+    stopWatching();
+  });
+
+
   playerInstance.on("loadedmetadata", function () {
     if (sessionId !== currentSessionId) return;
-
     updateQualityDisplay();
-
     const isChannelLive = isLive === true || isLive === "true";
     if (!isChannelLive && !isYouTube) {
       playerInstance.controls(true);
@@ -363,30 +376,60 @@ function showChannelInfoOverlay() {
 }
 
 function startWatching(channelId) {
+  // Stop previous watching session if exists
+  stopWatching();
+
   currentChannelId = channelId;
   watchStartTime = Date.now();
+
+  // Save watch time every 10 seconds while playing
+  watchInterval = setInterval(() => {
+    saveCurrentWatchTime();
+  }, 10000); // Save every 10 seconds
+
+  console.log(`Started watching: ${channelId}`);
 }
 
 function stopWatching() {
   if (!currentChannelId) return;
 
-  const watchedMs = Date.now() - watchStartTime;
-  const watchedSeconds = Math.floor(watchedMs / 1000);
+  // Clear the interval
+  if (watchInterval) {
+    clearInterval(watchInterval);
+    watchInterval = null;
+  }
 
-  const watchData =
-    JSON.parse(localStorage.getItem("watchTimePerChannel")) || {};
+  saveCurrentWatchTime();
 
-  watchData[currentChannelId] =
-    (watchData[currentChannelId] || 0) + watchedSeconds;
-
-  localStorage.setItem("watchTimePerChannel", JSON.stringify(watchData));
-
+  console.log(`Stopped watching: ${currentChannelId}`);
   currentChannelId = "";
   watchStartTime = 0;
 }
 
+function saveCurrentWatchTime() {
+  if (!currentChannelId || !watchStartTime) return;
+
+  const watchedMs = Date.now() - watchStartTime;
+  const watchedSeconds = Math.floor(watchedMs / 1000);
+
+  if (watchedSeconds < 5) return; // Don't save if less than 5 second
+
+  const watchData = loadWatchTime();
+  watchData[currentChannelId] = (watchData[currentChannelId] || 0) + watchedSeconds;
+
+  localStorage.setItem("watchTimePerChannel", JSON.stringify(watchData));
+
+  // Reset start time for next interval
+  watchStartTime = Date.now();
+}
+
 function loadWatchTime() {
-  return JSON.parse(localStorage.getItem("watchTimePerChannel")) || {};
+  try {
+    return JSON.parse(localStorage.getItem("watchTimePerChannel")) || {};
+  } catch (e) {
+    console.error("Error loading watch time:", e);
+    return {};
+  }
 }
 
 function sortChannelsByWatchTime(channels) {
@@ -397,6 +440,7 @@ function sortChannelsByWatchTime(channels) {
     return bTime - aTime;
   });
 }
+
 
 function updateQualityDisplay() {
   if (!playerInstance || !qualityEl) return;
@@ -875,12 +919,10 @@ document.addEventListener("keydown", (event) => {
         let newIndex = currentChannelIndex;
         if (event.key === "ArrowDown" || event.key === "PageDown") {
           newIndex = (currentChannelIndex + 1) % allChannelItems.length;
-          stopWatching();
         } else if (event.key === "ArrowUp" || event.key === "PageUp") {
           newIndex =
             (currentChannelIndex - 1 + allChannelItems.length) %
             allChannelItems.length;
-          stopWatching();
         }
 
         const newChannelCard = allChannelItems[newIndex];
@@ -1458,8 +1500,7 @@ function startChannelAutoUpdate() {
   autoUpdateInterval = setInterval(checkAndUpdate, intervalMs);
 
   console.log(
-    `Auto-update service started. Checking every ${updateIntervalHours} hours. Status: ${
-      isAutoUpdateEnabled ? "Enabled" : "Disabled"
+    `Auto-update service started. Checking every ${updateIntervalHours} hours. Status: ${isAutoUpdateEnabled ? "Enabled" : "Disabled"
     }`
   );
 }
@@ -1469,9 +1510,8 @@ function log(message, isError = false) {
   if (!logArea) return;
 
   const prefix = isError ? "Error: " : "Info: ";
-  logArea.innerHTML += `<div class="${
-    isError ? "text-red-400" : ""
-  }">${prefix}[${new Date().toLocaleTimeString()}] ${message}</div>`;
+  logArea.innerHTML += `<div class="${isError ? "text-red-400" : ""
+    }">${prefix}[${new Date().toLocaleTimeString()}] ${message}</div>`;
   logArea.scrollTop = logArea.scrollHeight;
 }
 
@@ -1796,8 +1836,7 @@ function showNetworkStatus(message, type = "info") {
     top: 20px;
     left: 50%;
     transform: translateX(-50%);
-    background: ${
-      type === "error" ? "#9b2c2c" : type === "warning" ? "#ef6c00" : "#3c6300"
+    background: ${type === "error" ? "#9b2c2c" : type === "warning" ? "#ef6c00" : "#3c6300"
     };
     color: white;
     padding: 10px 20px;
@@ -1829,6 +1868,8 @@ window.addEventListener("beforeunload", cleanup);
 
 document.addEventListener("visibilitychange", function () {
   if (document.hidden) {
+    // Save when tab becomes hidden
+    saveCurrentWatchTime();
     // Tab is hidden → pause video
     if (playerInstance && !playerInstance.paused()) {
       playerInstance.pause();
@@ -2067,8 +2108,7 @@ function setupSettingsModal() {
 function updateIntervalDescriptionText(hours) {
   const descriptionEl = document.getElementById("updateIntervalDescription");
   if (descriptionEl) {
-    descriptionEl.textContent = `Automatically check for new content every ${hours} hour${
-      hours > 1 ? "s" : ""
-    }`;
+    descriptionEl.textContent = `Automatically check for new content every ${hours} hour${hours > 1 ? "s" : ""
+      }`;
   }
 }
