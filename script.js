@@ -75,19 +75,8 @@ function selectChannel(url, name, image, description, number, isLive) {
     if (numberEl) numberEl.textContent = number ? number + "." : "";
 
     // ✅ Clean up old player FIRST
-    if (playerInstance) {
-      playerInstance.dispose();
-      playerInstance = null;
-    }
+    cleanupExistingPlayer();
 
-    // Remove old video element
-    const oldPlayerEl = document.getElementById("player");
-    if (oldPlayerEl) {
-      oldPlayerEl.remove();
-    }
-
-    // ✅ SHOW LOADING STATE
-    showLoadingState(videoContainer, name);
 
     // Update overlay info
     if (imageElement) imageElement.src = image || "";
@@ -98,20 +87,13 @@ function selectChannel(url, name, image, description, number, isLive) {
 
     showChannelInfoOverlay();
 
-    let source;
-    const isYouTube = extractYouTubeID(url);
+    // ✅ Use the new configuration system
+    const streamConfig = createStreamConfig(url);
+    const metadata = {
+      isLive: isLive || false
+    };
 
-    if (isYouTube) {
-      source = { src: url, type: "video/youtube" };
-    } else if (
-      url.includes("imarkaz") ||
-      url.endsWith(".mp4") ||
-      url.endsWith(".mkv")
-    ) {
-      source = { src: url, type: "video/mp4" };
-    } else {
-      source = { src: url, type: "application/x-mpegURL" };
-    }
+
 
     // ✅ Create new video element AFTER showing loading
     const newVideoEl = document.createElement("video");
@@ -119,39 +101,34 @@ function selectChannel(url, name, image, description, number, isLive) {
     newVideoEl.className = "video-js vjs-default-skin";
     newVideoEl.controls = false;
     newVideoEl.preload = "auto";
+    newVideoEl.setAttribute("playsinline", "");
+    newVideoEl.setAttribute("webkit-playsinline", "");
+    newVideoEl.setAttribute("crossorigin", "anonymous");
     newVideoEl.setAttribute("data-setup", "{}");
 
     // ✅ CLEAR loading and add video element
     videoContainer.innerHTML = "";
     videoContainer.appendChild(newVideoEl);
 
+
+    // ✅ Build player options using the new function
+    const playerConfig = buildPlayerOptions(streamConfig, metadata);
+
     // ✅ Initialize Video.js AFTER element is in DOM
-    playerInstance = videojs("player", {
-      techOrder: isYouTube ? ["youtube"] : ["html5"],
-      sources: [source],
-      autoplay: true,
-      youtube: {
-        ytControls: true,
-        playerVars: {
-          autoplay: 1,
-          playsinline: 1,
-          controls: 1,
-          mute: 1,
-          rel: 0,
-          modestbranding: 1,
-        },
-      },
-    });
+    playerInstance = videojs("player", playerConfig);
 
     playerInstance.ready(function () {
-      if (sessionId !== currentSessionId) return;
+      if (sessionId !== currentSessionId) {
+        playerInstance.dispose();
+        return;
+      }
 
       playerInstance.play().catch((e) => {
         console.warn("Autoplay blocked:", e);
         showPlayButtonFallback();
       });
 
-      if (isYouTube) {
+      if (streamConfig.type === 'youtube') {
         const ytPlayer = playerInstance.tech().ytPlayer;
         if (ytPlayer && ytPlayer.addEventListener) {
           ytPlayer.addEventListener("onPlaybackQualityChange", (e) => {
@@ -161,7 +138,7 @@ function selectChannel(url, name, image, description, number, isLive) {
       }
     });
 
-    setupPlayerEventHandlers(name, isLive, isYouTube, currentSessionId);
+    setupPlayerEventHandlers(name, isLive, streamConfig.type === 'youtube', currentSessionId);
   } catch (error) {
     console.error("Failed to select channel:", error);
     showErrorToUser(`Failed to load ${name}`);
@@ -169,21 +146,127 @@ function selectChannel(url, name, image, description, number, isLive) {
 
 }
 
-// ✅ Helper function for loading state
-function showLoadingState(container, channelName) {
-  const loadingDiv = document.createElement("div");
-  loadingDiv.className = "loading-state";
+/**
+ * Build Video.js player options based on stream type
+ */
+function buildPlayerOptions(streamConfig, metadata) {
+  const baseOptions = {
+    autoplay: true,
+    controls: false,
+    preload: 'auto',
+    fluid: true,
+    liveui: metadata.isLive,
+    responsive: true,
+    techOrder: streamConfig.techOrder,
+    sources: [streamConfig.source],
+    playbackRates: [0.5, 1, 1.25, 1.5, 2],
+  };
 
-  const spinner = document.createElement("div");
-  spinner.className = "spinner";
+  if (streamConfig.type === 'youtube') {
+    baseOptions.youtube = {
+      ytControls: true,
+      playerVars: {
+        autoplay: 1,
+        playsinline: 1,
+        controls: 1,
+        mute: 0,
+        rel: 0,
+        modestbranding: 1,
+        iv_load_policy: 3
+      }
+    };
+  }
 
-  const text = document.createElement("p");
-  text.textContent = `Loading ${channelName}...`;
+  if (streamConfig.type === 'hls') {
+    baseOptions.html5 = {
+      vhs: {
+        overrideNative: true,
+        enableLowInitialPlaylist: true,
+        smoothQualityChange: true,
+        bandwidth: 4194304,
+        withCredentials: false,
+        limitRenditionByPlayerDimensions: true,
+        useDevicePixelRatio: true,
+        useNetworkInformationApi: true,
+        maxPlaylistRetries: 3,
+      },
+      nativeAudioTracks: false,
+      nativeVideoTracks: false
+    };
+  }
 
-  loadingDiv.appendChild(spinner);
-  loadingDiv.appendChild(text);
+  return baseOptions;
+}
 
-  container.appendChild(loadingDiv); // ✅ APPEND, don't replace
+/**
+ * Create stream configuration based on URL (replaces getSourceType)
+ */
+function createStreamConfig(url) {
+  const youtubeID = this.extractYouTubeID(url);
+
+  if (youtubeID) {
+    return {
+      type: 'youtube',
+      techOrder: ['youtube'],
+      source: { src: url, type: "video/youtube" }
+    };
+  }
+
+  // File extension detection
+  const ext = url.split('?')[0].split('.').pop().toLowerCase();
+
+  switch (ext) {
+    case 'mp4':
+    case 'webm':
+      return {
+        type: 'mp4',
+        techOrder: ['html5'],
+        source: { src: url, type: `video/${ext}` }
+      };
+
+    case 'm3u8':
+      return {
+        type: 'hls',
+        techOrder: ['html5'],
+        source: { src: url, type: "application/x-mpegURL" }
+      };
+
+    case 'mpd':
+      return {
+        type: 'dash',
+        techOrder: ['html5'],
+        source: { src: url, type: "application/dash+xml" }
+      };
+
+    default:
+      // Default to HLS
+      console.warn('Unknown stream type, defaulting to HLS:', url);
+      return {
+        type: 'hls',
+        techOrder: ['html5'],
+        source: { src: url, type: "application/x-mpegURL" }
+      };
+  }
+}
+
+
+/**
+ * Clean up existing player instance and DOM elements
+ */
+function cleanupExistingPlayer() {
+  if (playerInstance) {
+    try {
+      playerInstance.dispose();
+    } catch (e) {
+      console.warn('Error disposing player:', e);
+    }
+    playerInstance = null;
+  }
+
+  const oldPlayerEl = document.getElementById("player");
+  if (oldPlayerEl) {
+    oldPlayerEl.remove();
+  }
 }
 
 function showErrorToUser(message) {
@@ -198,7 +281,7 @@ function showErrorToUser(message) {
     color: white;
     padding: 12px;
     border-radius: 4px;
-    z-index: 10000;
+    z-index: 10001;
   `;
 
   document.body.appendChild(errorDiv);
@@ -214,15 +297,18 @@ function showPlayButtonFallback() {
   const playOverlay = document.createElement("div");
   playOverlay.className = "play-fallback-overlay";
   playOverlay.innerHTML = `
-    <button class="play-button" style="
-      padding: 12px 24px;
-      background: #ff0000;
-      color: white;
-      border: none;
-      border-radius: 4px;
-      cursor: pointer;
-      font-size: 16px;
-    ">Click to Play</button>
+      <button class="play-button" style="
+        padding: 15px 30px;
+        background: #ff0000;
+        color: white;
+        border: none;
+        border-radius: 8px;
+        cursor: pointer;
+        font-size: 18px;
+        font-weight: bold;
+        z-index: 10001;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+      ">▶️ Click to Play</button>
   `;
 
   const playerContainer = document.getElementById("player-container");
@@ -268,7 +354,7 @@ function setupPlayerEventHandlers(name, isLive, isYouTube, currentSessionId) {
   playerInstance.on("error", function () {
     if (sessionId !== currentSessionId) return;
     const error = playerInstance.error();
-    console.log("Player error:", error);
+    console.error("Video.js player error:", error);
     stopWatching();
     if (navigator.onLine) attemptPlayerRecovery();
     else showNetworkStatus("Waiting for network connection...", "warning");
@@ -277,11 +363,11 @@ function setupPlayerEventHandlers(name, isLive, isYouTube, currentSessionId) {
   playerInstance.on("waiting", function () {
     if (sessionId !== currentSessionId) return;
     if (navigator.onLine) showNetworkStatus("Buffering...", "info");
+    console.log("⏳ Waiting for buffering...");
   });
 
   playerInstance.on("playing", function () {
     if (sessionId !== currentSessionId) return;
-    console.log('Video is now playing');
     startWatching(name); // Start tracking when video plays
     const existingStatus = document.querySelector(".network-status");
     if (existingStatus?.textContent.includes("Buffering")) {
@@ -291,7 +377,6 @@ function setupPlayerEventHandlers(name, isLive, isYouTube, currentSessionId) {
 
   playerInstance.on('pause', function () {
     if (sessionId !== currentSessionId) return;
-    console.log('Video paused');
     stopWatching();
   });
 
@@ -387,7 +472,7 @@ function startWatching(channelId) {
     saveCurrentWatchTime();
   }, 10000); // Save every 10 seconds
 
-  console.log(`Started watching: ${channelId}`);
+  console.log(`▶️ Started watching: ${channelId}`);
 }
 
 function stopWatching() {
@@ -401,7 +486,7 @@ function stopWatching() {
 
   saveCurrentWatchTime();
 
-  console.log(`Stopped watching: ${currentChannelId}`);
+  console.log(`⏸️ Stopped watching: ${currentChannelId}`);
   currentChannelId = "";
   watchStartTime = 0;
 }
@@ -1873,7 +1958,7 @@ document.addEventListener("visibilitychange", function () {
     // Tab is hidden → pause video
     if (playerInstance && !playerInstance.paused()) {
       playerInstance.pause();
-      console.log("Video paused due to tab switch");
+      console.log("⏸️ Video paused due to tab switch");
     }
   } else {
     // Tab is visible again → resume video
