@@ -69,18 +69,18 @@ class CancellationToken {
     this.cancelled = false;
     this.reason = null;
   }
-  
+
   cancel(reason = 'Operation cancelled') {
     this.cancelled = true;
     this.reason = reason;
   }
-  
+
   throwIfCancelled() {
     if (this.cancelled) {
       throw new Error(this.reason || 'Operation cancelled');
     }
   }
-  
+
   isCancelled() {
     return this.cancelled;
   }
@@ -95,32 +95,32 @@ class ChannelLoader {
     this.playerInstance = null;
     this.eventCleanupCallbacks = [];
   }
-  
+
   async loadChannel(url, name, image, description, number, isLive) {
     if (this.currentOperation) {
       this.currentOperation.cancel('New channel selected');
     }
-    
+
     const token = new CancellationToken();
     this.currentOperation = token;
-    
+
     console.log(`🚀 Loading channel: ${name}`, {
       url,
       timestamp: new Date().toISOString(),
     });
-    
+
     try {
       this.updateChannelUI(name, image, description, number);
       token.throwIfCancelled();
-      
+
       await this.cleanupPlayer();
       token.throwIfCancelled();
-      
+
       await this.initializePlayer(url, name, isLive, token);
       token.throwIfCancelled();
-      
+
       //console.log(`✅ Channel loaded successfully: ${name}`);
-      
+
     } catch (error) {
       if (!token.isCancelled()) {
         console.error(`❌ Failed to load channel ${name}:`, error);
@@ -134,7 +134,7 @@ class ChannelLoader {
       }
     }
   }
-  
+
   updateChannelUI(name, image, description, number) {
     const updates = {
       'content-image': (el) => el.src = image || '',
@@ -143,46 +143,48 @@ class ChannelLoader {
       'channel-number': (el) => el.textContent = number ? `${number}.` : '',
       'video-quality': (el) => el.textContent = ''
     };
-    
+
     Object.entries(updates).forEach(([id, updateFn]) => {
       const element = document.getElementById(id);
       if (element) updateFn(element);
     });
-    
+
     lastFocusedElement = document.activeElement;
+
+
     showChannelInfoOverlay();
   }
-  
+
   async cleanupPlayer() {
     stopWatching();
     this.cleanupEventListeners();
-    
+
     if (this.playerInstance) {
       try {
         console.log('🧹 Cleaning up existing player...');
-        
+
         this.playerInstance.off();
-        
+
         if (!this.playerInstance.paused()) {
           this.playerInstance.pause();
         }
-        
+
         const playerId = this.playerInstance.id();
         this.playerInstance.dispose();
         this.playerInstance = null;
-        
+
         const oldElement = document.getElementById(playerId);
         if (oldElement && oldElement.parentNode) {
           oldElement.parentNode.removeChild(oldElement);
         }
-        
+
         //console.log('✅ Player cleaned up successfully');
       } catch (error) {
         console.warn('⚠️ Error during player cleanup:', error);
         this.playerInstance = null;
       }
     }
-    
+
     const container = document.getElementById('player-container');
     if (container) {
       const orphans = container.querySelectorAll('video, .video-js');
@@ -196,34 +198,34 @@ class ChannelLoader {
         }
       });
     }
-    
+
     document.querySelectorAll('.play-fallback-overlay').forEach(el => {
       if (el.parentNode) {
         el.parentNode.removeChild(el);
       }
     });
   }
-  
+
   async initializePlayer(url, name, isLive, token) {
     const container = await this.waitForElement('player-container');
     token.throwIfCancelled();
-    
+
     const streamConfig = createStreamConfig(url);
     const metadata = { isLive: isLive || false };
-    
+
     const videoId = `player-${Date.now()}`;
     const videoElement = this.createVideoElement(videoId);
-    
+
     container.innerHTML = '';
     container.appendChild(videoElement);
-    
+
     await this.waitForElement(videoId);
     token.throwIfCancelled();
-    
+
     const playerConfig = buildPlayerOptions(streamConfig, metadata);
-    
+
     console.log('🎬 Initializing Video.js player...');
-    
+
     // Wrap player initialization in try-catch for HLS errors
     try {
       this.playerInstance = videojs(videoElement, playerConfig);
@@ -231,38 +233,38 @@ class ChannelLoader {
       console.error('❌ Player initialization failed:', error);
       throw new Error(`Failed to initialize player: ${error.message}`);
     }
-    
+
     // Set up HLS error recovery
     if (streamConfig.type === 'hls' && this.playerInstance.tech({ IWillNotUseThisInPlugins: true })) {
       this.setupHLSErrorRecovery();
     }
-    
+
     this.setupPlayerEvents(name, isLive, streamConfig.type === 'youtube', token);
     token.throwIfCancelled();
-    
+
     if (streamConfig.type === 'youtube') {
       this.setupYouTubeQualityMonitoring(token);
     }
-    
+
     await this.waitForPlayerReady(token);
     token.throwIfCancelled();
-    
+
     await this.attemptAutoplay();
   }
-  
+
   setupHLSErrorRecovery() {
     if (!this.playerInstance) return;
-    
+
     const tech = this.playerInstance.tech({ IWillNotUseThisInPlugins: true });
     if (!tech || !tech.vhs) return;
-    
+
     let errorCount = 0;
     const maxErrors = 3;
-    
+
     const vhsErrorHandler = () => {
       errorCount++;
       console.warn(`⚠️ HLS error detected (${errorCount}/${maxErrors})`);
-      
+
       if (errorCount < maxErrors) {
         // Try to recover
         setTimeout(() => {
@@ -279,10 +281,10 @@ class ChannelLoader {
         console.error('❌ Max HLS errors reached, stopping recovery attempts');
       }
     };
-    
+
     if (tech.vhs) {
       tech.vhs.on('error', vhsErrorHandler);
-      
+
       this.eventCleanupCallbacks.push(() => {
         try {
           if (tech && tech.vhs) {
@@ -294,7 +296,7 @@ class ChannelLoader {
       });
     }
   }
-  
+
   createVideoElement(id) {
     const video = document.createElement('video');
     video.id = id;
@@ -306,7 +308,7 @@ class ChannelLoader {
     video.setAttribute('crossorigin', 'anonymous');
     return video;
   }
-  
+
   waitForElement(id) {
     return new Promise((resolve, reject) => {
       const existing = document.getElementById(id);
@@ -314,7 +316,7 @@ class ChannelLoader {
         resolve(existing);
         return;
       }
-      
+
       const observer = new MutationObserver(() => {
         const element = document.getElementById(id);
         if (element) {
@@ -323,69 +325,69 @@ class ChannelLoader {
           resolve(element);
         }
       });
-      
+
       observer.observe(document.body, {
         childList: true,
         subtree: true
       });
-      
+
       const timeoutId = setTimeout(() => {
         observer.disconnect();
         reject(new Error(`Element ${id} not found within ${PLAYBACK_CONSTANTS.MAX_ELEMENT_WAIT_TIME}ms`));
       }, PLAYBACK_CONSTANTS.MAX_ELEMENT_WAIT_TIME);
     });
   }
-  
+
   waitForPlayerReady(token) {
     return new Promise((resolve, reject) => {
       if (!this.playerInstance) {
         reject(new Error('Player instance not available'));
         return;
       }
-      
+
       let resolved = false;
-      
+
       const timeoutId = setTimeout(() => {
         if (!resolved) {
           resolved = true;
           reject(new Error(`Player ready timeout after ${PLAYBACK_CONSTANTS.PLAYER_READY_TIMEOUT}ms`));
         }
       }, PLAYBACK_CONSTANTS.PLAYER_READY_TIMEOUT);
-      
+
       this.playerInstance.ready(() => {
         if (resolved) return;
-        
+
         clearTimeout(timeoutId);
-        
+
         if (token.isCancelled()) {
           resolved = true;
           reject(new Error('Cancelled during player initialization'));
           return;
         }
-        
+
         resolved = true;
         //console.log('✅ Player ready');
         resolve();
       });
-      
+
       this.playerInstance.one('error', () => {
         if (resolved) return;
-        
+
         clearTimeout(timeoutId);
         resolved = true;
-        
+
         const error = this.playerInstance.error();
         reject(new Error(`Player error during initialization: ${error ? error.code : 'unknown'}`));
       });
     });
   }
-  
+
   async attemptAutoplay() {
     if (!this.playerInstance) return;
-    
+
     try {
       const playPromise = this.playerInstance.play();
-      
+
       if (playPromise !== undefined) {
         await playPromise;
         //console.log('✅ Autoplay successful');
@@ -395,60 +397,60 @@ class ChannelLoader {
       this.showPlayButton();
     }
   }
-  
+
   setupPlayerEvents(name, isLive, isYouTube, token) {
     if (!this.playerInstance) return;
-    
+
     this.playerInstance.off();
-    
+
     const errorHandler = () => {
       if (token.isCancelled()) return;
-      
+
       const error = this.playerInstance.error();
-      
+
       // Handle specific HLS errors
       if (error && error.code === 4) {
         console.warn('⚠️ Media source not supported, trying fallback...');
         // Don't show error to user immediately for media errors
         return;
       }
-      
+
       console.error('🚨 Player error:', error);
       stopWatching();
-      
+
       // Only show error for critical issues
       if (error && error.code !== 4) {
         showErrorToUser('Playback error occurred');
       }
     };
-    
+
     const waitingHandler = () => {
       if (token.isCancelled()) return;
       console.log('⏳ Buffering...');
     };
-    
+
     const playingHandler = () => {
       if (token.isCancelled()) return;
       startWatching(name);
       //console.log('▶️ Playing');
     };
-    
+
     const pauseHandler = () => {
       if (token.isCancelled()) return;
       stopWatching();
     };
-    
+
     const endedHandler = () => {
       if (token.isCancelled()) return;
       console.log('⏹️ Playback ended');
       stopWatching();
     };
-    
+
     const metadataHandler = () => {
       if (token.isCancelled()) return;
-      
+
       this.updateQualityDisplay();
-      
+
       const isChannelLive = isLive === true || isLive === 'true';
       if (!isChannelLive && !isYouTube) {
         this.playerInstance.controls(true);
@@ -456,13 +458,13 @@ class ChannelLoader {
         this.playerInstance.controls(false);
       }
     };
-    
+
     // HLS-specific error recovery
     const retryHandler = () => {
       if (token.isCancelled()) return;
       console.log('🔄 Attempting HLS recovery...');
     };
-    
+
     this.playerInstance.on('error', errorHandler);
     this.playerInstance.on('waiting', waitingHandler);
     this.playerInstance.on('playing', playingHandler);
@@ -470,7 +472,7 @@ class ChannelLoader {
     this.playerInstance.on('ended', endedHandler);
     this.playerInstance.on('loadedmetadata', metadataHandler);
     this.playerInstance.on('retryplaylist', retryHandler);
-    
+
     this.eventCleanupCallbacks.push(() => {
       if (this.playerInstance) {
         this.playerInstance.off('error', errorHandler);
@@ -483,41 +485,41 @@ class ChannelLoader {
       }
     });
   }
-  
+
   setupYouTubeQualityMonitoring(token) {
     const checkInterval = PLAYBACK_CONSTANTS.YOUTUBE_READY_CHECK_INTERVAL;
     let attempts = 0;
     const maxAttempts = 30;
-    
+
     const checkYouTubeReady = () => {
       if (token.isCancelled()) return;
-      
+
       attempts++;
-      
+
       if (attempts > maxAttempts) {
         console.warn('⚠️ YouTube quality monitoring setup timed out');
         return;
       }
-      
+
       try {
         if (!this.playerInstance) return;
-        
+
         const tech = this.playerInstance.tech({ IWillNotUseThisInPlugins: true });
-        
+
         if (!tech || !tech.ytPlayer) {
           setTimeout(checkYouTubeReady, checkInterval);
           return;
         }
-        
+
         const qualityChangeHandler = (event) => {
           const qualityEl = document.getElementById('video-quality');
           if (qualityEl) {
             qualityEl.textContent = event.data || 'auto';
           }
         };
-        
+
         tech.ytPlayer.addEventListener('onPlaybackQualityChange', qualityChangeHandler);
-        
+
         this.eventCleanupCallbacks.push(() => {
           try {
             if (tech && tech.ytPlayer) {
@@ -527,33 +529,33 @@ class ChannelLoader {
             console.warn('Could not remove YouTube quality listener:', e);
           }
         });
-        
+
         console.log('✅ YouTube quality monitoring setup complete');
-        
+
       } catch (error) {
         console.warn('⚠️ YouTube quality monitoring setup failed:', error);
       }
     };
-    
+
     checkYouTubeReady();
   }
-  
+
   updateQualityDisplay() {
     if (!this.playerInstance) return;
-    
+
     const qualityEl = document.getElementById('video-quality');
     if (!qualityEl) return;
-    
+
     const height = this.playerInstance.videoHeight();
     qualityEl.textContent = height ? `${height}p` : 'Auto';
   }
-  
+
   showPlayButton() {
     const existing = document.querySelector('.play-fallback-overlay');
     if (existing && existing.parentNode) {
       existing.parentNode.removeChild(existing);
     }
-    
+
     const overlay = document.createElement('div');
     overlay.className = 'play-fallback-overlay';
     overlay.style.cssText = `
@@ -569,7 +571,7 @@ class ChannelLoader {
       z-index: 100;
       cursor: pointer;
     `;
-    
+
     const button = document.createElement('button');
     button.className = 'play-button';
     button.textContent = '▶️ Click to Play';
@@ -585,15 +587,15 @@ class ChannelLoader {
       box-shadow: 0 4px 6px rgba(0,0,0,0.3);
       transition: transform 0.2s;
     `;
-    
+
     button.onmouseenter = () => button.style.transform = 'scale(1.05)';
     button.onmouseleave = () => button.style.transform = 'scale(1)';
-    
+
     overlay.appendChild(button);
-    
+
     const clickHandler = async () => {
       if (!this.playerInstance) return;
-      
+
       try {
         await this.playerInstance.play();
         if (overlay.parentNode) {
@@ -604,14 +606,14 @@ class ChannelLoader {
         showErrorToUser('Could not start playback');
       }
     };
-    
+
     overlay.addEventListener('click', clickHandler);
-    
+
     const container = document.getElementById('player-container');
     if (container) {
       container.appendChild(overlay);
     }
-    
+
     this.eventCleanupCallbacks.push(() => {
       overlay.removeEventListener('click', clickHandler);
       if (overlay.parentNode) {
@@ -619,7 +621,7 @@ class ChannelLoader {
       }
     });
   }
-  
+
   cleanupEventListeners() {
     this.eventCleanupCallbacks.forEach(cleanup => {
       try {
@@ -630,7 +632,7 @@ class ChannelLoader {
     });
     this.eventCleanupCallbacks = [];
   }
-  
+
   getPlayer() {
     return this.playerInstance;
   }
@@ -659,21 +661,21 @@ function log(message, isError = false) {
   const prefix = isError ? "Error: " : "Info: ";
   const colorClass = isError ? "text-red-400" : "";
   const timestamp = new Date().toLocaleTimeString();
-  
+
   logArea.innerHTML += `<div class="${colorClass}">${prefix}[${timestamp}] ${message}</div>`;
   logArea.scrollTop = logArea.scrollHeight;
 }
 
 function showNotification(message, type = "info") {
   console.log(`📢 ${type.toUpperCase()}: ${message}`);
-  
+
   const colors = {
     info: '#2196F3',
     success: '#4CAF50',
     warning: '#FF9800',
     error: '#F44336'
   };
-  
+
   const notification = document.createElement("div");
   notification.className = "notification";
   notification.style.cssText = `
@@ -691,9 +693,9 @@ function showNotification(message, type = "info") {
     animation: slideDown 0.3s ease;
   `;
   notification.textContent = message;
-  
+
   document.body.appendChild(notification);
-  
+
   setTimeout(() => {
     notification.style.opacity = '0';
     notification.style.transition = 'opacity 0.3s';
@@ -729,13 +731,13 @@ function showErrorToUser(message) {
 function getTimeAgo(timestamp) {
   const seconds = Math.floor((Date.now() - timestamp) / 1000);
   if (seconds < 60) return "just now";
-  
+
   const minutes = Math.floor(seconds / 60);
   if (minutes < 60) return `${minutes} minute${minutes > 1 ? "s" : ""} ago`;
-  
+
   const hours = Math.floor(minutes / 60);
   if (hours < 24) return `${hours} hour${hours > 1 ? "s" : ""} ago`;
-  
+
   const days = Math.floor(hours / 24);
   return `${days} day${days > 1 ? "s" : ""} ago`;
 }
@@ -802,10 +804,10 @@ function createStreamConfig(url) {
       source: { src: url, type: "video/mp4" } // Force the MIME type to video/mp4
     };
   }
-  
+
   // 3. Fallback to file extension check
   const ext = url.split('?')[0].split('.').pop().toLowerCase();
-  
+
   switch (ext) {
     case 'mp4':
     case 'webm':
@@ -814,21 +816,21 @@ function createStreamConfig(url) {
         techOrder: ['html5'],
         source: { src: url, type: `video/${ext}` }
       };
-    
+
     case 'm3u8':
       return {
         type: 'hls',
         techOrder: ['html5'],
         source: { src: url, type: "application/x-mpegURL" }
       };
-    
+
     case 'mpd':
       return {
         type: 'dash',
         techOrder: ['html5'],
         source: { src: url, type: "application/dash+xml" }
       };
-    
+
     default:
       console.warn('Unknown stream type, defaulting to HLS:', url);
       return {
@@ -853,7 +855,7 @@ function buildPlayerOptions(streamConfig, metadata) {
     // Custom loading spinner
     loadingSpinner: true,
   };
-  
+
   if (streamConfig.type === 'youtube') {
     baseOptions.youtube = {
       ytControls: true,
@@ -868,7 +870,7 @@ function buildPlayerOptions(streamConfig, metadata) {
       }
     };
   }
-  
+
   if (streamConfig.type === 'hls') {
     baseOptions.html5 = {
       vhs: {
@@ -890,11 +892,11 @@ function buildPlayerOptions(streamConfig, metadata) {
       nativeAudioTracks: false,
       nativeVideoTracks: false
     };
-    
+
     // Add error recovery handler
     baseOptions.errorDisplay = false;
   }
-  
+
   return baseOptions;
 }
 
@@ -903,26 +905,26 @@ async function selectChannel(url, name, image, description, number, isLive) {
     console.warn('⚠️ No URL provided for channel selection');
     return;
   }
-  
+
   await channelLoader.loadChannel(url, name, image, description, number, isLive);
 }
 
 function showChannelInfoOverlay() {
   const channelInfoOverlay = document.getElementById("channel-info-overlay");
   if (!channelInfoOverlay) return;
-  
+
   if (overlayTimeoutShow) clearTimeout(overlayTimeoutShow);
   if (overlayTimeoutHide) clearTimeout(overlayTimeoutHide);
-  
+
   const modal = document.getElementById("videoModal");
   if (modal) modal.style.display = "flex";
-  
+
   channelInfoOverlay.classList.remove("show");
-  
+
   overlayTimeoutShow = setTimeout(() => {
     channelInfoOverlay.classList.add("show");
   }, 300);
-  
+
   overlayTimeoutHide = setTimeout(() => {
     channelInfoOverlay.classList.remove("show");
   }, 6000);
@@ -931,13 +933,42 @@ function showChannelInfoOverlay() {
 function closeModal() {
   const modal = document.getElementById("videoModal");
   if (modal) modal.style.display = "none";
-  
+
   channelLoader.cleanupPlayer().then(() => {
     //console.log('✅ Modal closed and player cleaned up');
   }).catch(error => {
     console.error('❌ Error during modal close cleanup:', error);
   });
-  
+
+
+  // --- FIX: Restore focus to the last channel card on the main grid ---
+
+  if (lastFocusedElement && allChannelItems.length > 0) {
+    // Find the index of the stored lastFocusedElement in the current channel list
+    const restoredIndex = allChannelItems.findIndex(item => item === lastFocusedElement);
+
+    if (restoredIndex !== -1) {
+      // 1. Focus the element
+      allChannelItems[restoredIndex].focus();
+
+      // 2. Scroll it into view (smoothly)
+      allChannelItems[restoredIndex].scrollIntoView({ behavior: "smooth", block: "center" });
+
+      // 3. Update the global focusedIndex state for consistent arrow key navigation
+      focusedIndex = restoredIndex;
+
+      //console.log(`✅ Focus restored to last played channel index: ${focusedIndex}`);
+      return;
+    }
+  }
+
+  // Fallback if lastFocusedElement is null or no longer in the DOM (e.g., due to filtering/sorting)
+  if (allChannelItems.length > 0) {
+    allChannelItems[0].focus();
+    allChannelItems[0].scrollIntoView({ behavior: "smooth", block: "center" });
+    focusedIndex = 0;
+  }
+
   updateAllChannelItems();
 }
 
@@ -958,27 +989,27 @@ function toggleFullscreen() {
 
 function startWatching(channelId) {
   stopWatching();
-  
+
   currentChannelId = channelId;
   watchStartTime = Date.now();
-  
+
   watchInterval = setInterval(() => {
     saveCurrentWatchTime();
   }, 10000);
-  
+
   console.log(`▶️ Started watching: ${channelId}`);
 }
 
 function stopWatching() {
   if (!currentChannelId) return;
-  
+
   if (watchInterval) {
     clearInterval(watchInterval);
     watchInterval = null;
   }
-  
+
   saveCurrentWatchTime();
-  
+
   console.log(`⏸️ Stopped watching: ${currentChannelId}`);
   currentChannelId = "";
   watchStartTime = 0;
@@ -986,17 +1017,17 @@ function stopWatching() {
 
 function saveCurrentWatchTime() {
   if (!currentChannelId || !watchStartTime) return;
-  
+
   const watchedMs = Date.now() - watchStartTime;
   const watchedSeconds = Math.floor(watchedMs / 1000);
-  
+
   if (watchedSeconds < 5) return;
-  
+
   const watchData = loadWatchTime();
   watchData[currentChannelId] = (watchData[currentChannelId] || 0) + watchedSeconds;
-  
+
   localStorage.setItem("watchTimePerChannel", JSON.stringify(watchData));
-  
+
   watchStartTime = Date.now();
 }
 
@@ -1032,11 +1063,11 @@ function saveRecentlyWatched(channel) {
     isLive = "true",
     category = "Unknown",
   } = channel;
-  
+
   let recent = JSON.parse(localStorage.getItem(recentlyWatchedKey) || "[]");
-  
+
   recent = recent.filter((item) => item.url !== url);
-  
+
   recent.unshift({
     name,
     url,
@@ -1046,21 +1077,21 @@ function saveRecentlyWatched(channel) {
     isLive,
     category,
   });
-  
+
   if (recent.length > MAX_RECENT) {
     recent.pop();
   }
-  
+
   localStorage.setItem(recentlyWatchedKey, JSON.stringify(recent));
   renderRecentlyWatched();
 }
 
 function toggleFavorite(url, name, image, description, number, isLive, category, event) {
   if (event) event.stopPropagation();
-  
+
   let favorites = JSON.parse(localStorage.getItem(favoritesKey) || "[]");
   const index = favorites.findIndex((item) => item.url === url);
-  
+
   if (index > -1) {
     favorites.splice(index, 1);
   } else {
@@ -1074,7 +1105,7 @@ function toggleFavorite(url, name, image, description, number, isLive, category,
       category,
     });
   }
-  
+
   localStorage.setItem(favoritesKey, JSON.stringify(favorites));
   renderFavorites();
   updateFavoriteIcons();
@@ -1084,7 +1115,7 @@ function toggleFavorite(url, name, image, description, number, isLive, category,
 function createChannelItem(channel) {
   const item = document.createElement("div");
   const numberText = channel.number || "";
-  
+
   item.className = "content-card channel-item";
   item.setAttribute("tabindex", "0");
   item.dataset.url = channel.url;
@@ -1094,11 +1125,11 @@ function createChannelItem(channel) {
   item.dataset.number = numberText;
   item.dataset.isLive = channel.isLive;
   item.dataset.category = channel.category || "Unknown";
-  
+
   const clickHandler = (e) => {
     e.stopPropagation();
-    if (e.target.classList.contains("favorite-icon") || 
-        e.target.closest(".favorite-icon")) {
+    if (e.target.classList.contains("favorite-icon") ||
+      e.target.closest(".favorite-icon")) {
       return;
     }
     selectChannel(
@@ -1111,13 +1142,13 @@ function createChannelItem(channel) {
     );
     saveRecentlyWatched(channel);
   };
-  
+
   item.addEventListener("click", clickHandler);
   item._clickHandler = clickHandler;
-  
+
   const wrapper = document.createElement("div");
   wrapper.className = "thumb-wrapper";
-  
+
   const img = document.createElement("img");
   img.src = channel.image;
   img.alt = `${channel.name} Logo`;
@@ -1127,11 +1158,11 @@ function createChannelItem(channel) {
     this.src = "placeholder.png";
     this.alt = "Image not available";
   };
-  
+
   const numberBadge = document.createElement("span");
   numberBadge.className = "channel-number";
   numberBadge.textContent = channel.number;
-  
+
   if (channel.isLive === true || channel.isLive === "true") {
     const liveIndicator = document.createElement("img");
     liveIndicator.src = "live.webp";
@@ -1139,14 +1170,14 @@ function createChannelItem(channel) {
     liveIndicator.className = "live-indicator";
     wrapper.appendChild(liveIndicator);
   }
-  
+
   wrapper.appendChild(img);
   wrapper.appendChild(numberBadge);
-  
+
   const favoriteIcon = document.createElement("span");
   favoriteIcon.className = "favorite-icon";
   favoriteIcon.innerHTML = '<i class="fas fa-star"></i>';
-  
+
   const favoriteHandler = (e) => {
     e.stopPropagation();
     toggleFavorite(
@@ -1160,13 +1191,13 @@ function createChannelItem(channel) {
       e
     );
   };
-  
+
   favoriteIcon.addEventListener("click", favoriteHandler);
   item._favoriteHandler = favoriteHandler;
-  
+
   item.appendChild(wrapper);
   item.appendChild(favoriteIcon);
-  
+
   return item;
 }
 
@@ -1176,35 +1207,36 @@ function cleanupChannelItems() {
       item.removeEventListener("click", item._clickHandler);
       delete item._clickHandler;
     }
-    
+
     const favoriteIcon = item.querySelector(".favorite-icon");
     if (favoriteIcon && item._favoriteHandler) {
       favoriteIcon.removeEventListener("click", item._favoriteHandler);
       delete item._favoriteHandler;
     }
-    
+
     if (!item.isConnected) {
       item.remove();
     }
   });
-  
+
   allChannelItems.length = 0;
 }
 
+
 function renderChannels(channels) {
   cleanupChannelItems();
-  
+
   const mainContainer = document.getElementById("channels");
   if (!mainContainer) return;
-  
+
   const existingGrids = mainContainer.querySelectorAll(".content-grid");
   const existingHeadings = mainContainer.querySelectorAll("h2:not(.sort-container h2)");
-  
+
   existingGrids.forEach((grid) => grid.remove());
   existingHeadings.forEach((heading) => heading.remove());
-  
+
   const fragment = document.createDocumentFragment();
-  
+
   if (currentSortMethod === "none") {
     const categorizedChannels = channels.reduce((acc, channel) => {
       const category = channel.category || "Unknown";
@@ -1212,22 +1244,22 @@ function renderChannels(channels) {
       acc[category].push(channel);
       return acc;
     }, {});
-    
+
     for (const category in categorizedChannels) {
       const channelCount = categorizedChannels[category].length;
-      
+
       const categoryHeading = document.createElement("h2");
       categoryHeading.textContent = `${category} (${channelCount})`;
       categoryHeading.className = "text-xl font-bold mt-6 mb-4 col-span-full";
-      
+
       const categoryGrid = document.createElement("div");
       categoryGrid.className = "content-grid";
-      
+
       categorizedChannels[category].forEach((channel) => {
         const item = createChannelItem(channel);
         categoryGrid.appendChild(item);
       });
-      
+
       fragment.appendChild(categoryHeading);
       fragment.appendChild(categoryGrid);
     }
@@ -1236,32 +1268,32 @@ function renderChannels(channels) {
     const mainHeading = document.createElement("h2");
     mainHeading.textContent = `> Channels < (${totalChannelCount})`;
     mainHeading.className = "text-xl font-bold mt-6 mb-4 col-span-full";
-    
+
     const categoryGrid = document.createElement("div");
     categoryGrid.className = "content-grid";
-    
+
     channels.forEach((channel) => {
       const item = createChannelItem(channel);
       categoryGrid.appendChild(item);
     });
-    
+
     fragment.appendChild(mainHeading);
     fragment.appendChild(categoryGrid);
   }
-  
+
   mainContainer.appendChild(fragment);
   updateAllChannelItems();
-  
+
   console.log(`✅ Rendered ${channels.length} channels in ${currentSortMethod} view`);
 }
 
 function renderFavorites() {
   const container = document.getElementById("favoritesGrid");
   if (!container) return;
-  
+
   const favorites = JSON.parse(localStorage.getItem(favoritesKey) || "[]");
   container.innerHTML = "";
-  
+
   const favSection = document.getElementById("favorites");
   if (favorites.length === 0) {
     if (favSection) favSection.style.display = "none";
@@ -1277,10 +1309,10 @@ function renderFavorites() {
 function renderRecentlyWatched() {
   const container = document.getElementById("recentlyWatchedGrid");
   if (!container) return;
-  
+
   const recent = JSON.parse(localStorage.getItem(recentlyWatchedKey) || "[]");
   container.innerHTML = "";
-  
+
   const recentSection = document.getElementById("recentlyWatched");
   if (recent.length === 0) {
     if (recentSection) recentSection.style.display = "none";
@@ -1296,7 +1328,7 @@ function renderRecentlyWatched() {
 function updateFavoriteIcons() {
   const favorites = JSON.parse(localStorage.getItem(favoritesKey) || "[]");
   const favoriteUrls = new Set(favorites.map((fav) => fav.url));
-  
+
   document.querySelectorAll(".channel-item").forEach((item) => {
     const url = item.dataset.url;
     const icon = item.querySelector(".favorite-icon");
@@ -1320,28 +1352,28 @@ function updateAllChannelItems() {
 
 function searchChannels(query) {
   searchQuery = query.toLowerCase().trim();
-  
+
   if (!searchQuery) {
     filteredChannels = [];
     sortChannelsAndRender(currentSortMethod);
     showFavoritesAndRecent();
     return;
   }
-  
+
   filteredChannels = allChannels.filter(channel => {
     return channel.name.toLowerCase().includes(searchQuery) ||
-           (channel.description && channel.description.toLowerCase().includes(searchQuery)) ||
-           (channel.category && channel.category.toLowerCase().includes(searchQuery));
+      (channel.description && channel.description.toLowerCase().includes(searchQuery)) ||
+      (channel.category && channel.category.toLowerCase().includes(searchQuery));
   });
-  
+
   console.log(`🔍 Search: "${query}" - Found ${filteredChannels.length} channels`);
-  
+
   hideFavoritesAndRecent();
-  
+
   renderChannels(filteredChannels);
   updateFavoriteIcons();
   updateAllChannelItems();
-  
+
   const searchResultsMsg = document.getElementById("search-results-message");
   if (searchResultsMsg) {
     if (filteredChannels.length === 0) {
@@ -1357,17 +1389,17 @@ function searchChannels(query) {
 function clearSearch() {
   searchQuery = "";
   filteredChannels = [];
-  
+
   const searchInput = document.getElementById("channelSearch");
   if (searchInput) {
     searchInput.value = "";
   }
-  
+
   const searchResultsMsg = document.getElementById("search-results-message");
   if (searchResultsMsg) {
     searchResultsMsg.style.display = "none";
   }
-  
+
   showFavoritesAndRecent();
   sortChannelsAndRender(currentSortMethod);
 }
@@ -1375,11 +1407,11 @@ function clearSearch() {
 function hideFavoritesAndRecent() {
   const favSection = document.getElementById("favorites");
   const recentSection = document.getElementById("recentlyWatched");
-  
+
   if (favSection) {
     favSection.style.display = "none";
   }
-  
+
   if (recentSection) {
     recentSection.style.display = "none";
   }
@@ -1388,14 +1420,14 @@ function hideFavoritesAndRecent() {
 function showFavoritesAndRecent() {
   const favorites = JSON.parse(localStorage.getItem(favoritesKey) || "[]");
   const favSection = document.getElementById("favorites");
-  
+
   if (favSection && favorites.length > 0) {
     favSection.style.display = "grid";
   }
-  
+
   const recent = JSON.parse(localStorage.getItem(recentlyWatchedKey) || "[]");
   const recentSection = document.getElementById("recentlyWatched");
-  
+
   if (recentSection && recent.length > 0) {
     recentSection.style.display = "grid";
   }
@@ -1404,18 +1436,18 @@ function showFavoritesAndRecent() {
 function setupSearchBar() {
   const searchInput = document.getElementById("channelSearch");
   const clearSearchBtn = document.getElementById("clearSearch");
-  
+
   if (searchInput) {
     let searchTimeout;
-    
+
     searchInput.addEventListener("input", (e) => {
       clearTimeout(searchTimeout);
-      
+
       searchTimeout = setTimeout(() => {
         searchChannels(e.target.value);
       }, 300);
     });
-    
+
     searchInput.addEventListener("keydown", (e) => {
       if (e.key === "Escape") {
         clearSearch();
@@ -1423,7 +1455,7 @@ function setupSearchBar() {
       }
     });
   }
-  
+
   if (clearSearchBtn) {
     clearSearchBtn.addEventListener("click", () => {
       clearSearch();
@@ -1439,20 +1471,20 @@ function setupSearchBar() {
 function sortChannelsAndRender(sortMethod = "none") {
   const channelsToSort = searchQuery ? filteredChannels : allChannels;
   let sortedChannels = [...channelsToSort];
-  
+
   switch (sortMethod) {
     case "asc":
       sortedChannels.sort((a, b) => a.name.localeCompare(b.name));
       break;
-    
+
     case "desc":
       sortedChannels.sort((a, b) => b.name.localeCompare(a.name));
       break;
-    
+
     case "watchTime":
       sortedChannels = sortChannelsByWatchTime(channelsToSort);
       break;
-    
+
     case "none":
     default:
       currentSortMethod = "none";
@@ -1461,7 +1493,7 @@ function sortChannelsAndRender(sortMethod = "none") {
       updateAllChannelItems();
       return;
   }
-  
+
   currentSortMethod = sortMethod;
   renderChannels(sortedChannels);
   updateFavoriteIcons();
@@ -1477,7 +1509,7 @@ function handleSortChange(sortMethod) {
 function updateSortButtons(method) {
   const buttons = document.querySelectorAll(".sort-controls button");
   buttons.forEach((btn) => btn.classList.remove("active"));
-  
+
   const activeBtn = [...buttons].find((btn) =>
     btn.getAttribute("onclick")?.includes(method)
   );
@@ -1493,12 +1525,12 @@ function updateSortButtons(method) {
 function getGridColumns() {
   const grid = document.querySelector(".content-grid");
   if (!grid) return 1;
-  
+
   const gridComputedStyle = window.getComputedStyle(grid);
   const gridTemplateColumns = gridComputedStyle.getPropertyValue("grid-template-columns");
-  
+
   if (!gridTemplateColumns) return 1;
-  
+
   const columnArray = gridTemplateColumns.split(" ");
   return columnArray.length;
 }
@@ -1506,21 +1538,21 @@ function getGridColumns() {
 document.addEventListener("keydown", (e) => {
   if (e.key >= "0" && e.key <= "9") {
     numberBuffer += e.key;
-    
+
     const overlay = document.getElementById("channel-number-overlay");
     if (overlay) {
       overlay.textContent = numberBuffer;
       overlay.style.display = "block";
     }
-    
+
     if (numberTimeout) clearTimeout(numberTimeout);
-    
+
     numberTimeout = setTimeout(() => {
       if (overlay) overlay.style.display = "none";
-      
+
       const channelNumber = parseInt(numberBuffer, 10);
       const channel = allChannels.find((c) => c.number === channelNumber);
-      
+
       if (channel) {
         const index = allChannelItems.findIndex(
           (item) => parseInt(item.dataset.number, 10) === channelNumber
@@ -1533,7 +1565,7 @@ document.addEventListener("keydown", (e) => {
             block: "center",
           });
         }
-        
+
         selectChannel(
           channel.url,
           channel.name,
@@ -1544,7 +1576,7 @@ document.addEventListener("keydown", (e) => {
         );
         saveRecentlyWatched(channel);
       }
-      
+
       numberBuffer = "";
     }, 1000);
   }
@@ -1552,7 +1584,7 @@ document.addEventListener("keydown", (e) => {
 
 document.addEventListener("keydown", (event) => {
   if (navigationDebounce) clearTimeout(navigationDebounce);
-  
+
   navigationDebounce = setTimeout(() => {
     const GRID_COLUMNS = getGridColumns();
     const modal = document.getElementById("videoModal");
@@ -1561,14 +1593,14 @@ document.addEventListener("keydown", (event) => {
     let currentFocusedIndex = allChannelItems.findIndex(
       (item) => item === focusedElement
     );
-    
+
     if (isModalOpen) {
       if (event.key === "Enter") {
         event.preventDefault();
         toggleFullscreen();
         return;
       }
-      
+
       if (event.key === "Escape" || event.key === "ArrowLeft") {
         event.preventDefault();
         closeModal();
@@ -1578,41 +1610,41 @@ document.addEventListener("keydown", (event) => {
       } else if (["ArrowUp", "ArrowDown", "PageUp", "PageDown"].includes(event.key)) {
         event.preventDefault();
         if (!lastFocusedElement || allChannelItems.length === 0) return;
-        
+
         const currentChannelIndex = allChannelItems.findIndex(
           (item) => item === lastFocusedElement
         );
         if (currentChannelIndex === -1) return;
-        
+
         let newIndex = currentChannelIndex;
         if (event.key === "ArrowDown" || event.key === "PageDown") {
           newIndex = (currentChannelIndex + 1) % allChannelItems.length;
         } else if (event.key === "ArrowUp" || event.key === "PageUp") {
           newIndex = (currentChannelIndex - 1 + allChannelItems.length) % allChannelItems.length;
         }
-        
+
         const newChannelCard = allChannelItems[newIndex];
         const { url, name, image, description, number, isLive = "false", category = "Unknown" } = newChannelCard.dataset;
-        
+
         newChannelCard.scrollIntoView({ behavior: "smooth", block: "center" });
         selectChannel(url, name, image, description, number, isLive);
         saveRecentlyWatched({ name, url, image, description, number, isLive, category });
-        
+
         lastFocusedElement = newChannelCard;
       }
       return;
     }
-    
+
     if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)) {
       if (allChannelItems.length === 0) return;
-      
+
       if (currentFocusedIndex === -1) {
         allChannelItems[0].focus();
         allChannelItems[0].scrollIntoView({ behavior: "smooth", block: "center" });
         focusedIndex = 0;
         return;
       }
-      
+
       let newIndex = currentFocusedIndex;
       if (event.key === "ArrowRight") {
         newIndex = (currentFocusedIndex + 1) % allChannelItems.length;
@@ -1623,22 +1655,22 @@ document.addEventListener("keydown", (event) => {
       } else if (event.key === "ArrowUp") {
         newIndex = Math.max(currentFocusedIndex - GRID_COLUMNS, 0);
       }
-      
+
       const newCard = allChannelItems[newIndex];
       newCard.focus();
       newCard.scrollIntoView({ behavior: "smooth", block: "center" });
-      
+
       focusedIndex = newIndex;
       event.preventDefault();
     } else if (["PageUp", "PageDown", "Home", "End"].includes(event.key)) {
       event.preventDefault();
-      
+
       if (currentFocusedIndex === -1 && allChannelItems.length > 0) {
         allChannelItems[0].focus();
         allChannelItems[0].scrollIntoView({ behavior: "smooth", block: "center" });
       } else {
         let newIndex = currentFocusedIndex;
-        
+
         if (event.key === "PageUp") {
           newIndex = Math.max(currentFocusedIndex - GRID_COLUMNS * 3, 0);
         } else if (event.key === "PageDown") {
@@ -1648,18 +1680,18 @@ document.addEventListener("keydown", (event) => {
         } else if (event.key === "End") {
           newIndex = allChannelItems.length - 1;
         }
-        
+
         const newCard = allChannelItems[newIndex];
         newCard.focus();
         newCard.scrollIntoView({ behavior: "smooth", block: "center" });
-        
+
         focusedIndex = newIndex;
       }
     } else if (event.key === "Enter" && currentFocusedIndex !== -1) {
       event.preventDefault();
       const card = allChannelItems[currentFocusedIndex];
       const { url, name, image, description, number, isLive = "false", category = "Unknown" } = card.dataset;
-      
+
       card.scrollIntoView({ behavior: "smooth", block: "center" });
       selectChannel(url, name, image, description, number, isLive);
       saveRecentlyWatched({ name, url, image, description, number, isLive, category });
@@ -1688,7 +1720,7 @@ function youtubeItemToChannel(videoId, title, feed) {
 
 function updateOrAddChannel(channelObj) {
   const existingIndex = allChannels.findIndex((ch) => ch.name === channelObj.name);
-  
+
   if (existingIndex !== -1) {
     allChannels[existingIndex] = {
       ...allChannels[existingIndex],
@@ -1701,16 +1733,16 @@ function updateOrAddChannel(channelObj) {
 
 function processRSSData(data, feed) {
   if (!data.items || data.items.length === 0) return;
-  
+
   let latestValid = data.items.find((item) => !item.link.includes("/shorts/"));
   if (!latestValid) return;
-  
+
   const videoId = extractYouTubeID(latestValid.link);
   if (!videoId) return;
-  
+
   const channelObj = youtubeItemToChannel(videoId, latestValid.title, feed);
   updateOrAddChannel(channelObj);
-  
+
   log(`✅ ${feed.name} Successfully updated`);
 }
 
@@ -1720,7 +1752,7 @@ async function loadYouTubeLatestFeeds() {
     showNotification("No RSS feeds found in localStorage.", "warning");
     return;
   }
-  
+
   let feeds = [];
   try {
     feeds = JSON.parse(storedFeeds);
@@ -1729,38 +1761,38 @@ async function loadYouTubeLatestFeeds() {
     showNotification("Error loading RSS feeds data.", "error");
     return;
   }
-  
+
   if (!feeds || feeds.length === 0) return;
-  
+
   for (const [index, feed] of feeds.entries()) {
     try {
       if (index > 0) {
         await new Promise((resolve) => setTimeout(resolve, 200));
       }
-      
+
       const cacheKey = `rss_${feed.url}`;
       const cached = rssCache.get(cacheKey);
-      
+
       if (cached && Date.now() - cached.timestamp < CACHE_DURATION) {
         log(`📦 Using cached data for ${feed.name}`);
         processRSSData(cached.data, feed);
         continue;
       }
-      
+
       const feedUrl = "https://api.rss2json.com/v1/api.json?rss_url=" + encodeURIComponent(feed.url);
       const res = await fetch(feedUrl);
-      
+
       if (!res.ok) {
         throw new Error(`HTTP ${res.status}`);
       }
-      
+
       const data = await res.json();
-      
+
       rssCache.set(cacheKey, {
         data: data,
         timestamp: Date.now(),
       });
-      
+
       processRSSData(data, feed);
     } catch (e) {
       log(`❌ Error loading RSS feed for ${feed.name}: ${e.message}`, true);
@@ -1772,19 +1804,19 @@ async function loadYouTubeLiveFeeds() {
   if (!API_KEY) {
     API_KEY = getStoredAPIKey();
   }
-  
+
   if (!API_KEY || !hasValidAPIKey()) {
     console.log("🔑 No valid API key found, prompting user...");
     showAPIKeyModal();
     return;
   }
-  
+
   const storedLive = localStorage.getItem(STORAGE_KEYS.live);
   if (!storedLive) {
     showNotification("No live channels found in localStorage.", "warning");
     return;
   }
-  
+
   let live = [];
   try {
     live = JSON.parse(storedLive);
@@ -1793,39 +1825,39 @@ async function loadYouTubeLiveFeeds() {
     showNotification("Error loading live channels data.", "error");
     return;
   }
-  
+
   if (!live || live.length === 0) return;
-  
+
   let apiQuotaExceeded = false;
   let successfulUpdates = 0;
   let failedUpdates = 0;
   let cacheHits = 0;
-  
+
   for (const [index, feed] of live.entries()) {
     try {
       if (index > 0) {
         await new Promise((resolve) => setTimeout(resolve, 200));
       }
-      
+
       if (apiQuotaExceeded) {
         log(`⏸️ Skipping ${feed.name} - API quota exceeded`);
         failedUpdates++;
         continue;
       }
-      
+
       const channelId = extractChannelId(feed.url);
       if (!channelId) {
         console.warn("No channelId found in feed:", feed.url);
         continue;
       }
-      
+
       const cacheKey = `live_${channelId}`;
       const cached = liveCache.get(cacheKey);
-      
+
       if (cached && Date.now() - cached.timestamp < CACHE_DURATION) {
         log(`📦 Using cached live data for ${feed.name}`);
         cacheHits++;
-        
+
         if (cached.data && cached.data.videoId) {
           const channelObj = youtubeItemToChannel(cached.data.videoId, cached.data.title, feed);
           updateOrAddChannel(channelObj);
@@ -1833,10 +1865,10 @@ async function loadYouTubeLiveFeeds() {
         }
         continue;
       }
-      
+
       const apiUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&channelId=${channelId}&eventType=live&type=video&order=date&maxResults=1&key=${API_KEY}`;
       const res = await fetch(apiUrl);
-      
+
       if (!res.ok) {
         if (res.status === 403) {
           apiQuotaExceeded = true;
@@ -1850,9 +1882,9 @@ async function loadYouTubeLiveFeeds() {
         }
         throw new Error(`API returned status ${res.status}: ${res.statusText}`);
       }
-      
+
       const data = await res.json();
-      
+
       if (data.error) {
         if (data.error.code === 403) {
           apiQuotaExceeded = true;
@@ -1862,26 +1894,26 @@ async function loadYouTubeLiveFeeds() {
         }
         throw new Error(`YouTube API Error for ${feed.name}: ${data.error.message}`);
       }
-      
+
       let cacheData = null;
-      
+
       if (data.items && data.items.length > 0) {
         const item = data.items[0];
         const videoId = item.id.videoId;
         const title = item.snippet.title;
-        
+
         cacheData = { videoId: videoId, title: title };
-        
+
         const channelObj = youtubeItemToChannel(videoId, title, feed);
         updateOrAddChannel(channelObj);
         successfulUpdates++;
-        
+
         log(`✅ ${feed.name} Successfully updated`);
       } else {
         log(`ℹ️ No live stream found for ${feed.name}`);
         cacheData = null;
       }
-      
+
       liveCache.set(cacheKey, {
         data: cacheData,
         timestamp: Date.now(),
@@ -1896,9 +1928,9 @@ async function loadYouTubeLiveFeeds() {
       }
     }
   }
-  
+
   log(`Live streams update completed: ${successfulUpdates} successful, ${failedUpdates} failed, ${cacheHits} cache hits`);
-  
+
   if (successfulUpdates === 0 && failedUpdates > 0 && apiQuotaExceeded) {
     throw new Error("YouTube API quota exceeded - no live streams updated");
   }
@@ -1906,37 +1938,37 @@ async function loadYouTubeLiveFeeds() {
 
 async function loadAllChannelFeeds() {
   log("Starting full channel update (RSS and Live API)...");
-  
+
   try {
     log("1/2: Loading latest uploads from RSS...");
     await loadYouTubeLatestFeeds();
     log("1/2: Latest uploads loaded successfully.");
-    
+
     log("2/2: Loading live streams (YouTube API)...");
     await loadYouTubeLiveFeeds();
     log("2/2: Live streams loaded successfully.");
-    
+
     log("Saving updated channel data to localStorage...");
     localStorage.setItem(STORAGE_KEYS.channels, JSON.stringify(allChannels));
-    
+
     log("Rendering UI and updating components...");
     renderChannels(allChannels);
     updateFavoriteIcons();
     renderRecentlyWatched();
     updateAllChannelItems();
-    
+
     log("✅ Full channels update COMPLETE.");
     return true;
   } catch (e) {
     log(`❌ Critical error during full channel update: ${e.message}`, true);
-    
+
     log("Updating UI with available data...");
     localStorage.setItem(STORAGE_KEYS.channels, JSON.stringify(allChannels));
     renderChannels(allChannels);
     updateFavoriteIcons();
     renderRecentlyWatched();
     updateAllChannelItems();
-    
+
     return false;
   }
 }
@@ -1948,39 +1980,39 @@ async function loadAllChannelFeeds() {
 function startChannelAutoUpdate() {
   const savedAutoUpdate = localStorage.getItem(AUTO_UPDATE_KEY);
   const savedInterval = localStorage.getItem(UPDATE_INTERVAL_KEY);
-  
+
   isAutoUpdateEnabled = savedAutoUpdate === null ? true : savedAutoUpdate === "true";
   updateIntervalHours = savedInterval ? parseInt(savedInterval) : 8;
-  
+
   const intervalMs = updateIntervalHours * 60 * 60 * 1000;
   const cacheExpiryMs = updateIntervalHours * 60 * 60 * 1000;
-  
+
   console.log(`Auto-update service initializing. Enabled: ${isAutoUpdateEnabled}, Interval: ${updateIntervalHours}h`);
-  
+
   const checkAndUpdate = async () => {
     if (!isAutoUpdateEnabled) {
       console.log("Auto-update is disabled. Skipping check.");
       return;
     }
-    
+
     const lastUpdateTimestamp = parseInt(localStorage.getItem(CACHE_KEY) || "0");
     const currentTime = Date.now();
     const timeSinceLastUpdate = currentTime - lastUpdateTimestamp;
     const shouldUpdate = lastUpdateTimestamp === 0 || timeSinceLastUpdate >= cacheExpiryMs;
-    
+
     if (shouldUpdate) {
       log("Cache has expired. Initiating full data update now.");
-      
+
       try {
         const success = await loadAllChannelFeeds();
-        
+
         if (success) {
           const newTimestamp = Date.now();
           localStorage.setItem(CACHE_KEY, newTimestamp.toString());
-          
+
           const newLastUpdateDate = new Date(newTimestamp).toLocaleString();
           const newNextUpdateDate = new Date(newTimestamp + cacheExpiryMs).toLocaleString();
-          
+
           log("✅ Channels updated successfully.");
           log(`New Last Update Time: ${newLastUpdateDate}`);
           log(`Next Scheduled Check (Expiry): ${newNextUpdateDate}`);
@@ -1996,7 +2028,7 @@ function startChannelAutoUpdate() {
       const minutesRemaining = Math.ceil(timeRemaining / (60 * 1000));
       const hoursRemaining = Math.floor(minutesRemaining / 60);
       const minsRemaining = minutesRemaining % 60;
-      
+
       if (hoursRemaining > 0) {
         console.log(`Cache is valid. Expires in ${hoursRemaining}h ${minsRemaining}m`);
       } else {
@@ -2004,7 +2036,7 @@ function startChannelAutoUpdate() {
       }
     }
   };
-  
+
   const initialLastUpdate = parseInt(localStorage.getItem(CACHE_KEY) || "0");
   if (initialLastUpdate === 0) {
     log("Last Update: Never. Starting initial data fetch now.");
@@ -2014,18 +2046,18 @@ function startChannelAutoUpdate() {
     const nextUpdateDate = new Date(nextExpiry).toLocaleString();
     const timeRemaining = nextExpiry - Date.now();
     const minutesRemaining = Math.ceil(timeRemaining / (60 * 1000));
-    
+
     log(`Last Update: ${lastUpdateDate}`);
     log(`Next update available after: ${nextUpdateDate}`);
     log(`Time remaining: ${minutesRemaining} minutes`);
   }
-  
+
   if (isAutoUpdateEnabled) {
     checkAndUpdate();
   }
-  
+
   autoUpdateInterval = setInterval(checkAndUpdate, intervalMs);
-  
+
   console.log(`Auto-update service started. Checking every ${updateIntervalHours} hours. Status: ${isAutoUpdateEnabled ? "Enabled" : "Disabled"}`);
 }
 
@@ -2044,20 +2076,20 @@ function stopAutoUpdateService() {
 function showSettingsModal() {
   const settingsModal = document.getElementById("settingsModal");
   if (!settingsModal) return;
-  
+
   settingsModal.style.display = "flex";
-  
+
   const autoUpdateToggle = document.getElementById("autoUpdateToggle");
   const updateIntervalSelect = document.getElementById("updateInterval");
-  
+
   if (autoUpdateToggle) {
     autoUpdateToggle.checked = isAutoUpdateEnabled;
   }
-  
+
   if (updateIntervalSelect) {
     updateIntervalSelect.value = updateIntervalHours.toString();
   }
-  
+
   updateIntervalDescriptionText(updateIntervalHours);
   updateLastUpdateDisplay();
 }
@@ -2072,7 +2104,7 @@ function hideSettingsModal() {
 function toggleAutoUpdate(enabled) {
   isAutoUpdateEnabled = enabled;
   localStorage.setItem(AUTO_UPDATE_KEY, enabled.toString());
-  
+
   if (enabled) {
     log("✅ Auto-update enabled");
     showNotification("Auto-update enabled", "success");
@@ -2087,12 +2119,12 @@ function toggleAutoUpdate(enabled) {
 function changeUpdateInterval(hours) {
   updateIntervalHours = parseInt(hours);
   localStorage.setItem(UPDATE_INTERVAL_KEY, hours.toString());
-  
+
   updateIntervalDescriptionText(hours);
-  
+
   log(`⏱️ Update interval changed to ${hours} hours`);
   showNotification(`Update interval set to ${hours} hours`, "success");
-  
+
   if (isAutoUpdateEnabled) {
     stopAutoUpdateService();
     startChannelAutoUpdate();
@@ -2102,23 +2134,23 @@ function changeUpdateInterval(hours) {
 async function manualUpdate() {
   const manualUpdateBtn = document.getElementById("manualUpdateBtn");
   if (!manualUpdateBtn) return;
-  
+
   manualUpdateBtn.disabled = true;
   const originalText = manualUpdateBtn.textContent;
   manualUpdateBtn.textContent = "Updating...";
-  
+
   try {
     log("🔄 Manual update initiated...");
-    
+
     const success = await loadAllChannelFeeds();
-    
+
     if (success) {
       const newTimestamp = Date.now();
       localStorage.setItem(CACHE_KEY, newTimestamp.toString());
-      
+
       log("✅ Manual update completed successfully");
       showNotification("Channels updated successfully!", "success");
-      
+
       updateLastUpdateDisplay();
     } else {
       log("❌ Manual update failed", true);
@@ -2136,9 +2168,9 @@ async function manualUpdate() {
 function updateLastUpdateDisplay() {
   const lastUpdate = parseInt(localStorage.getItem(CACHE_KEY) || "0");
   const lastUpdateEl = document.getElementById("lastUpdateDisplay");
-  
+
   if (!lastUpdateEl) return;
-  
+
   if (lastUpdate === 0) {
     lastUpdateEl.textContent = "Never updated";
     lastUpdateEl.style.color = "#ff9800";
@@ -2146,7 +2178,7 @@ function updateLastUpdateDisplay() {
     const timeAgo = getTimeAgo(lastUpdate);
     const date = new Date(lastUpdate);
     const formattedDate = date.toLocaleString();
-    
+
     lastUpdateEl.textContent = `Last updated: ${timeAgo} (${formattedDate})`;
     lastUpdateEl.style.color = "#4caf50";
   }
@@ -2166,15 +2198,15 @@ function setupSettingsModal() {
   const autoUpdateToggle = document.getElementById("autoUpdateToggle");
   const updateIntervalSelect = document.getElementById("updateInterval");
   const manualUpdateBtn = document.getElementById("manualUpdateBtn");
-  
+
   if (settingsBtn) {
     settingsBtn.addEventListener("click", showSettingsModal);
   }
-  
+
   if (closeSettings) {
     closeSettings.addEventListener("click", hideSettingsModal);
   }
-  
+
   if (settingsModal) {
     settingsModal.addEventListener("click", (e) => {
       if (e.target === settingsModal) {
@@ -2182,25 +2214,25 @@ function setupSettingsModal() {
       }
     });
   }
-  
+
   if (autoUpdateToggle) {
     autoUpdateToggle.addEventListener("change", (e) => {
       toggleAutoUpdate(e.target.checked);
     });
   }
-  
+
   if (updateIntervalSelect) {
     updateIntervalSelect.addEventListener("change", (e) => {
       changeUpdateInterval(e.target.value);
     });
   }
-  
+
   if (manualUpdateBtn) {
     manualUpdateBtn.addEventListener("click", manualUpdate);
   }
-  
+
   updateIntervalDescriptionText(updateIntervalHours);
-  
+
   const manageApiKeyBtn = document.getElementById("manageApiKeyBtn");
   if (manageApiKeyBtn) {
     manageApiKeyBtn.addEventListener("click", () => {
@@ -2217,9 +2249,9 @@ function setupSettingsModal() {
 function showAPIKeyModal() {
   const apiModal = document.getElementById("apiKeyModal");
   if (!apiModal) return;
-  
+
   apiModal.style.display = "flex";
-  
+
   const apiKeyInput = document.getElementById("apiKeyInput");
   if (apiKeyInput) {
     const existingKey = getStoredAPIKey();
@@ -2229,10 +2261,10 @@ function showAPIKeyModal() {
     } else {
       apiKeyInput.value = "";
     }
-    
+
     setTimeout(() => apiKeyInput.focus(), 100);
   }
-  
+
   setupAPIKeyModalEvents();
 }
 
@@ -2249,60 +2281,60 @@ function setupAPIKeyModalEvents() {
   const apiKeyInput = document.getElementById("apiKeyInput");
   const toggleVisibilityBtn = document.getElementById("toggleApiKeyVisibility");
   const apiModal = document.getElementById("apiKeyModal");
-  
+
   if (submitBtn) {
     const newSubmitBtn = submitBtn.cloneNode(true);
     submitBtn.parentNode.replaceChild(newSubmitBtn, submitBtn);
-    
+
     newSubmitBtn.addEventListener("click", function () {
       const apiKey = apiKeyInput.value.trim();
       const remember = document.getElementById("rememberKey")?.checked;
-      
+
       if (!apiKey) {
         apiKeyInput.classList.add("invalid");
         showNotification("Please enter a valid API key", "error");
         setTimeout(() => apiKeyInput.classList.remove("invalid"), 400);
         return;
       }
-      
+
       if (apiKey.length < 30) {
         apiKeyInput.classList.add("invalid");
         showNotification("API key seems too short. Please check it.", "error");
         setTimeout(() => apiKeyInput.classList.remove("invalid"), 400);
         return;
       }
-      
+
       if (remember) {
         saveAPIKey(apiKey);
       } else {
         API_KEY = apiKey;
       }
-      
+
       hideAPIKeyModal();
       showNotification("✅ API Key saved successfully!", "success");
-      
+
       setTimeout(() => {
         log("🔄 Starting live feeds update with new API key...");
         loadYouTubeLiveFeeds().catch(console.error);
       }, 1000);
     });
   }
-  
+
   if (skipBtn) {
     const newSkipBtn = skipBtn.cloneNode(true);
     skipBtn.parentNode.replaceChild(newSkipBtn, skipBtn);
-    
+
     newSkipBtn.addEventListener("click", function () {
       hideAPIKeyModal();
       showNotification("⏭️ Live channels update skipped", "info");
       log("ℹ️ User skipped API key configuration");
     });
   }
-  
+
   if (toggleVisibilityBtn && apiKeyInput) {
     const newToggleBtn = toggleVisibilityBtn.cloneNode(true);
     toggleVisibilityBtn.parentNode.replaceChild(newToggleBtn, toggleVisibilityBtn);
-    
+
     newToggleBtn.addEventListener("click", function () {
       if (apiKeyInput.type === "password") {
         apiKeyInput.type = "text";
@@ -2313,7 +2345,7 @@ function setupAPIKeyModalEvents() {
       }
     });
   }
-  
+
   if (apiKeyInput) {
     apiKeyInput.addEventListener("keypress", function (e) {
       if (e.key === "Enter") {
@@ -2322,7 +2354,7 @@ function setupAPIKeyModalEvents() {
       }
     });
   }
-  
+
   if (apiModal) {
     apiModal.addEventListener("click", (e) => {
       if (e.target === apiModal) {
@@ -2330,7 +2362,7 @@ function setupAPIKeyModalEvents() {
       }
     });
   }
-  
+
   document.addEventListener("keydown", function escapeHandler(e) {
     if (e.key === "Escape" && apiModal && apiModal.style.display === "flex") {
       hideAPIKeyModal();
@@ -2351,7 +2383,7 @@ function setupNetworkMonitoring() {
 function handleNetworkLost() {
   isOnline = false;
   console.log("📡 Network connection lost");
-  
+
   const player = channelLoader.getPlayer();
   if (player && !player.paused()) {
     player.pause();
@@ -2363,9 +2395,9 @@ function handleNetworkRestored() {
   isOnline = true;
   console.log("📡 Network connection restored");
   log("📡 Network connection restored");
-  
+
   showNotification("Connection restored", "success");
-  
+
   const player = channelLoader.getPlayer();
   if (player && player.paused()) {
     setTimeout(() => {
@@ -2388,10 +2420,10 @@ function handleNetworkRestored() {
 
 function cleanup() {
   console.log("🧹 Performing cleanup...");
-  
+
   stopWatching();
   stopAutoUpdateService();
-  
+
   if (overlayTimeoutShow) {
     clearTimeout(overlayTimeoutShow);
     overlayTimeoutShow = null;
@@ -2408,53 +2440,52 @@ function cleanup() {
     clearTimeout(navigationDebounce);
     navigationDebounce = null;
   }
-  
+
   channelLoader.cleanupPlayer().then(() => {
     console.log("✅ Player cleanup complete");
   }).catch(error => {
     console.warn("Error during player cleanup:", error);
   });
-  
+
   document.querySelectorAll(".network-status, .error-notification, .play-fallback-overlay, .notification").forEach((el) => {
     if (el.parentNode) {
       el.parentNode.removeChild(el);
     }
   });
-  
+
   if (lastFocusedElement && lastFocusedElement.isConnected) {
     lastFocusedElement.focus();
   } else if (allChannelItems.length > 0) {
     allChannelItems[0].focus();
   }
-  
   console.log("✅ Cleanup complete");
 }
 
 async function initialize() {
   console.log("🚀 Initializing IPTV Channel Manager...");
-  
+
   const contentGrid = document.querySelector(".content-grid");
   const loadingElement = document.getElementById("loading-spinner");
-  
+
   if (contentGrid) contentGrid.style.display = "none";
   if (loadingElement) loadingElement.style.display = "block";
-  
+
   const closeBtn = document.querySelector(".closeModal");
   if (closeBtn) closeBtn.addEventListener("click", closeModal);
-  
+
   const modal = document.getElementById("videoModal");
   if (modal) {
     modal.addEventListener("click", (event) => {
       if (event.target === modal) closeModal();
     });
   }
-  
+
   setupNetworkMonitoring();
   setupSettingsModal();
   setupSearchBar();
-  
+
   let savedChannels = localStorage.getItem(STORAGE_KEYS.channels);
-  
+
   if (savedChannels) {
     try {
       allChannels = JSON.parse(savedChannels);
@@ -2469,40 +2500,40 @@ async function initialize() {
     log("No previous 'allChannelsData' found in localStorage. Starting fresh.");
     allChannels = [];
   }
-  
+
   API_KEY = getStoredAPIKey() || "";
-  
+
   if (hasValidAPIKey()) {
     console.log("✅ Using stored API key");
   } else {
     console.log("ℹ️ No valid API key stored");
   }
-  
+
   startChannelAutoUpdate();
-  
+
   allChannels.forEach((ch, i) => {
     if (!ch.number) ch.number = i + 1;
   });
-  
+
   loadWatchTime();
-  
+
   const savedSort = localStorage.getItem("defaultSortMethod") || "none";
   handleSortChange(savedSort);
-  
+
   renderFavorites();
   renderRecentlyWatched();
   updateFavoriteIcons();
   updateAllChannelItems();
-  
+
   if (loadingElement) loadingElement.style.display = "none";
   if (contentGrid) contentGrid.style.display = "grid";
-  
+
   if (lastFocusedElement && lastFocusedElement.isConnected) {
     lastFocusedElement.focus();
   } else if (allChannelItems.length > 0) {
     allChannelItems[0].focus();
   }
-  
+
   console.log("✅ Initialization complete");
 }
 
@@ -2520,10 +2551,10 @@ window.addEventListener("beforeunload", () => {
 
 document.addEventListener("visibilitychange", function () {
   const player = channelLoader.getPlayer();
-  
+
   if (document.hidden) {
     saveCurrentWatchTime();
-    
+
     if (player && !player.paused()) {
       player.pause();
       console.log("⏸️ Video paused due to tab switch");
