@@ -1536,6 +1536,20 @@ function getGridColumns() {
 }
 
 document.addEventListener("keydown", (e) => {
+  const searchInput = document.getElementById('channelSearch');
+  
+  // 🎯 NEW CONDITION: Check if the currently focused element is the search bar
+  // If the user is focused on the search bar, do nothing and return.
+  if (searchInput && document.activeElement === searchInput) {
+    return;
+  }
+  
+  // Also check if any other input or textarea is focused to prevent accidental triggers
+  const focusedTag = document.activeElement.tagName.toLowerCase();
+  if (focusedTag === 'input' || focusedTag === 'textarea') {
+      return;
+  }
+  
   if (e.key >= "0" && e.key <= "9") {
     numberBuffer += e.key;
 
