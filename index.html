@@ -32,19 +32,20 @@
       <button id="settingsBtn" class="settings-btn" title="Settings">
         <i class="fas fa-cog"></i>
       </button>
+
     </nav>
+
   </header>
 
-
   <main>
-
 
     <div class="container">
 
       <!-- Log Area -->
       <div>
         <div id="logArea" class="text-white-400 p-4 h-40 overflow-y-scroll rounded-lg text-sm whitespace-pre-wrap">
-          Press **Left/Right** to navigate, **Enter** to play, **Enter** for fullscreen, and **Left** to close.
+          Press **Left/Right** to navigate, **Enter** to play, **Enter** for
+          fullscreen, and **Left** to close.
         </div>
       </div>
 
@@ -52,7 +53,8 @@
       </div>
 
       <div id="recentlyWatched" class="section">
-        <h2 class="text-xl font-bold mt-6 mb-4 col-span-full">Recently Watched</h2>
+        <h2 class="text-xl font-bold mt-6 mb-4 col-span-full">Recently
+          Watched</h2>
         <div class="content-grid" id="recentlyWatchedGrid"></div>
       </div>
 
@@ -61,14 +63,20 @@
         <div class="content-grid" id="favoritesGrid"></div>
       </div>
 
-
       <div id="loading-spinner"></div>
 
-
+      <div class="search-container">
+        <div class="search-wrapper">
+          <input type="text" id="channelSearch" placeholder="Search channels..." autocomplete="off" />
+          <button id="clearSearch" title="Clear search">✕</button>
+        </div>
+        <div id="search-results-message" style="display: none;"></div>
+      </div>
 
       <div id="channels" class="section">
         <div class="sort-container">
-          <h2 class="text-xl font-bold mt-6 mb-4 col-span-full">All Channels</h2>
+          <h2 class="text-xl font-bold mt-6 mb-4 col-span-full">All
+            Channels</h2>
 
           <div class="sort-controls">
             <button onclick="handleSortChange('none')" title="No Sort">
@@ -85,10 +93,8 @@
             </button>
           </div>
 
-
         </div>
       </div>
-
 
       <!-- Settings Modal -->
       <div id="settingsModal" class="settings-modal" style="display: none;">
@@ -117,7 +123,8 @@
           </div>
 
           <div class="setting-item">
-            <button id="manualUpdateBtn" class="btn-primary">Update Now</button>
+            <button id="manualUpdateBtn" class="btn-primary">Update
+              Now</button>
             <span id="lastUpdateDisplay"></span>
           </div>
 
@@ -162,7 +169,8 @@
               <span>Remember API key (stored locally)</span>
             </label>
             <p class="setting-description">
-              Your API key will be stored securely in your browser's local storage
+              Your API key will be stored securely in your browser's local
+              storage
             </p>
           </div>
 
@@ -177,11 +185,11 @@
 
           <div class="api-key-info">
             <p><strong>Why do we need this?</strong></p>
-            <p>The YouTube API key allows us to detect which channels are currently live streaming.</p>
+            <p>The YouTube API key allows us to detect which channels are
+              currently live streaming.</p>
           </div>
         </div>
       </div>
-
 
   </main>
 
@@ -194,13 +202,7 @@
 
       <div id="player-container">
         <div id="player"></div>
-
-
-        <div id="recentChannelsGrid" class="recent-grid">
-          <!-- Recently watched channels will be rendered here -->
-        </div>
       </div>
-
 
       <div id="channel-info-overlay" class="channel-info-overlay">
         <div id="video-info-container" class="flex items-center space-x-4">
@@ -231,12 +233,10 @@
 
   <script src="https://vjs.zencdn.net/8.23.4/video.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/videojs-youtube@3.0.1/dist/Youtube.min.js"></script>
-  <script src="https://unpkg.com/@videojs/http-streaming@3.0.2/dist/videojs-http-streaming.min.js"></script>
-
+  <script src="https://unpkg.com/@videojs/http-streaming@3.17.2/dist/videojs-http-streaming.min.js"></script>
 
 
   <script src="script.js"></script>
-
 </body>
 
 </html>

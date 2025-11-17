@@ -1181,3 +1181,125 @@ main {
   text-align: center;
   font-weight: 500;
 }
+
+
+/* Search Container */
+.search-container {
+  margin-bottom: 20px;
+  width: 100%;
+}
+
+.search-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+  max-width: 500px;
+  margin: 0 auto;
+}
+
+/* Search Input */
+#channelSearch {
+  width: 100%;
+  padding: 12px 45px 12px 15px;
+  font-size: 16px;
+  border: 2px solid #444;
+  border-radius: 8px;
+  background: #2a2a2a;
+  color: #fff;
+  outline: none;
+  transition: all 0.3s ease;
+}
+
+#channelSearch:focus {
+  border-color: #ff0000;
+  background: #333;
+  box-shadow: 0 0 0 3px rgba(255, 0, 0, 0.1);
+}
+
+#channelSearch::placeholder {
+  color: #888;
+}
+
+/* Clear Button */
+#clearSearch {
+  position: absolute;
+  right: 10px;
+  background: transparent;
+  border: none;
+  color: #888;
+  font-size: 20px;
+  cursor: pointer;
+  padding: 5px 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  border-radius: 4px;
+}
+
+#clearSearch:hover {
+  color: #ff0000;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+#clearSearch:active {
+  transform: scale(0.95);
+}
+
+/* Search Results Message */
+#search-results-message {
+  text-align: center;
+  margin-top: 10px;
+  padding: 8px 15px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  font-size: 14px;
+  color: #fff;
+  max-width: 500px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .search-wrapper {
+    max-width: 100%;
+  }
+  
+  #channelSearch {
+    font-size: 14px;
+    padding: 10px 40px 10px 12px;
+  }
+}
+
+/* Dark mode adjustments (if you have dark mode) */
+@media (prefers-color-scheme: light) {
+  #channelSearch {
+    background: #f5f5f5;
+    color: #000;
+    border-color: #ddd;
+  }
+  
+  #channelSearch:focus {
+    background: #fff;
+    border-color: #ff0000;
+  }
+  
+  #channelSearch::placeholder {
+    color: #999;
+  }
+  
+  #clearSearch {
+    color: #666;
+  }
+  
+  #clearSearch:hover {
+    color: #ff0000;
+    background: rgba(0, 0, 0, 0.05);
+  }
+  
+  #search-results-message {
+    background: rgba(0, 0, 0, 0.05);
+    color: #333;
+  }
+}

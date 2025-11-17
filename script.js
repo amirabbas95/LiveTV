@@ -1,49 +1,649 @@
+// ============================================
+// IPTV CHANNEL MANAGER - COMPLETE OPTIMIZED VERSION
+// Full replacement with all improvements integrated
+// ============================================
+
+// ============================================
+// CONSTANTS & CONFIGURATION
+// ============================================
 const AUTO_UPDATE_KEY = "autoUpdateEnabled";
 const UPDATE_INTERVAL_KEY = "updateIntervalHours";
-let autoUpdateInterval = null;
-let isAutoUpdateEnabled = true;
-let updateIntervalHours = 8;
 const MAX_RECENT = 18;
 const favoritesKey = "favorites";
 const recentlyWatchedKey = "recentlyWatched";
-let allChannelItems = [];
-let lastFocusedElement = null;
-let currentSortMethod = "none";
-let playerInstance = null;
-let currentChannelId = "";
-let watchStartTime = 0;
-let watchInterval = null;
-let overlayTimeoutShow;
-let overlayTimeoutHide;
-let isRecentOverlayActive = false;
-let API_KEY = "";
 const API_KEY_STORAGE_KEY = "youtube_api_key";
-
 const CACHE_KEY = "lastChannelsUpdate";
-const EIGHT_HOURS_MS = 8 * 60 * 60 * 1000;
-const CHECK_INTERVAL_MS = 15 * 60 * 1000;
-let allChannels = [];
-let focusedIndex = 0;
+const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
 
-let isOnline = navigator.onLine;
-let reconnectAttempts = 0;
-const MAX_RECONNECT_ATTEMPTS = 3;
-
-const rssCache = new Map();
-const liveCache = new Map();
-const CACHE_DURATION = 5 * 60 * 1000;
-
-let sessionId = Date.now();
-
-const modal = document.getElementById("videoModal");
-const qualityEl = document.getElementById("video-quality");
-
-// Storage Keys
 const STORAGE_KEYS = {
   channels: "allChannelsData",
   live: "liveChannelsData",
   feeds: "rssFeedsData",
 };
+
+const PLAYBACK_CONSTANTS = {
+  MAX_ELEMENT_WAIT_TIME: 2000,
+  PLAYER_READY_TIMEOUT: 5000,
+  DOM_MUTATION_CHECK_INTERVAL: 50,
+  YOUTUBE_READY_CHECK_INTERVAL: 100,
+  TRANSITION_DELAY: 0,
+};
+
+// ============================================
+// GLOBAL STATE VARIABLES
+// ============================================
+let allChannels = [];
+let allChannelItems = [];
+let currentChannelId = "";
+let watchStartTime = 0;
+let lastFocusedElement = null;
+let focusedIndex = 0;
+let currentSortMethod = "none";
+let isOnline = navigator.onLine;
+let API_KEY = "";
+let isAutoUpdateEnabled = true;
+let updateIntervalHours = 8;
+
+// Search state
+let searchQuery = "";
+let filteredChannels = [];
+
+// Caches
+const rssCache = new Map();
+const liveCache = new Map();
+
+// Intervals & Timeouts
+let watchInterval = null;
+let autoUpdateInterval = null;
+let overlayTimeoutShow = null;
+let overlayTimeoutHide = null;
+let numberTimeout = null;
+let navigationDebounce = null;
+let numberBuffer = "";
+
+// ============================================
+// CANCELLATION TOKEN SYSTEM
+// ============================================
+class CancellationToken {
+  constructor() {
+    this.cancelled = false;
+    this.reason = null;
+  }
+  
+  cancel(reason = 'Operation cancelled') {
+    this.cancelled = true;
+    this.reason = reason;
+  }
+  
+  throwIfCancelled() {
+    if (this.cancelled) {
+      throw new Error(this.reason || 'Operation cancelled');
+    }
+  }
+  
+  isCancelled() {
+    return this.cancelled;
+  }
+}
+
+// ============================================
+// CHANNEL LOADER CLASS
+// ============================================
+class ChannelLoader {
+  constructor() {
+    this.currentOperation = null;
+    this.playerInstance = null;
+    this.eventCleanupCallbacks = [];
+  }
+  
+  async loadChannel(url, name, image, description, number, isLive) {
+    if (this.currentOperation) {
+      this.currentOperation.cancel('New channel selected');
+    }
+    
+    const token = new CancellationToken();
+    this.currentOperation = token;
+    
+    console.log(`🚀 Loading channel: ${name}`, {
+      url,
+      timestamp: new Date().toISOString(),
+    });
+    
+    try {
+      this.updateChannelUI(name, image, description, number);
+      token.throwIfCancelled();
+      
+      await this.cleanupPlayer();
+      token.throwIfCancelled();
+      
+      await this.initializePlayer(url, name, isLive, token);
+      token.throwIfCancelled();
+      
+      //console.log(`✅ Channel loaded successfully: ${name}`);
+      
+    } catch (error) {
+      if (!token.isCancelled()) {
+        console.error(`❌ Failed to load channel ${name}:`, error);
+        showErrorToUser(`Failed to load ${name}: ${error.message}`);
+      } else {
+        console.log(`⏭️ Channel load cancelled: ${name} - ${error.message}`);
+      }
+    } finally {
+      if (this.currentOperation === token) {
+        this.currentOperation = null;
+      }
+    }
+  }
+  
+  updateChannelUI(name, image, description, number) {
+    const updates = {
+      'content-image': (el) => el.src = image || '',
+      'video-title': (el) => el.textContent = name || 'Unknown Channel',
+      'channel-description': (el) => el.textContent = description || '',
+      'channel-number': (el) => el.textContent = number ? `${number}.` : '',
+      'video-quality': (el) => el.textContent = ''
+    };
+    
+    Object.entries(updates).forEach(([id, updateFn]) => {
+      const element = document.getElementById(id);
+      if (element) updateFn(element);
+    });
+    
+    lastFocusedElement = document.activeElement;
+    showChannelInfoOverlay();
+  }
+  
+  async cleanupPlayer() {
+    stopWatching();
+    this.cleanupEventListeners();
+    
+    if (this.playerInstance) {
+      try {
+        console.log('🧹 Cleaning up existing player...');
+        
+        this.playerInstance.off();
+        
+        if (!this.playerInstance.paused()) {
+          this.playerInstance.pause();
+        }
+        
+        const playerId = this.playerInstance.id();
+        this.playerInstance.dispose();
+        this.playerInstance = null;
+        
+        const oldElement = document.getElementById(playerId);
+        if (oldElement && oldElement.parentNode) {
+          oldElement.parentNode.removeChild(oldElement);
+        }
+        
+        //console.log('✅ Player cleaned up successfully');
+      } catch (error) {
+        console.warn('⚠️ Error during player cleanup:', error);
+        this.playerInstance = null;
+      }
+    }
+    
+    const container = document.getElementById('player-container');
+    if (container) {
+      const orphans = container.querySelectorAll('video, .video-js');
+      orphans.forEach(el => {
+        try {
+          if (el.parentNode) {
+            el.parentNode.removeChild(el);
+          }
+        } catch (e) {
+          console.warn('Could not remove orphaned element:', e);
+        }
+      });
+    }
+    
+    document.querySelectorAll('.play-fallback-overlay').forEach(el => {
+      if (el.parentNode) {
+        el.parentNode.removeChild(el);
+      }
+    });
+  }
+  
+  async initializePlayer(url, name, isLive, token) {
+    const container = await this.waitForElement('player-container');
+    token.throwIfCancelled();
+    
+    const streamConfig = createStreamConfig(url);
+    const metadata = { isLive: isLive || false };
+    
+    const videoId = `player-${Date.now()}`;
+    const videoElement = this.createVideoElement(videoId);
+    
+    container.innerHTML = '';
+    container.appendChild(videoElement);
+    
+    await this.waitForElement(videoId);
+    token.throwIfCancelled();
+    
+    const playerConfig = buildPlayerOptions(streamConfig, metadata);
+    
+    console.log('🎬 Initializing Video.js player...');
+    
+    // Wrap player initialization in try-catch for HLS errors
+    try {
+      this.playerInstance = videojs(videoElement, playerConfig);
+    } catch (error) {
+      console.error('❌ Player initialization failed:', error);
+      throw new Error(`Failed to initialize player: ${error.message}`);
+    }
+    
+    // Set up HLS error recovery
+    if (streamConfig.type === 'hls' && this.playerInstance.tech({ IWillNotUseThisInPlugins: true })) {
+      this.setupHLSErrorRecovery();
+    }
+    
+    this.setupPlayerEvents(name, isLive, streamConfig.type === 'youtube', token);
+    token.throwIfCancelled();
+    
+    if (streamConfig.type === 'youtube') {
+      this.setupYouTubeQualityMonitoring(token);
+    }
+    
+    await this.waitForPlayerReady(token);
+    token.throwIfCancelled();
+    
+    await this.attemptAutoplay();
+  }
+  
+  setupHLSErrorRecovery() {
+    if (!this.playerInstance) return;
+    
+    const tech = this.playerInstance.tech({ IWillNotUseThisInPlugins: true });
+    if (!tech || !tech.vhs) return;
+    
+    let errorCount = 0;
+    const maxErrors = 3;
+    
+    const vhsErrorHandler = () => {
+      errorCount++;
+      console.warn(`⚠️ HLS error detected (${errorCount}/${maxErrors})`);
+      
+      if (errorCount < maxErrors) {
+        // Try to recover
+        setTimeout(() => {
+          if (this.playerInstance && tech.vhs) {
+            console.log('🔄 Attempting HLS recovery...');
+            try {
+              tech.vhs.playlists.trigger('loadedplaylist');
+            } catch (e) {
+              console.warn('Recovery attempt failed:', e);
+            }
+          }
+        }, 1000);
+      } else {
+        console.error('❌ Max HLS errors reached, stopping recovery attempts');
+      }
+    };
+    
+    if (tech.vhs) {
+      tech.vhs.on('error', vhsErrorHandler);
+      
+      this.eventCleanupCallbacks.push(() => {
+        try {
+          if (tech && tech.vhs) {
+            tech.vhs.off('error', vhsErrorHandler);
+          }
+        } catch (e) {
+          console.warn('Could not remove VHS error listener:', e);
+        }
+      });
+    }
+  }
+  
+  createVideoElement(id) {
+    const video = document.createElement('video');
+    video.id = id;
+    video.className = 'video-js vjs-default-skin';
+    video.controls = false;
+    video.preload = 'auto';
+    video.setAttribute('playsinline', '');
+    video.setAttribute('webkit-playsinline', '');
+    video.setAttribute('crossorigin', 'anonymous');
+    return video;
+  }
+  
+  waitForElement(id) {
+    return new Promise((resolve, reject) => {
+      const existing = document.getElementById(id);
+      if (existing) {
+        resolve(existing);
+        return;
+      }
+      
+      const observer = new MutationObserver(() => {
+        const element = document.getElementById(id);
+        if (element) {
+          observer.disconnect();
+          clearTimeout(timeoutId);
+          resolve(element);
+        }
+      });
+      
+      observer.observe(document.body, {
+        childList: true,
+        subtree: true
+      });
+      
+      const timeoutId = setTimeout(() => {
+        observer.disconnect();
+        reject(new Error(`Element ${id} not found within ${PLAYBACK_CONSTANTS.MAX_ELEMENT_WAIT_TIME}ms`));
+      }, PLAYBACK_CONSTANTS.MAX_ELEMENT_WAIT_TIME);
+    });
+  }
+  
+  waitForPlayerReady(token) {
+    return new Promise((resolve, reject) => {
+      if (!this.playerInstance) {
+        reject(new Error('Player instance not available'));
+        return;
+      }
+      
+      let resolved = false;
+      
+      const timeoutId = setTimeout(() => {
+        if (!resolved) {
+          resolved = true;
+          reject(new Error(`Player ready timeout after ${PLAYBACK_CONSTANTS.PLAYER_READY_TIMEOUT}ms`));
+        }
+      }, PLAYBACK_CONSTANTS.PLAYER_READY_TIMEOUT);
+      
+      this.playerInstance.ready(() => {
+        if (resolved) return;
+        
+        clearTimeout(timeoutId);
+        
+        if (token.isCancelled()) {
+          resolved = true;
+          reject(new Error('Cancelled during player initialization'));
+          return;
+        }
+        
+        resolved = true;
+        //console.log('✅ Player ready');
+        resolve();
+      });
+      
+      this.playerInstance.one('error', () => {
+        if (resolved) return;
+        
+        clearTimeout(timeoutId);
+        resolved = true;
+        
+        const error = this.playerInstance.error();
+        reject(new Error(`Player error during initialization: ${error ? error.code : 'unknown'}`));
+      });
+    });
+  }
+  
+  async attemptAutoplay() {
+    if (!this.playerInstance) return;
+    
+    try {
+      const playPromise = this.playerInstance.play();
+      
+      if (playPromise !== undefined) {
+        await playPromise;
+        //console.log('✅ Autoplay successful');
+      }
+    } catch (error) {
+      console.warn('⚠️ Autoplay blocked:', error.message);
+      this.showPlayButton();
+    }
+  }
+  
+  setupPlayerEvents(name, isLive, isYouTube, token) {
+    if (!this.playerInstance) return;
+    
+    this.playerInstance.off();
+    
+    const errorHandler = () => {
+      if (token.isCancelled()) return;
+      
+      const error = this.playerInstance.error();
+      
+      // Handle specific HLS errors
+      if (error && error.code === 4) {
+        console.warn('⚠️ Media source not supported, trying fallback...');
+        // Don't show error to user immediately for media errors
+        return;
+      }
+      
+      console.error('🚨 Player error:', error);
+      stopWatching();
+      
+      // Only show error for critical issues
+      if (error && error.code !== 4) {
+        showErrorToUser('Playback error occurred');
+      }
+    };
+    
+    const waitingHandler = () => {
+      if (token.isCancelled()) return;
+      console.log('⏳ Buffering...');
+    };
+    
+    const playingHandler = () => {
+      if (token.isCancelled()) return;
+      startWatching(name);
+      //console.log('▶️ Playing');
+    };
+    
+    const pauseHandler = () => {
+      if (token.isCancelled()) return;
+      stopWatching();
+    };
+    
+    const endedHandler = () => {
+      if (token.isCancelled()) return;
+      console.log('⏹️ Playback ended');
+      stopWatching();
+    };
+    
+    const metadataHandler = () => {
+      if (token.isCancelled()) return;
+      
+      this.updateQualityDisplay();
+      
+      const isChannelLive = isLive === true || isLive === 'true';
+      if (!isChannelLive && !isYouTube) {
+        this.playerInstance.controls(true);
+      } else {
+        this.playerInstance.controls(false);
+      }
+    };
+    
+    // HLS-specific error recovery
+    const retryHandler = () => {
+      if (token.isCancelled()) return;
+      console.log('🔄 Attempting HLS recovery...');
+    };
+    
+    this.playerInstance.on('error', errorHandler);
+    this.playerInstance.on('waiting', waitingHandler);
+    this.playerInstance.on('playing', playingHandler);
+    this.playerInstance.on('pause', pauseHandler);
+    this.playerInstance.on('ended', endedHandler);
+    this.playerInstance.on('loadedmetadata', metadataHandler);
+    this.playerInstance.on('retryplaylist', retryHandler);
+    
+    this.eventCleanupCallbacks.push(() => {
+      if (this.playerInstance) {
+        this.playerInstance.off('error', errorHandler);
+        this.playerInstance.off('waiting', waitingHandler);
+        this.playerInstance.off('playing', playingHandler);
+        this.playerInstance.off('pause', pauseHandler);
+        this.playerInstance.off('ended', endedHandler);
+        this.playerInstance.off('loadedmetadata', metadataHandler);
+        this.playerInstance.off('retryplaylist', retryHandler);
+      }
+    });
+  }
+  
+  setupYouTubeQualityMonitoring(token) {
+    const checkInterval = PLAYBACK_CONSTANTS.YOUTUBE_READY_CHECK_INTERVAL;
+    let attempts = 0;
+    const maxAttempts = 30;
+    
+    const checkYouTubeReady = () => {
+      if (token.isCancelled()) return;
+      
+      attempts++;
+      
+      if (attempts > maxAttempts) {
+        console.warn('⚠️ YouTube quality monitoring setup timed out');
+        return;
+      }
+      
+      try {
+        if (!this.playerInstance) return;
+        
+        const tech = this.playerInstance.tech({ IWillNotUseThisInPlugins: true });
+        
+        if (!tech || !tech.ytPlayer) {
+          setTimeout(checkYouTubeReady, checkInterval);
+          return;
+        }
+        
+        const qualityChangeHandler = (event) => {
+          const qualityEl = document.getElementById('video-quality');
+          if (qualityEl) {
+            qualityEl.textContent = event.data || 'auto';
+          }
+        };
+        
+        tech.ytPlayer.addEventListener('onPlaybackQualityChange', qualityChangeHandler);
+        
+        this.eventCleanupCallbacks.push(() => {
+          try {
+            if (tech && tech.ytPlayer) {
+              tech.ytPlayer.removeEventListener('onPlaybackQualityChange', qualityChangeHandler);
+            }
+          } catch (e) {
+            console.warn('Could not remove YouTube quality listener:', e);
+          }
+        });
+        
+        console.log('✅ YouTube quality monitoring setup complete');
+        
+      } catch (error) {
+        console.warn('⚠️ YouTube quality monitoring setup failed:', error);
+      }
+    };
+    
+    checkYouTubeReady();
+  }
+  
+  updateQualityDisplay() {
+    if (!this.playerInstance) return;
+    
+    const qualityEl = document.getElementById('video-quality');
+    if (!qualityEl) return;
+    
+    const height = this.playerInstance.videoHeight();
+    qualityEl.textContent = height ? `${height}p` : 'Auto';
+  }
+  
+  showPlayButton() {
+    const existing = document.querySelector('.play-fallback-overlay');
+    if (existing && existing.parentNode) {
+      existing.parentNode.removeChild(existing);
+    }
+    
+    const overlay = document.createElement('div');
+    overlay.className = 'play-fallback-overlay';
+    overlay.style.cssText = `
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(0,0,0,0.7);
+      z-index: 100;
+      cursor: pointer;
+    `;
+    
+    const button = document.createElement('button');
+    button.className = 'play-button';
+    button.textContent = '▶️ Click to Play';
+    button.style.cssText = `
+      padding: 15px 30px;
+      background: #ff0000;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 18px;
+      font-weight: bold;
+      box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+      transition: transform 0.2s;
+    `;
+    
+    button.onmouseenter = () => button.style.transform = 'scale(1.05)';
+    button.onmouseleave = () => button.style.transform = 'scale(1)';
+    
+    overlay.appendChild(button);
+    
+    const clickHandler = async () => {
+      if (!this.playerInstance) return;
+      
+      try {
+        await this.playerInstance.play();
+        if (overlay.parentNode) {
+          overlay.parentNode.removeChild(overlay);
+        }
+      } catch (error) {
+        console.error('❌ Manual play failed:', error);
+        showErrorToUser('Could not start playback');
+      }
+    };
+    
+    overlay.addEventListener('click', clickHandler);
+    
+    const container = document.getElementById('player-container');
+    if (container) {
+      container.appendChild(overlay);
+    }
+    
+    this.eventCleanupCallbacks.push(() => {
+      overlay.removeEventListener('click', clickHandler);
+      if (overlay.parentNode) {
+        overlay.parentNode.removeChild(overlay);
+      }
+    });
+  }
+  
+  cleanupEventListeners() {
+    this.eventCleanupCallbacks.forEach(cleanup => {
+      try {
+        cleanup();
+      } catch (error) {
+        console.warn('Error during event cleanup:', error);
+      }
+    });
+    this.eventCleanupCallbacks = [];
+  }
+  
+  getPlayer() {
+    return this.playerInstance;
+  }
+}
+
+// ============================================
+// GLOBAL INSTANCE
+// ============================================
+const channelLoader = new ChannelLoader();
+
+// ============================================
+// UTILITY FUNCTIONS
+// ============================================
 
 function extractYouTubeID(url) {
   const match = url.match(
@@ -52,103 +652,193 @@ function extractYouTubeID(url) {
   return match ? match[1] : null;
 }
 
-function selectChannel(url, name, image, description, number, isLive) {
-  if (!url) return;
-  const currentSessionId = Date.now();
-  sessionId = currentSessionId;
+function log(message, isError = false) {
+  const logArea = document.getElementById("logArea");
+  if (!logArea) return;
 
-  console.log(`🚀 START Session ${currentSessionId}: ${name}`, {
-    url,
-    isLive,
-    timestamp: new Date().toISOString(),
-  });
-
-  try {
-    const videoContainer = document.getElementById("player-container");
-    const imageElement = document.getElementById("content-image");
-    const videoTitleElement = document.getElementById("video-title");
-    const channelInfoElement = document.getElementById("channel-description");
-
-    lastFocusedElement = document.activeElement;
-
-    const numberEl = document.getElementById("channel-number");
-    if (numberEl) numberEl.textContent = number ? number + "." : "";
-
-    // ✅ Clean up old player FIRST
-    cleanupExistingPlayer();
-
-
-    // Update overlay info
-    if (imageElement) imageElement.src = image || "";
-    if (videoTitleElement)
-      videoTitleElement.textContent = name || "Unknown Channel";
-    if (channelInfoElement) channelInfoElement.textContent = description || "";
-    if (qualityEl) qualityEl.textContent = "";
-
-    showChannelInfoOverlay();
-
-    // ✅ Use the new configuration system
-    const streamConfig = createStreamConfig(url);
-    const metadata = {
-      isLive: isLive || false
-    };
-
-
-
-    // ✅ Create new video element AFTER showing loading
-    const newVideoEl = document.createElement("video");
-    newVideoEl.id = "player";
-    newVideoEl.className = "video-js vjs-default-skin";
-    newVideoEl.controls = false;
-    newVideoEl.preload = "auto";
-    newVideoEl.setAttribute("playsinline", "");
-    newVideoEl.setAttribute("webkit-playsinline", "");
-    newVideoEl.setAttribute("crossorigin", "anonymous");
-    newVideoEl.setAttribute("data-setup", "{}");
-
-    // ✅ CLEAR loading and add video element
-    videoContainer.innerHTML = "";
-    videoContainer.appendChild(newVideoEl);
-
-
-    // ✅ Build player options using the new function
-    const playerConfig = buildPlayerOptions(streamConfig, metadata);
-
-    // ✅ Initialize Video.js AFTER element is in DOM
-    playerInstance = videojs("player", playerConfig);
-
-    playerInstance.ready(function () {
-      if (sessionId !== currentSessionId) {
-        playerInstance.dispose();
-        return;
-      }
-
-      playerInstance.play().catch((e) => {
-        console.warn("Autoplay blocked:", e);
-        showPlayButtonFallback();
-      });
-
-      if (streamConfig.type === 'youtube') {
-        const ytPlayer = playerInstance.tech().ytPlayer;
-        if (ytPlayer && ytPlayer.addEventListener) {
-          ytPlayer.addEventListener("onPlaybackQualityChange", (e) => {
-            if (qualityEl) qualityEl.textContent = e.data;
-          });
-        }
-      }
-    });
-
-    setupPlayerEventHandlers(name, isLive, streamConfig.type === 'youtube', currentSessionId);
-  } catch (error) {
-    console.error("Failed to select channel:", error);
-    showErrorToUser(`Failed to load ${name}`);
-  }
-
+  const prefix = isError ? "Error: " : "Info: ";
+  const colorClass = isError ? "text-red-400" : "";
+  const timestamp = new Date().toLocaleTimeString();
+  
+  logArea.innerHTML += `<div class="${colorClass}">${prefix}[${timestamp}] ${message}</div>`;
+  logArea.scrollTop = logArea.scrollHeight;
 }
 
-/**
- * Build Video.js player options based on stream type
- */
+function showNotification(message, type = "info") {
+  console.log(`📢 ${type.toUpperCase()}: ${message}`);
+  
+  const colors = {
+    info: '#2196F3',
+    success: '#4CAF50',
+    warning: '#FF9800',
+    error: '#F44336'
+  };
+  
+  const notification = document.createElement("div");
+  notification.className = "notification";
+  notification.style.cssText = `
+    position: fixed;
+    top: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: ${colors[type] || colors.info};
+    color: white;
+    padding: 12px 24px;
+    border-radius: 8px;
+    z-index: 10001;
+    font-weight: 500;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+    animation: slideDown 0.3s ease;
+  `;
+  notification.textContent = message;
+  
+  document.body.appendChild(notification);
+  
+  setTimeout(() => {
+    notification.style.opacity = '0';
+    notification.style.transition = 'opacity 0.3s';
+    setTimeout(() => notification.remove(), 300);
+  }, 3000);
+}
+
+function showErrorToUser(message) {
+  const errorDiv = document.createElement("div");
+  errorDiv.className = "error-notification";
+  errorDiv.textContent = message;
+  errorDiv.style.cssText = `
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    background: #ff4444;
+    color: white;
+    padding: 12px 20px;
+    border-radius: 8px;
+    z-index: 10000;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+  `;
+
+  document.body.appendChild(errorDiv);
+
+  setTimeout(() => {
+    errorDiv.style.opacity = '0';
+    errorDiv.style.transition = 'opacity 0.3s';
+    setTimeout(() => errorDiv.remove(), 300);
+  }, 5000);
+}
+
+function getTimeAgo(timestamp) {
+  const seconds = Math.floor((Date.now() - timestamp) / 1000);
+  if (seconds < 60) return "just now";
+  
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes} minute${minutes > 1 ? "s" : ""} ago`;
+  
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours} hour${hours > 1 ? "s" : ""} ago`;
+  
+  const days = Math.floor(hours / 24);
+  return `${days} day${days > 1 ? "s" : ""} ago`;
+}
+
+// ============================================
+// API KEY MANAGEMENT
+// ============================================
+
+function saveAPIKey(apiKey) {
+  if (apiKey && apiKey.trim()) {
+    localStorage.setItem(API_KEY_STORAGE_KEY, btoa(apiKey.trim()));
+    API_KEY = apiKey.trim();
+    return true;
+  }
+  return false;
+}
+
+function getStoredAPIKey() {
+  const encoded = localStorage.getItem(API_KEY_STORAGE_KEY);
+  if (encoded) {
+    try {
+      API_KEY = atob(encoded);
+      return API_KEY;
+    } catch (e) {
+      console.error("Error decoding API key:", e);
+      return null;
+    }
+  }
+  return null;
+}
+
+function hasValidAPIKey() {
+  const storedKey = getStoredAPIKey();
+  return storedKey && storedKey.length > 10;
+}
+
+function clearAPIKey() {
+  localStorage.removeItem(API_KEY_STORAGE_KEY);
+  API_KEY = "";
+}
+
+// ============================================
+// VIDEO PLAYER FUNCTIONS
+// ============================================
+
+function createStreamConfig(url) {
+  const youtubeID = extractYouTubeID(url);
+
+  // 1. Check for YouTube ID
+  if (youtubeID) {
+    return {
+      type: 'youtube',
+      techOrder: ['youtube'],
+      source: { src: url, type: "video/youtube" }
+    };
+  }
+
+  // 2. NEW CONDITION: Check for 'imarkaz' link and force MP4 type
+  if (url.includes('imarkaz')) {
+    //console.log(`Detected 'imarkaz' link for URL: ${url}. Forcing stream type to MP4.`);
+    return {
+      type: 'mp4',
+      techOrder: ['html5'],
+      source: { src: url, type: "video/mp4" } // Force the MIME type to video/mp4
+    };
+  }
+  
+  // 3. Fallback to file extension check
+  const ext = url.split('?')[0].split('.').pop().toLowerCase();
+  
+  switch (ext) {
+    case 'mp4':
+    case 'webm':
+      return {
+        type: 'mp4',
+        techOrder: ['html5'],
+        source: { src: url, type: `video/${ext}` }
+      };
+    
+    case 'm3u8':
+      return {
+        type: 'hls',
+        techOrder: ['html5'],
+        source: { src: url, type: "application/x-mpegURL" }
+      };
+    
+    case 'mpd':
+      return {
+        type: 'dash',
+        techOrder: ['html5'],
+        source: { src: url, type: "application/dash+xml" }
+      };
+    
+    default:
+      console.warn('Unknown stream type, defaulting to HLS:', url);
+      return {
+        type: 'hls',
+        techOrder: ['html5'],
+        source: { src: url, type: "application/x-mpegURL" }
+      };
+  }
+}
+
 function buildPlayerOptions(streamConfig, metadata) {
   const baseOptions = {
     autoplay: true,
@@ -160,8 +850,10 @@ function buildPlayerOptions(streamConfig, metadata) {
     techOrder: streamConfig.techOrder,
     sources: [streamConfig.source],
     playbackRates: [0.5, 1, 1.25, 1.5, 2],
+    // Custom loading spinner
+    loadingSpinner: true,
   };
-
+  
   if (streamConfig.type === 'youtube') {
     baseOptions.youtube = {
       ytControls: true,
@@ -176,7 +868,7 @@ function buildPlayerOptions(streamConfig, metadata) {
       }
     };
   }
-
+  
   if (streamConfig.type === 'hls') {
     baseOptions.html5 = {
       vhs: {
@@ -188,304 +880,105 @@ function buildPlayerOptions(streamConfig, metadata) {
         limitRenditionByPlayerDimensions: true,
         useDevicePixelRatio: true,
         useNetworkInformationApi: true,
-        maxPlaylistRetries: 3,
+        maxPlaylistRetries: 5,
+        experimentalBufferBasedABR: false,
+        experimentalLLHLS: false,
+        // Add error recovery options
+        handleManifestRedirects: true,
+        useBandwidthFromLocalStorage: false,
       },
       nativeAudioTracks: false,
       nativeVideoTracks: false
     };
+    
+    // Add error recovery handler
+    baseOptions.errorDisplay = false;
   }
-
+  
   return baseOptions;
 }
 
-/**
- * Create stream configuration based on URL (replaces getSourceType)
- */
-function createStreamConfig(url) {
-  const youtubeID = this.extractYouTubeID(url);
-
-  if (youtubeID) {
-    return {
-      type: 'youtube',
-      techOrder: ['youtube'],
-      source: { src: url, type: "video/youtube" }
-    };
+async function selectChannel(url, name, image, description, number, isLive) {
+  if (!url) {
+    console.warn('⚠️ No URL provided for channel selection');
+    return;
   }
-
-  // File extension detection
-  const ext = url.split('?')[0].split('.').pop().toLowerCase();
-
-  switch (ext) {
-    case 'mp4':
-    case 'webm':
-      return {
-        type: 'mp4',
-        techOrder: ['html5'],
-        source: { src: url, type: `video/${ext}` }
-      };
-
-    case 'm3u8':
-      return {
-        type: 'hls',
-        techOrder: ['html5'],
-        source: { src: url, type: "application/x-mpegURL" }
-      };
-
-    case 'mpd':
-      return {
-        type: 'dash',
-        techOrder: ['html5'],
-        source: { src: url, type: "application/dash+xml" }
-      };
-
-    default:
-      // Default to HLS
-      console.warn('Unknown stream type, defaulting to HLS:', url);
-      return {
-        type: 'hls',
-        techOrder: ['html5'],
-        source: { src: url, type: "application/x-mpegURL" }
-      };
-  }
-}
-
-
-/**
- * Clean up existing player instance and DOM elements
- */
-function cleanupExistingPlayer() {
-  if (playerInstance) {
-    try {
-      playerInstance.dispose();
-    } catch (e) {
-      console.warn('Error disposing player:', e);
-    }
-    playerInstance = null;
-  }
-
-  const oldPlayerEl = document.getElementById("player");
-  if (oldPlayerEl) {
-    oldPlayerEl.remove();
-  }
-}
-
-function showErrorToUser(message) {
-  const errorDiv = document.createElement("div");
-  errorDiv.className = "error-notification";
-  errorDiv.textContent = message;
-  errorDiv.style.cssText = `
-    position: fixed;
-    top: 20px;
-    right: 20px;
-    background: #ff4444;
-    color: white;
-    padding: 12px;
-    border-radius: 4px;
-    z-index: 10001;
-  `;
-
-  document.body.appendChild(errorDiv);
-
-  setTimeout(() => {
-    if (errorDiv.parentNode) {
-      errorDiv.parentNode.removeChild(errorDiv);
-    }
-  }, 5000);
-}
-
-function showPlayButtonFallback() {
-  const playOverlay = document.createElement("div");
-  playOverlay.className = "play-fallback-overlay";
-  playOverlay.innerHTML = `
-      <button class="play-button" style="
-        padding: 15px 30px;
-        background: #ff0000;
-        color: white;
-        border: none;
-        border-radius: 8px;
-        cursor: pointer;
-        font-size: 18px;
-        font-weight: bold;
-        z-index: 10001;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.3);
-      ">▶️ Click to Play</button>
-  `;
-
-  const playerContainer = document.getElementById("player-container");
-  playerContainer.appendChild(playOverlay);
-
-  playOverlay.querySelector(".play-button").addEventListener("click", () => {
-    if (playerInstance) {
-      playerInstance.play().catch((e) => {
-        console.error("Still cannot play:", e);
-      });
-    }
-    playOverlay.remove();
-  });
-}
-
-function checkConnectionQuality() {
-  if (!navigator.onLine) return;
-
-  const start = Date.now();
-  fetch("https://www.google.com/favicon.ico", {
-    mode: "no-cors",
-    cache: "no-cache",
-  })
-    .then(() => {
-      const latency = Date.now() - start;
-      if (latency > 2000) {
-        showNetworkStatus("Poor connection detected", "warning");
-      }
-    })
-    .catch(() => { });
-}
-
-function setupPlayerEventHandlers(name, isLive, isYouTube, currentSessionId) {
-  if (!playerInstance) return;
-
-  playerInstance.off("error");
-  playerInstance.off("waiting");
-  playerInstance.off("playing");
-  playerInstance.off("pause");
-  playerInstance.off("ended");
-  playerInstance.off("loadedmetadata");
-
-  playerInstance.on("error", function () {
-    if (sessionId !== currentSessionId) return;
-    const error = playerInstance.error();
-    console.error("Video.js player error:", error);
-    stopWatching();
-    if (navigator.onLine) attemptPlayerRecovery();
-    else showNetworkStatus("Waiting for network connection...", "warning");
-  });
-
-  playerInstance.on("waiting", function () {
-    if (sessionId !== currentSessionId) return;
-    if (navigator.onLine) showNetworkStatus("Buffering...", "info");
-    console.log("⏳ Waiting for buffering...");
-  });
-
-  playerInstance.on("playing", function () {
-    if (sessionId !== currentSessionId) return;
-    startWatching(name); // Start tracking when video plays
-    const existingStatus = document.querySelector(".network-status");
-    if (existingStatus?.textContent.includes("Buffering")) {
-      existingStatus.remove();
-    }
-  });
-
-  playerInstance.on('pause', function () {
-    if (sessionId !== currentSessionId) return;
-    stopWatching();
-  });
-
-  playerInstance.on('ended', function () {
-    if (sessionId !== currentSessionId) return;
-    console.log('Video ended');
-    stopWatching();
-  });
-
-
-  playerInstance.on("loadedmetadata", function () {
-    if (sessionId !== currentSessionId) return;
-    updateQualityDisplay();
-    const isChannelLive = isLive === true || isLive === "true";
-    if (!isChannelLive && !isYouTube) {
-      playerInstance.controls(true);
-    } else {
-      playerInstance.controls(false);
-    }
-  });
-}
-
-function attemptPlayerRecovery() {
-  if (!playerInstance || !currentVideoUrl) return;
-
-  const currentSource = playerInstance.currentSrc();
-  const message = `🔄 Attempting to recover streaming link... (${currentSource})`;
-
-  //console.log(message);
-  log(message);
-  showNetworkStatus("Attempting to recover streaming link...", "warning");
-
-  setTimeout(() => {
-    try {
-      if (
-        currentVideoUrl.includes("youtube.com") ||
-        currentVideoUrl.includes("youtu.be")
-      ) {
-        console.log("YouTube stream detected, attempting full reload...");
-        const currentItem = lastFocusedElement;
-        if (currentItem && currentItem.dataset) {
-          const { url, name, image, description, number, isLive } =
-            currentItem.dataset;
-          selectChannel(url, name, image, description, number, isLive);
-        }
-      } else {
-        playerInstance.src({
-          src: currentVideoUrl,
-          type: playerInstance.currentType(),
-        });
-        playerInstance.load();
-        playerInstance.play().catch((e) => {
-          console.warn("Recovery play failed:", e);
-          showNetworkStatus("Recovery failed", "error");
-        });
-      }
-    } catch (error) {
-      console.error("Recovery attempt failed:", error);
-      showNetworkStatus("Recovery failed", "error");
-    }
-  }, 2000);
+  
+  await channelLoader.loadChannel(url, name, image, description, number, isLive);
 }
 
 function showChannelInfoOverlay() {
   const channelInfoOverlay = document.getElementById("channel-info-overlay");
   if (!channelInfoOverlay) return;
-
-  clearTimeout(overlayTimeoutShow);
-  clearTimeout(overlayTimeoutHide);
-
+  
+  if (overlayTimeoutShow) clearTimeout(overlayTimeoutShow);
+  if (overlayTimeoutHide) clearTimeout(overlayTimeoutHide);
+  
+  const modal = document.getElementById("videoModal");
   if (modal) modal.style.display = "flex";
-
+  
   channelInfoOverlay.classList.remove("show");
-
+  
   overlayTimeoutShow = setTimeout(() => {
     channelInfoOverlay.classList.add("show");
   }, 300);
-
+  
   overlayTimeoutHide = setTimeout(() => {
     channelInfoOverlay.classList.remove("show");
   }, 6000);
 }
 
-function startWatching(channelId) {
-  // Stop previous watching session if exists
-  stopWatching();
+function closeModal() {
+  const modal = document.getElementById("videoModal");
+  if (modal) modal.style.display = "none";
+  
+  channelLoader.cleanupPlayer().then(() => {
+    //console.log('✅ Modal closed and player cleaned up');
+  }).catch(error => {
+    console.error('❌ Error during modal close cleanup:', error);
+  });
+  
+  updateAllChannelItems();
+}
 
+function toggleFullscreen() {
+  const player = channelLoader.getPlayer();
+  if (player) {
+    if (player.isFullscreen()) {
+      player.exitFullscreen();
+    } else {
+      player.requestFullscreen();
+    }
+  }
+}
+
+// ============================================
+// WATCH TIME MANAGEMENT
+// ============================================
+
+function startWatching(channelId) {
+  stopWatching();
+  
   currentChannelId = channelId;
   watchStartTime = Date.now();
-
-  // Save watch time every 10 seconds while playing
+  
   watchInterval = setInterval(() => {
     saveCurrentWatchTime();
-  }, 10000); // Save every 10 seconds
-
+  }, 10000);
+  
   console.log(`▶️ Started watching: ${channelId}`);
 }
 
 function stopWatching() {
   if (!currentChannelId) return;
-
-  // Clear the interval
+  
   if (watchInterval) {
     clearInterval(watchInterval);
     watchInterval = null;
   }
-
+  
   saveCurrentWatchTime();
-
+  
   console.log(`⏸️ Stopped watching: ${currentChannelId}`);
   currentChannelId = "";
   watchStartTime = 0;
@@ -493,18 +986,17 @@ function stopWatching() {
 
 function saveCurrentWatchTime() {
   if (!currentChannelId || !watchStartTime) return;
-
+  
   const watchedMs = Date.now() - watchStartTime;
   const watchedSeconds = Math.floor(watchedMs / 1000);
-
-  if (watchedSeconds < 5) return; // Don't save if less than 5 second
-
+  
+  if (watchedSeconds < 5) return;
+  
   const watchData = loadWatchTime();
   watchData[currentChannelId] = (watchData[currentChannelId] || 0) + watchedSeconds;
-
+  
   localStorage.setItem("watchTimePerChannel", JSON.stringify(watchData));
-
-  // Reset start time for next interval
+  
   watchStartTime = Date.now();
 }
 
@@ -526,18 +1018,9 @@ function sortChannelsByWatchTime(channels) {
   });
 }
 
-
-function updateQualityDisplay() {
-  if (!playerInstance || !qualityEl) return;
-  const height = playerInstance.videoHeight();
-  qualityEl.textContent = height ? `${height}p` : "Auto";
-}
-
-function closeModal() {
-  if (modal) modal.style.display = "none";
-  cleanup();
-  updateAllChannelItems();
-}
+// ============================================
+// CHANNEL UI FUNCTIONS
+// ============================================
 
 function saveRecentlyWatched(channel) {
   const {
@@ -549,11 +1032,11 @@ function saveRecentlyWatched(channel) {
     isLive = "true",
     category = "Unknown",
   } = channel;
-
+  
   let recent = JSON.parse(localStorage.getItem(recentlyWatchedKey) || "[]");
-
+  
   recent = recent.filter((item) => item.url !== url);
-
+  
   recent.unshift({
     name,
     url,
@@ -563,30 +1046,21 @@ function saveRecentlyWatched(channel) {
     isLive,
     category,
   });
-
+  
   if (recent.length > MAX_RECENT) {
     recent.pop();
   }
-
+  
   localStorage.setItem(recentlyWatchedKey, JSON.stringify(recent));
   renderRecentlyWatched();
 }
 
-function toggleFavorite(
-  url,
-  name,
-  image,
-  description,
-  number,
-  isLive,
-  category,
-  event
-) {
+function toggleFavorite(url, name, image, description, number, isLive, category, event) {
   if (event) event.stopPropagation();
-
+  
   let favorites = JSON.parse(localStorage.getItem(favoritesKey) || "[]");
   const index = favorites.findIndex((item) => item.url === url);
-
+  
   if (index > -1) {
     favorites.splice(index, 1);
   } else {
@@ -600,7 +1074,7 @@ function toggleFavorite(
       category,
     });
   }
-
+  
   localStorage.setItem(favoritesKey, JSON.stringify(favorites));
   renderFavorites();
   updateFavoriteIcons();
@@ -609,8 +1083,8 @@ function toggleFavorite(
 
 function createChannelItem(channel) {
   const item = document.createElement("div");
-  const numberText = channel.number ? channel.number : "";
-
+  const numberText = channel.number || "";
+  
   item.className = "content-card channel-item";
   item.setAttribute("tabindex", "0");
   item.dataset.url = channel.url;
@@ -620,11 +1094,12 @@ function createChannelItem(channel) {
   item.dataset.number = numberText;
   item.dataset.isLive = channel.isLive;
   item.dataset.category = channel.category || "Unknown";
-
-  // ✅ Create and store click handler
+  
   const clickHandler = (e) => {
-    if (e.target.classList.contains("favorite-icon")) {
-      return; // Don't select channel when clicking favorite
+    e.stopPropagation();
+    if (e.target.classList.contains("favorite-icon") || 
+        e.target.closest(".favorite-icon")) {
+      return;
     }
     selectChannel(
       channel.url,
@@ -636,13 +1111,13 @@ function createChannelItem(channel) {
     );
     saveRecentlyWatched(channel);
   };
-
+  
   item.addEventListener("click", clickHandler);
   item._clickHandler = clickHandler;
-
+  
   const wrapper = document.createElement("div");
   wrapper.className = "thumb-wrapper";
-
+  
   const img = document.createElement("img");
   img.src = channel.image;
   img.alt = `${channel.name} Logo`;
@@ -652,11 +1127,11 @@ function createChannelItem(channel) {
     this.src = "placeholder.png";
     this.alt = "Image not available";
   };
-
+  
   const numberBadge = document.createElement("span");
   numberBadge.className = "channel-number";
   numberBadge.textContent = channel.number;
-
+  
   if (channel.isLive === true || channel.isLive === "true") {
     const liveIndicator = document.createElement("img");
     liveIndicator.src = "live.webp";
@@ -664,14 +1139,14 @@ function createChannelItem(channel) {
     liveIndicator.className = "live-indicator";
     wrapper.appendChild(liveIndicator);
   }
-
+  
   wrapper.appendChild(img);
   wrapper.appendChild(numberBadge);
-
+  
   const favoriteIcon = document.createElement("span");
   favoriteIcon.className = "favorite-icon";
   favoriteIcon.innerHTML = '<i class="fas fa-star"></i>';
-  // ✅ Create and store favorite handler
+  
   const favoriteHandler = (e) => {
     e.stopPropagation();
     toggleFavorite(
@@ -685,51 +1160,51 @@ function createChannelItem(channel) {
       e
     );
   };
-
+  
   favoriteIcon.addEventListener("click", favoriteHandler);
   item._favoriteHandler = favoriteHandler;
-
+  
   item.appendChild(wrapper);
   item.appendChild(favoriteIcon);
-
+  
   return item;
 }
 
 function cleanupChannelItems() {
   allChannelItems.forEach((item) => {
-    // Remove click handler
     if (item._clickHandler) {
       item.removeEventListener("click", item._clickHandler);
-      item._clickHandler = null;
+      delete item._clickHandler;
     }
-
-    // Remove favorite handler
+    
     const favoriteIcon = item.querySelector(".favorite-icon");
     if (favoriteIcon && item._favoriteHandler) {
       favoriteIcon.removeEventListener("click", item._favoriteHandler);
-      item._favoriteHandler = null;
+      delete item._favoriteHandler;
+    }
+    
+    if (!item.isConnected) {
+      item.remove();
     }
   });
-
-  allChannelItems = [];
+  
+  allChannelItems.length = 0;
 }
 
 function renderChannels(channels) {
   cleanupChannelItems();
-
+  
   const mainContainer = document.getElementById("channels");
   if (!mainContainer) return;
-
+  
   const existingGrids = mainContainer.querySelectorAll(".content-grid");
-  const existingHeadings = mainContainer.querySelectorAll(
-    "h2:not(.sort-container h2)"
-  );
-
-  const fragment = document.createDocumentFragment();
-
+  const existingHeadings = mainContainer.querySelectorAll("h2:not(.sort-container h2)");
+  
   existingGrids.forEach((grid) => grid.remove());
   existingHeadings.forEach((heading) => heading.remove());
-
+  
+  const fragment = document.createDocumentFragment();
+  
   if (currentSortMethod === "none") {
     const categorizedChannels = channels.reduce((acc, channel) => {
       const category = channel.category || "Unknown";
@@ -737,167 +1212,56 @@ function renderChannels(channels) {
       acc[category].push(channel);
       return acc;
     }, {});
-
+    
     for (const category in categorizedChannels) {
       const channelCount = categorizedChannels[category].length;
+      
       const categoryHeading = document.createElement("h2");
       categoryHeading.textContent = `${category} (${channelCount})`;
       categoryHeading.className = "text-xl font-bold mt-6 mb-4 col-span-full";
-
+      
       const categoryGrid = document.createElement("div");
       categoryGrid.className = "content-grid";
-
-      if (
-        categorizedChannels[category] &&
-        categorizedChannels[category].length > 0
-      ) {
-        categorizedChannels[category].forEach((channel) => {
-          const item = createChannelItem(channel);
-          categoryGrid.appendChild(item);
-        });
-      }
-
+      
+      categorizedChannels[category].forEach((channel) => {
+        const item = createChannelItem(channel);
+        categoryGrid.appendChild(item);
+      });
+      
       fragment.appendChild(categoryHeading);
       fragment.appendChild(categoryGrid);
     }
-
-    mainContainer.appendChild(fragment);
   } else {
     const totalChannelCount = channels.length;
     const mainHeading = document.createElement("h2");
     mainHeading.textContent = `> Channels < (${totalChannelCount})`;
     mainHeading.className = "text-xl font-bold mt-6 mb-4 col-span-full";
-
-    fragment.appendChild(mainHeading);
-
+    
     const categoryGrid = document.createElement("div");
     categoryGrid.className = "content-grid";
-
+    
     channels.forEach((channel) => {
       const item = createChannelItem(channel);
       categoryGrid.appendChild(item);
     });
-
+    
+    fragment.appendChild(mainHeading);
     fragment.appendChild(categoryGrid);
-    mainContainer.appendChild(fragment);
   }
-
+  
+  mainContainer.appendChild(fragment);
   updateAllChannelItems();
-  console.log(
-    `✅ Rendered ${channels.length} channels in ${currentSortMethod} view`
-  );
-}
-
-let numberBuffer = "";
-let numberTimeout;
-
-document.addEventListener("keydown", (e) => {
-  if (e.key >= "0" && e.key <= "9") {
-    numberBuffer += e.key;
-
-    const overlay = document.getElementById("channel-number-overlay");
-    if (overlay) {
-      overlay.textContent = numberBuffer || "";
-      overlay.style.display = "block";
-    }
-
-    clearTimeout(numberTimeout);
-    numberTimeout = setTimeout(() => {
-      if (overlay) overlay.style.display = "none";
-
-      const channelNumber = parseInt(numberBuffer, 10);
-      const channel = allChannels.find((c) => c.number === channelNumber);
-
-      if (channel) {
-        const index = allChannelItems.findIndex(
-          (item) => parseInt(item.dataset.number, 10) === channelNumber
-        );
-        if (index !== -1) {
-          focusedIndex = index;
-          allChannelItems[focusedIndex].focus();
-          allChannelItems[focusedIndex].scrollIntoView({
-            behavior: "smooth",
-            block: "center",
-          });
-        }
-
-        selectChannel(
-          channel.url,
-          channel.name,
-          channel.image,
-          channel.description,
-          channel.number,
-          channel.isLive
-        );
-        saveRecentlyWatched(channel);
-      }
-
-      numberBuffer = "";
-    }, 1000);
-  }
-});
-
-function sortChannelsAndRender(sortMethod = "none") {
-  let sortedChannels = [...allChannels];
-
-  switch (sortMethod) {
-    case "asc":
-      sortedChannels.sort((a, b) => a.name.localeCompare(b.name));
-      break;
-
-    case "desc":
-      sortedChannels.sort((a, b) => b.name.localeCompare(a.name));
-      break;
-
-    case "watchTime":
-      sortedChannels = sortChannelsByWatchTime(allChannels);
-      break;
-
-    case "none":
-    default:
-      currentSortMethod = "none";
-      renderChannels(allChannels);
-      updateFavoriteIcons();
-      updateAllChannelItems();
-      return;
-  }
-
-  currentSortMethod = sortMethod;
-  renderChannels(sortedChannels);
-  updateFavoriteIcons();
-  updateAllChannelItems();
-}
-
-function handleSortChange(sortMethod) {
-  // Save to localStorage
-  localStorage.setItem("defaultSortMethod", sortMethod);
-
-  // Render channels with chosen sort
-  sortChannelsAndRender(sortMethod);
-
-  // Update button states
-  updateSortButtons(sortMethod);
-}
-
-function updateSortButtons(method) {
-  const buttons = document.querySelectorAll(".sort-controls button");
-  buttons.forEach((btn) => btn.classList.remove("active"));
-
-  const activeBtn = [...buttons].find((btn) =>
-    btn.getAttribute("onclick").includes(method)
-  );
-  if (activeBtn) {
-    activeBtn.classList.add("active");
-  }
+  
+  console.log(`✅ Rendered ${channels.length} channels in ${currentSortMethod} view`);
 }
 
 function renderFavorites() {
   const container = document.getElementById("favoritesGrid");
   if (!container) return;
-
+  
   const favorites = JSON.parse(localStorage.getItem(favoritesKey) || "[]");
   container.innerHTML = "";
-
+  
   const favSection = document.getElementById("favorites");
   if (favorites.length === 0) {
     if (favSection) favSection.style.display = "none";
@@ -913,10 +1277,10 @@ function renderFavorites() {
 function renderRecentlyWatched() {
   const container = document.getElementById("recentlyWatchedGrid");
   if (!container) return;
-
+  
   const recent = JSON.parse(localStorage.getItem(recentlyWatchedKey) || "[]");
   container.innerHTML = "";
-
+  
   const recentSection = document.getElementById("recentlyWatched");
   if (recent.length === 0) {
     if (recentSection) recentSection.style.display = "none";
@@ -932,6 +1296,7 @@ function renderRecentlyWatched() {
 function updateFavoriteIcons() {
   const favorites = JSON.parse(localStorage.getItem(favoritesKey) || "[]");
   const favoriteUrls = new Set(favorites.map((fav) => fav.url));
+  
   document.querySelectorAll(".channel-item").forEach((item) => {
     const url = item.dataset.url;
     const icon = item.querySelector(".favorite-icon");
@@ -949,274 +1314,362 @@ function updateAllChannelItems() {
   allChannelItems = Array.from(document.querySelectorAll(".channel-item"));
 }
 
+// ============================================
+// SEARCH FUNCTIONALITY
+// ============================================
+
+function searchChannels(query) {
+  searchQuery = query.toLowerCase().trim();
+  
+  if (!searchQuery) {
+    filteredChannels = [];
+    sortChannelsAndRender(currentSortMethod);
+    showFavoritesAndRecent();
+    return;
+  }
+  
+  filteredChannels = allChannels.filter(channel => {
+    return channel.name.toLowerCase().includes(searchQuery) ||
+           (channel.description && channel.description.toLowerCase().includes(searchQuery)) ||
+           (channel.category && channel.category.toLowerCase().includes(searchQuery));
+  });
+  
+  console.log(`🔍 Search: "${query}" - Found ${filteredChannels.length} channels`);
+  
+  hideFavoritesAndRecent();
+  
+  renderChannels(filteredChannels);
+  updateFavoriteIcons();
+  updateAllChannelItems();
+  
+  const searchResultsMsg = document.getElementById("search-results-message");
+  if (searchResultsMsg) {
+    if (filteredChannels.length === 0) {
+      searchResultsMsg.textContent = `No channels found for "${query}"`;
+      searchResultsMsg.style.display = "block";
+    } else {
+      searchResultsMsg.textContent = `Found ${filteredChannels.length} channel${filteredChannels.length > 1 ? 's' : ''}`;
+      searchResultsMsg.style.display = "block";
+    }
+  }
+}
+
+function clearSearch() {
+  searchQuery = "";
+  filteredChannels = [];
+  
+  const searchInput = document.getElementById("channelSearch");
+  if (searchInput) {
+    searchInput.value = "";
+  }
+  
+  const searchResultsMsg = document.getElementById("search-results-message");
+  if (searchResultsMsg) {
+    searchResultsMsg.style.display = "none";
+  }
+  
+  showFavoritesAndRecent();
+  sortChannelsAndRender(currentSortMethod);
+}
+
+function hideFavoritesAndRecent() {
+  const favSection = document.getElementById("favorites");
+  const recentSection = document.getElementById("recentlyWatched");
+  
+  if (favSection) {
+    favSection.style.display = "none";
+  }
+  
+  if (recentSection) {
+    recentSection.style.display = "none";
+  }
+}
+
+function showFavoritesAndRecent() {
+  const favorites = JSON.parse(localStorage.getItem(favoritesKey) || "[]");
+  const favSection = document.getElementById("favorites");
+  
+  if (favSection && favorites.length > 0) {
+    favSection.style.display = "grid";
+  }
+  
+  const recent = JSON.parse(localStorage.getItem(recentlyWatchedKey) || "[]");
+  const recentSection = document.getElementById("recentlyWatched");
+  
+  if (recentSection && recent.length > 0) {
+    recentSection.style.display = "grid";
+  }
+}
+
+function setupSearchBar() {
+  const searchInput = document.getElementById("channelSearch");
+  const clearSearchBtn = document.getElementById("clearSearch");
+  
+  if (searchInput) {
+    let searchTimeout;
+    
+    searchInput.addEventListener("input", (e) => {
+      clearTimeout(searchTimeout);
+      
+      searchTimeout = setTimeout(() => {
+        searchChannels(e.target.value);
+      }, 300);
+    });
+    
+    searchInput.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") {
+        clearSearch();
+        searchInput.blur();
+      }
+    });
+  }
+  
+  if (clearSearchBtn) {
+    clearSearchBtn.addEventListener("click", () => {
+      clearSearch();
+      if (searchInput) searchInput.focus();
+    });
+  }
+}
+
+// ============================================
+// SORTING & FILTERING
+// ============================================
+
+function sortChannelsAndRender(sortMethod = "none") {
+  const channelsToSort = searchQuery ? filteredChannels : allChannels;
+  let sortedChannels = [...channelsToSort];
+  
+  switch (sortMethod) {
+    case "asc":
+      sortedChannels.sort((a, b) => a.name.localeCompare(b.name));
+      break;
+    
+    case "desc":
+      sortedChannels.sort((a, b) => b.name.localeCompare(a.name));
+      break;
+    
+    case "watchTime":
+      sortedChannels = sortChannelsByWatchTime(channelsToSort);
+      break;
+    
+    case "none":
+    default:
+      currentSortMethod = "none";
+      renderChannels(sortedChannels);
+      updateFavoriteIcons();
+      updateAllChannelItems();
+      return;
+  }
+  
+  currentSortMethod = sortMethod;
+  renderChannels(sortedChannels);
+  updateFavoriteIcons();
+  updateAllChannelItems();
+}
+
+function handleSortChange(sortMethod) {
+  localStorage.setItem("defaultSortMethod", sortMethod);
+  sortChannelsAndRender(sortMethod);
+  updateSortButtons(sortMethod);
+}
+
+function updateSortButtons(method) {
+  const buttons = document.querySelectorAll(".sort-controls button");
+  buttons.forEach((btn) => btn.classList.remove("active"));
+  
+  const activeBtn = [...buttons].find((btn) =>
+    btn.getAttribute("onclick")?.includes(method)
+  );
+  if (activeBtn) {
+    activeBtn.classList.add("active");
+  }
+}
+
+// ============================================
+// KEYBOARD NAVIGATION
+// ============================================
+
 function getGridColumns() {
   const grid = document.querySelector(".content-grid");
   if (!grid) return 1;
-
+  
   const gridComputedStyle = window.getComputedStyle(grid);
-  const gridTemplateColumns = gridComputedStyle.getPropertyValue(
-    "grid-template-columns"
-  );
-
+  const gridTemplateColumns = gridComputedStyle.getPropertyValue("grid-template-columns");
+  
   if (!gridTemplateColumns) return 1;
-
+  
   const columnArray = gridTemplateColumns.split(" ");
   return columnArray.length;
 }
 
-let navigationDebounce;
+document.addEventListener("keydown", (e) => {
+  if (e.key >= "0" && e.key <= "9") {
+    numberBuffer += e.key;
+    
+    const overlay = document.getElementById("channel-number-overlay");
+    if (overlay) {
+      overlay.textContent = numberBuffer;
+      overlay.style.display = "block";
+    }
+    
+    if (numberTimeout) clearTimeout(numberTimeout);
+    
+    numberTimeout = setTimeout(() => {
+      if (overlay) overlay.style.display = "none";
+      
+      const channelNumber = parseInt(numberBuffer, 10);
+      const channel = allChannels.find((c) => c.number === channelNumber);
+      
+      if (channel) {
+        const index = allChannelItems.findIndex(
+          (item) => parseInt(item.dataset.number, 10) === channelNumber
+        );
+        if (index !== -1) {
+          focusedIndex = index;
+          allChannelItems[focusedIndex].focus();
+          allChannelItems[focusedIndex].scrollIntoView({
+            behavior: "smooth",
+            block: "center",
+          });
+        }
+        
+        selectChannel(
+          channel.url,
+          channel.name,
+          channel.image,
+          channel.description,
+          channel.number,
+          channel.isLive
+        );
+        saveRecentlyWatched(channel);
+      }
+      
+      numberBuffer = "";
+    }, 1000);
+  }
+});
 
 document.addEventListener("keydown", (event) => {
-  clearTimeout(navigationDebounce);
-
+  if (navigationDebounce) clearTimeout(navigationDebounce);
+  
   navigationDebounce = setTimeout(() => {
     const GRID_COLUMNS = getGridColumns();
+    const modal = document.getElementById("videoModal");
     const isModalOpen = modal && modal.style.display === "flex";
     let focusedElement = document.activeElement;
     let currentFocusedIndex = allChannelItems.findIndex(
       (item) => item === focusedElement
     );
-
+    
     if (isModalOpen) {
       if (event.key === "Enter") {
         event.preventDefault();
         toggleFullscreen();
         return;
       }
-
+      
       if (event.key === "Escape" || event.key === "ArrowLeft") {
         event.preventDefault();
         closeModal();
       } else if (event.key === "ArrowRight") {
         event.preventDefault();
         showChannelInfoOverlay();
-      } else if (
-        ["ArrowUp", "ArrowDown", "PageUp", "PageDown"].includes(event.key)
-      ) {
+      } else if (["ArrowUp", "ArrowDown", "PageUp", "PageDown"].includes(event.key)) {
         event.preventDefault();
         if (!lastFocusedElement || allChannelItems.length === 0) return;
-
+        
         const currentChannelIndex = allChannelItems.findIndex(
           (item) => item === lastFocusedElement
         );
         if (currentChannelIndex === -1) return;
-
+        
         let newIndex = currentChannelIndex;
         if (event.key === "ArrowDown" || event.key === "PageDown") {
           newIndex = (currentChannelIndex + 1) % allChannelItems.length;
         } else if (event.key === "ArrowUp" || event.key === "PageUp") {
-          newIndex =
-            (currentChannelIndex - 1 + allChannelItems.length) %
-            allChannelItems.length;
+          newIndex = (currentChannelIndex - 1 + allChannelItems.length) % allChannelItems.length;
         }
-
+        
         const newChannelCard = allChannelItems[newIndex];
-        const {
-          url,
-          name,
-          image,
-          description,
-          number,
-          isLive = "false",
-          category = "Unknown",
-        } = newChannelCard.dataset;
-
+        const { url, name, image, description, number, isLive = "false", category = "Unknown" } = newChannelCard.dataset;
+        
         newChannelCard.scrollIntoView({ behavior: "smooth", block: "center" });
         selectChannel(url, name, image, description, number, isLive);
-        saveRecentlyWatched({
-          name,
-          url,
-          image,
-          description,
-          number,
-          isLive,
-          category,
-        });
-
+        saveRecentlyWatched({ name, url, image, description, number, isLive, category });
+        
         lastFocusedElement = newChannelCard;
       }
       return;
     }
-
-    if (
-      ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)
-    ) {
+    
+    if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)) {
       if (allChannelItems.length === 0) return;
-
+      
       if (currentFocusedIndex === -1) {
         allChannelItems[0].focus();
-        allChannelItems[0].scrollIntoView({
-          behavior: "smooth",
-          block: "center",
-        });
+        allChannelItems[0].scrollIntoView({ behavior: "smooth", block: "center" });
         focusedIndex = 0;
         return;
       }
-
+      
       let newIndex = currentFocusedIndex;
-      if (event.key === "ArrowRight")
+      if (event.key === "ArrowRight") {
         newIndex = (currentFocusedIndex + 1) % allChannelItems.length;
-      else if (event.key === "ArrowLeft")
-        newIndex =
-          (currentFocusedIndex - 1 + allChannelItems.length) %
-          allChannelItems.length;
-      else if (event.key === "ArrowDown")
-        newIndex = Math.min(
-          currentFocusedIndex + GRID_COLUMNS,
-          allChannelItems.length - 1
-        );
-      else if (event.key === "ArrowUp")
+      } else if (event.key === "ArrowLeft") {
+        newIndex = (currentFocusedIndex - 1 + allChannelItems.length) % allChannelItems.length;
+      } else if (event.key === "ArrowDown") {
+        newIndex = Math.min(currentFocusedIndex + GRID_COLUMNS, allChannelItems.length - 1);
+      } else if (event.key === "ArrowUp") {
         newIndex = Math.max(currentFocusedIndex - GRID_COLUMNS, 0);
-
+      }
+      
       const newCard = allChannelItems[newIndex];
       newCard.focus();
       newCard.scrollIntoView({ behavior: "smooth", block: "center" });
-
+      
       focusedIndex = newIndex;
       event.preventDefault();
     } else if (["PageUp", "PageDown", "Home", "End"].includes(event.key)) {
       event.preventDefault();
+      
       if (currentFocusedIndex === -1 && allChannelItems.length > 0) {
         allChannelItems[0].focus();
-        allChannelItems[0].scrollIntoView({
-          behavior: "smooth",
-          block: "center",
-        });
+        allChannelItems[0].scrollIntoView({ behavior: "smooth", block: "center" });
       } else {
         let newIndex = currentFocusedIndex;
+        
         if (event.key === "PageUp") {
-          newIndex = Math.max(currentFocusedIndex - GRID_COLUMNS, 0);
+          newIndex = Math.max(currentFocusedIndex - GRID_COLUMNS * 3, 0);
         } else if (event.key === "PageDown") {
-          newIndex = Math.min(
-            currentFocusedIndex + GRID_COLUMNS,
-            allChannelItems.length - 1
-          );
+          newIndex = Math.min(currentFocusedIndex + GRID_COLUMNS * 3, allChannelItems.length - 1);
         } else if (event.key === "Home") {
           newIndex = 0;
         } else if (event.key === "End") {
           newIndex = allChannelItems.length - 1;
         }
-
+        
         const newCard = allChannelItems[newIndex];
         newCard.focus();
         newCard.scrollIntoView({ behavior: "smooth", block: "center" });
-
+        
         focusedIndex = newIndex;
       }
     } else if (event.key === "Enter" && currentFocusedIndex !== -1) {
       event.preventDefault();
       const card = allChannelItems[currentFocusedIndex];
-      const {
-        url,
-        name,
-        image,
-        description,
-        number,
-        isLive = "false",
-        category = "Unknown",
-      } = card.dataset;
-
+      const { url, name, image, description, number, isLive = "false", category = "Unknown" } = card.dataset;
+      
       card.scrollIntoView({ behavior: "smooth", block: "center" });
       selectChannel(url, name, image, description, number, isLive);
-      saveRecentlyWatched({
-        name,
-        url,
-        image,
-        description,
-        number,
-        isLive,
-        category,
-      });
+      saveRecentlyWatched({ name, url, image, description, number, isLive, category });
     }
   }, 50);
 });
 
-async function initialize() {
-  const contentGrid = document.querySelector(".content-grid");
-  const loadingElement = document.getElementById("loading-spinner");
-
-  if (contentGrid) contentGrid.style.display = "none";
-  if (loadingElement) loadingElement.style.display = "block";
-
-  const closeBtn = document.querySelector(".closeModal");
-  if (closeBtn) closeBtn.addEventListener("click", closeModal);
-
-  if (modal) {
-    modal.addEventListener("click", (event) => {
-      if (event.target === modal) closeModal();
-    });
-  }
-
-  setupNetworkMonitoring();
-
-  // ✅ Setup Settings Modal
-  setupSettingsModal();
-
-  let savedChannels = localStorage.getItem(STORAGE_KEYS.channels);
-
-  if (savedChannels) {
-    try {
-      allChannels = JSON.parse(savedChannels);
-      log(
-        `Successfully loaded ${allChannels.length} channels from localStorage.`
-      );
-    } catch (e) {
-      log(
-        "Invalid 'allChannelsData' found in localStorage. The data will be ignored.",
-        true
-      );
-      log(`Error details: ${e.message}`, true);
-      console.warn("Invalid allChannelsData in localStorage, ignoring.", e);
-      allChannels = [];
-    }
-  } else {
-    log("No previous 'allChannelsData' found in localStorage. Starting fresh.");
-    allChannels = [];
-  }
-
-  API_KEY = getStoredAPIKey();
-
-  if (hasValidAPIKey()) {
-    console.log("✅ Using stored API key");
-  } else {
-    console.log("ℹ️ No valid API key stored");
-  }
-
-  startChannelAutoUpdate();
-
-  allChannels.forEach((ch, i) => {
-    if (!ch.number) ch.number = i + 1;
-  });
-
-  loadWatchTime();
-
-  const savedSort = localStorage.getItem("defaultSortMethod") || "none";
-  handleSortChange(savedSort);
-
-  renderFavorites();
-  renderRecentlyWatched();
-  updateFavoriteIcons();
-  updateAllChannelItems();
-
-  if (loadingElement) loadingElement.style.display = "none";
-  if (contentGrid) contentGrid.style.display = "grid";
-
-  if (lastFocusedElement && lastFocusedElement.isConnected) {
-    lastFocusedElement.focus();
-  } else if (allChannelItems.length > 0) {
-    allChannelItems[0].focus();
-  }
-}
-
-function toggleFullscreen() {
-  if (playerInstance) {
-    if (playerInstance.isFullscreen()) {
-      playerInstance.exitFullscreen();
-    } else {
-      playerInstance.requestFullscreen();
-    }
-  }
-}
+// ============================================
+// YOUTUBE API & RSS FEEDS
+// ============================================
 
 function extractChannelId(feedUrl) {
   const match = feedUrl.match(/channel_id=([^&]+)/);
@@ -1233,14 +1686,41 @@ function youtubeItemToChannel(videoId, title, feed) {
   };
 }
 
+function updateOrAddChannel(channelObj) {
+  const existingIndex = allChannels.findIndex((ch) => ch.name === channelObj.name);
+  
+  if (existingIndex !== -1) {
+    allChannels[existingIndex] = {
+      ...allChannels[existingIndex],
+      ...channelObj,
+    };
+  } else {
+    allChannels.push(channelObj);
+  }
+}
+
+function processRSSData(data, feed) {
+  if (!data.items || data.items.length === 0) return;
+  
+  let latestValid = data.items.find((item) => !item.link.includes("/shorts/"));
+  if (!latestValid) return;
+  
+  const videoId = extractYouTubeID(latestValid.link);
+  if (!videoId) return;
+  
+  const channelObj = youtubeItemToChannel(videoId, latestValid.title, feed);
+  updateOrAddChannel(channelObj);
+  
+  log(`✅ ${feed.name} Successfully updated`);
+}
+
 async function loadYouTubeLatestFeeds() {
-  // Load RSS feeds
   const storedFeeds = localStorage.getItem(STORAGE_KEYS.feeds);
   if (!storedFeeds) {
     showNotification("No RSS feeds found in localStorage.", "warning");
     return;
   }
-
+  
   let feeds = [];
   try {
     feeds = JSON.parse(storedFeeds);
@@ -1249,40 +1729,38 @@ async function loadYouTubeLatestFeeds() {
     showNotification("Error loading RSS feeds data.", "error");
     return;
   }
-
+  
   if (!feeds || feeds.length === 0) return;
-
+  
   for (const [index, feed] of feeds.entries()) {
     try {
       if (index > 0) {
         await new Promise((resolve) => setTimeout(resolve, 200));
       }
-
+      
       const cacheKey = `rss_${feed.url}`;
       const cached = rssCache.get(cacheKey);
-
+      
       if (cached && Date.now() - cached.timestamp < CACHE_DURATION) {
         log(`📦 Using cached data for ${feed.name}`);
         processRSSData(cached.data, feed);
         continue;
       }
-
-      const feedUrl =
-        "https://api.rss2json.com/v1/api.json?rss_url=" +
-        encodeURIComponent(feed.url);
+      
+      const feedUrl = "https://api.rss2json.com/v1/api.json?rss_url=" + encodeURIComponent(feed.url);
       const res = await fetch(feedUrl);
-
+      
       if (!res.ok) {
         throw new Error(`HTTP ${res.status}`);
       }
-
+      
       const data = await res.json();
-
+      
       rssCache.set(cacheKey, {
         data: data,
         timestamp: Date.now(),
       });
-
+      
       processRSSData(data, feed);
     } catch (e) {
       log(`❌ Error loading RSS feed for ${feed.name}: ${e.message}`, true);
@@ -1294,20 +1772,19 @@ async function loadYouTubeLiveFeeds() {
   if (!API_KEY) {
     API_KEY = getStoredAPIKey();
   }
-
+  
   if (!API_KEY || !hasValidAPIKey()) {
     console.log("🔑 No valid API key found, prompting user...");
     showAPIKeyModal();
     return;
   }
-
-  // Load live channels
+  
   const storedLive = localStorage.getItem(STORAGE_KEYS.live);
   if (!storedLive) {
     showNotification("No live channels found in localStorage.", "warning");
     return;
   }
-
+  
   let live = [];
   try {
     live = JSON.parse(storedLive);
@@ -1316,54 +1793,50 @@ async function loadYouTubeLiveFeeds() {
     showNotification("Error loading live channels data.", "error");
     return;
   }
-
+  
   if (!live || live.length === 0) return;
-
+  
   let apiQuotaExceeded = false;
   let successfulUpdates = 0;
   let failedUpdates = 0;
   let cacheHits = 0;
-
+  
   for (const [index, feed] of live.entries()) {
     try {
       if (index > 0) {
         await new Promise((resolve) => setTimeout(resolve, 200));
       }
-
+      
       if (apiQuotaExceeded) {
         log(`⏸️ Skipping ${feed.name} - API quota exceeded`);
         failedUpdates++;
         continue;
       }
-
+      
       const channelId = extractChannelId(feed.url);
       if (!channelId) {
         console.warn("No channelId found in feed:", feed.url);
         continue;
       }
-
+      
       const cacheKey = `live_${channelId}`;
       const cached = liveCache.get(cacheKey);
-
+      
       if (cached && Date.now() - cached.timestamp < CACHE_DURATION) {
         log(`📦 Using cached live data for ${feed.name}`);
         cacheHits++;
-
+        
         if (cached.data && cached.data.videoId) {
-          const channelObj = youtubeItemToChannel(
-            cached.data.videoId,
-            cached.data.title,
-            feed
-          );
+          const channelObj = youtubeItemToChannel(cached.data.videoId, cached.data.title, feed);
           updateOrAddChannel(channelObj);
           successfulUpdates++;
         }
         continue;
       }
-
+      
       const apiUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&channelId=${channelId}&eventType=live&type=video&order=date&maxResults=1&key=${API_KEY}`;
       const res = await fetch(apiUrl);
-
+      
       if (!res.ok) {
         if (res.status === 403) {
           apiQuotaExceeded = true;
@@ -1377,45 +1850,38 @@ async function loadYouTubeLiveFeeds() {
         }
         throw new Error(`API returned status ${res.status}: ${res.statusText}`);
       }
-
+      
       const data = await res.json();
-
+      
       if (data.error) {
         if (data.error.code === 403) {
           apiQuotaExceeded = true;
-          log(
-            "🚫 YouTube API quota exceeded (in response). Stopping live stream updates."
-          );
+          log("🚫 YouTube API quota exceeded (in response). Stopping live stream updates.");
           failedUpdates++;
           continue;
         }
-        throw new Error(
-          `YouTube API Error for ${feed.name}: ${data.error.message}`
-        );
+        throw new Error(`YouTube API Error for ${feed.name}: ${data.error.message}`);
       }
-
+      
       let cacheData = null;
-
+      
       if (data.items && data.items.length > 0) {
         const item = data.items[0];
         const videoId = item.id.videoId;
         const title = item.snippet.title;
-
-        cacheData = {
-          videoId: videoId,
-          title: title,
-        };
-
+        
+        cacheData = { videoId: videoId, title: title };
+        
         const channelObj = youtubeItemToChannel(videoId, title, feed);
         updateOrAddChannel(channelObj);
         successfulUpdates++;
-
+        
         log(`✅ ${feed.name} Successfully updated`);
       } else {
         log(`ℹ️ No live stream found for ${feed.name}`);
         cacheData = null;
       }
-
+      
       liveCache.set(cacheKey, {
         data: cacheData,
         timestamp: Date.now(),
@@ -1430,11 +1896,9 @@ async function loadYouTubeLiveFeeds() {
       }
     }
   }
-
-  log(
-    `Live streams update completed: ${successfulUpdates} successful, ${failedUpdates} failed, ${cacheHits} cache hits`
-  );
-
+  
+  log(`Live streams update completed: ${successfulUpdates} successful, ${failedUpdates} failed, ${cacheHits} cache hits`);
+  
   if (successfulUpdates === 0 && failedUpdates > 0 && apiQuotaExceeded) {
     throw new Error("YouTube API quota exceeded - no live streams updated");
   }
@@ -1442,104 +1906,86 @@ async function loadYouTubeLiveFeeds() {
 
 async function loadAllChannelFeeds() {
   log("Starting full channel update (RSS and Live API)...");
-
+  
   try {
     log("1/2: Loading latest uploads from RSS...");
     await loadYouTubeLatestFeeds();
     log("1/2: Latest uploads loaded successfully.");
-
+    
     log("2/2: Loading live streams (YouTube API)...");
     await loadYouTubeLiveFeeds();
     log("2/2: Live streams loaded successfully.");
-
+    
     log("Saving updated channel data to localStorage...");
     localStorage.setItem(STORAGE_KEYS.channels, JSON.stringify(allChannels));
-
+    
     log("Rendering UI and updating components...");
     renderChannels(allChannels);
     updateFavoriteIcons();
     renderRecentlyWatched();
     updateAllChannelItems();
-
+    
     log("✅ Full channels update COMPLETE.");
     return true;
   } catch (e) {
     log(`❌ Critical error during full channel update: ${e.message}`, true);
-
+    
     log("Updating UI with available data...");
     localStorage.setItem(STORAGE_KEYS.channels, JSON.stringify(allChannels));
     renderChannels(allChannels);
     updateFavoriteIcons();
     renderRecentlyWatched();
     updateAllChannelItems();
-
+    
     return false;
   }
 }
 
-// ✅ Modified startChannelAutoUpdate function
+// ============================================
+// AUTO-UPDATE SERVICE
+// ============================================
+
 function startChannelAutoUpdate() {
-  // Load settings from localStorage
   const savedAutoUpdate = localStorage.getItem(AUTO_UPDATE_KEY);
   const savedInterval = localStorage.getItem(UPDATE_INTERVAL_KEY);
-
-  isAutoUpdateEnabled =
-    savedAutoUpdate === null ? true : savedAutoUpdate === "true";
+  
+  isAutoUpdateEnabled = savedAutoUpdate === null ? true : savedAutoUpdate === "true";
   updateIntervalHours = savedInterval ? parseInt(savedInterval) : 8;
-
-  // Calculate interval in milliseconds
+  
   const intervalMs = updateIntervalHours * 60 * 60 * 1000;
   const cacheExpiryMs = updateIntervalHours * 60 * 60 * 1000;
-
-  console.log(
-    `Auto-update service initializing. Enabled: ${isAutoUpdateEnabled}, Interval: ${updateIntervalHours}h`
-  );
-
+  
+  console.log(`Auto-update service initializing. Enabled: ${isAutoUpdateEnabled}, Interval: ${updateIntervalHours}h`);
+  
   const checkAndUpdate = async () => {
-    // Check if auto-update is still enabled
     if (!isAutoUpdateEnabled) {
       console.log("Auto-update is disabled. Skipping check.");
       return;
     }
-
-    const lastUpdateTimestamp = parseInt(
-      localStorage.getItem(CACHE_KEY) || "0"
-    );
+    
+    const lastUpdateTimestamp = parseInt(localStorage.getItem(CACHE_KEY) || "0");
     const currentTime = Date.now();
-
     const timeSinceLastUpdate = currentTime - lastUpdateTimestamp;
-    const shouldUpdate =
-      lastUpdateTimestamp === 0 || timeSinceLastUpdate >= cacheExpiryMs;
-
-    console.log(
-      `[DEBUG] Last update: ${lastUpdateTimestamp}, Current: ${currentTime}, Time since: ${timeSinceLastUpdate}, Should update: ${shouldUpdate}`
-    );
-
+    const shouldUpdate = lastUpdateTimestamp === 0 || timeSinceLastUpdate >= cacheExpiryMs;
+    
     if (shouldUpdate) {
       log("Cache has expired. Initiating full data update now.");
-
+      
       try {
         const success = await loadAllChannelFeeds();
-
+        
         if (success) {
           const newTimestamp = Date.now();
           localStorage.setItem(CACHE_KEY, newTimestamp.toString());
-
+          
           const newLastUpdateDate = new Date(newTimestamp).toLocaleString();
-          const newNextUpdateDate = new Date(
-            newTimestamp + cacheExpiryMs
-          ).toLocaleString();
-
+          const newNextUpdateDate = new Date(newTimestamp + cacheExpiryMs).toLocaleString();
+          
           log("✅ Channels updated successfully.");
           log(`New Last Update Time: ${newLastUpdateDate}`);
           log(`Next Scheduled Check (Expiry): ${newNextUpdateDate}`);
         } else {
           log("❌ Update failed. Cache timestamp preserved for retry.", true);
-
-          const retryTime = new Date(
-            currentTime + 60 * 60 * 1000
-          ).toLocaleString();
-          log(`Next retry attempt after: ${retryTime}`);
         }
       } catch (error) {
         log(`❌ Unexpected error during update: ${error.message}`, true);
@@ -1550,17 +1996,15 @@ function startChannelAutoUpdate() {
       const minutesRemaining = Math.ceil(timeRemaining / (60 * 1000));
       const hoursRemaining = Math.floor(minutesRemaining / 60);
       const minsRemaining = minutesRemaining % 60;
-
+      
       if (hoursRemaining > 0) {
-        console.log(
-          `Cache is valid. Expires in ${hoursRemaining}h ${minsRemaining}m`
-        );
+        console.log(`Cache is valid. Expires in ${hoursRemaining}h ${minsRemaining}m`);
       } else {
         console.log(`Cache is valid. Expires in ${minutesRemaining} minutes.`);
       }
     }
   };
-
+  
   const initialLastUpdate = parseInt(localStorage.getItem(CACHE_KEY) || "0");
   if (initialLastUpdate === 0) {
     log("Last Update: Never. Starting initial data fetch now.");
@@ -1570,163 +2014,214 @@ function startChannelAutoUpdate() {
     const nextUpdateDate = new Date(nextExpiry).toLocaleString();
     const timeRemaining = nextExpiry - Date.now();
     const minutesRemaining = Math.ceil(timeRemaining / (60 * 1000));
-
+    
     log(`Last Update: ${lastUpdateDate}`);
     log(`Next update available after: ${nextUpdateDate}`);
     log(`Time remaining: ${minutesRemaining} minutes`);
   }
-
-  // Run immediately if enabled
+  
   if (isAutoUpdateEnabled) {
     checkAndUpdate();
   }
-
-  // Store interval ID so we can clear it
+  
   autoUpdateInterval = setInterval(checkAndUpdate, intervalMs);
-
-  console.log(
-    `Auto-update service started. Checking every ${updateIntervalHours} hours. Status: ${isAutoUpdateEnabled ? "Enabled" : "Disabled"
-    }`
-  );
+  
+  console.log(`Auto-update service started. Checking every ${updateIntervalHours} hours. Status: ${isAutoUpdateEnabled ? "Enabled" : "Disabled"}`);
 }
 
-function log(message, isError = false) {
-  const logArea = document.getElementById("logArea");
-  if (!logArea) return;
-
-  const prefix = isError ? "Error: " : "Info: ";
-  logArea.innerHTML += `<div class="${isError ? "text-red-400" : ""
-    }">${prefix}[${new Date().toLocaleTimeString()}] ${message}</div>`;
-  logArea.scrollTop = logArea.scrollHeight;
+function stopAutoUpdateService() {
+  if (autoUpdateInterval) {
+    clearInterval(autoUpdateInterval);
+    autoUpdateInterval = null;
+    console.log("Auto-update service stopped");
+  }
 }
 
-function updateOrAddChannel(channelObj) {
-  const existingIndex = allChannels.findIndex(
-    (ch) => ch.name === channelObj.name
-  );
-  if (existingIndex !== -1) {
-    allChannels[existingIndex] = {
-      ...allChannels[existingIndex],
-      ...channelObj,
-    };
+// ============================================
+// SETTINGS MODAL
+// ============================================
+
+function showSettingsModal() {
+  const settingsModal = document.getElementById("settingsModal");
+  if (!settingsModal) return;
+  
+  settingsModal.style.display = "flex";
+  
+  const autoUpdateToggle = document.getElementById("autoUpdateToggle");
+  const updateIntervalSelect = document.getElementById("updateInterval");
+  
+  if (autoUpdateToggle) {
+    autoUpdateToggle.checked = isAutoUpdateEnabled;
+  }
+  
+  if (updateIntervalSelect) {
+    updateIntervalSelect.value = updateIntervalHours.toString();
+  }
+  
+  updateIntervalDescriptionText(updateIntervalHours);
+  updateLastUpdateDisplay();
+}
+
+function hideSettingsModal() {
+  const settingsModal = document.getElementById("settingsModal");
+  if (settingsModal) {
+    settingsModal.style.display = "none";
+  }
+}
+
+function toggleAutoUpdate(enabled) {
+  isAutoUpdateEnabled = enabled;
+  localStorage.setItem(AUTO_UPDATE_KEY, enabled.toString());
+  
+  if (enabled) {
+    log("✅ Auto-update enabled");
+    showNotification("Auto-update enabled", "success");
+    stopAutoUpdateService();
+    startChannelAutoUpdate();
   } else {
-    allChannels.push(channelObj);
+    log("⏸️ Auto-update disabled");
+    showNotification("Auto-update disabled", "info");
   }
 }
 
-function cleanup() {
-  console.log("🧹 Performing cleanup...");
+function changeUpdateInterval(hours) {
+  updateIntervalHours = parseInt(hours);
+  localStorage.setItem(UPDATE_INTERVAL_KEY, hours.toString());
+  
+  updateIntervalDescriptionText(hours);
+  
+  log(`⏱️ Update interval changed to ${hours} hours`);
+  showNotification(`Update interval set to ${hours} hours`, "success");
+  
+  if (isAutoUpdateEnabled) {
+    stopAutoUpdateService();
+    startChannelAutoUpdate();
+  }
+}
 
-  stopWatching();
-  stopAutoUpdateService(); // ✅ Stop auto-update service
-
-  if (overlayTimeoutShow) clearTimeout(overlayTimeoutShow);
-  if (overlayTimeoutHide) clearTimeout(overlayTimeoutHide);
-  if (numberTimeout) clearTimeout(numberTimeout);
-  if (navigationDebounce) clearTimeout(navigationDebounce);
-
-  //cleanupChannelItems();
-
-  if (playerInstance) {
-    try {
-      playerInstance.pause();
-      playerInstance.off("error");
-      playerInstance.off("waiting");
-      playerInstance.off("playing");
-      playerInstance.off("loadedmetadata");
-      playerInstance.dispose();
-    } catch (e) {
-      console.warn("Error during player disposal:", e);
+async function manualUpdate() {
+  const manualUpdateBtn = document.getElementById("manualUpdateBtn");
+  if (!manualUpdateBtn) return;
+  
+  manualUpdateBtn.disabled = true;
+  const originalText = manualUpdateBtn.textContent;
+  manualUpdateBtn.textContent = "Updating...";
+  
+  try {
+    log("🔄 Manual update initiated...");
+    
+    const success = await loadAllChannelFeeds();
+    
+    if (success) {
+      const newTimestamp = Date.now();
+      localStorage.setItem(CACHE_KEY, newTimestamp.toString());
+      
+      log("✅ Manual update completed successfully");
+      showNotification("Channels updated successfully!", "success");
+      
+      updateLastUpdateDisplay();
+    } else {
+      log("❌ Manual update failed", true);
+      showNotification("Update failed. Please try again.", "error");
     }
-    playerInstance = null;
+  } catch (error) {
+    log(`❌ Manual update error: ${error.message}`, true);
+    showNotification("Update failed. Check console for details.", "error");
+  } finally {
+    manualUpdateBtn.disabled = false;
+    manualUpdateBtn.textContent = originalText;
   }
+}
 
-  const currentVideoElement = document.getElementById("player");
-  if (currentVideoElement) {
-    currentVideoElement.remove();
+function updateLastUpdateDisplay() {
+  const lastUpdate = parseInt(localStorage.getItem(CACHE_KEY) || "0");
+  const lastUpdateEl = document.getElementById("lastUpdateDisplay");
+  
+  if (!lastUpdateEl) return;
+  
+  if (lastUpdate === 0) {
+    lastUpdateEl.textContent = "Never updated";
+    lastUpdateEl.style.color = "#ff9800";
+  } else {
+    const timeAgo = getTimeAgo(lastUpdate);
+    const date = new Date(lastUpdate);
+    const formattedDate = date.toLocaleString();
+    
+    lastUpdateEl.textContent = `Last updated: ${timeAgo} (${formattedDate})`;
+    lastUpdateEl.style.color = "#4caf50";
   }
+}
 
-  const videoContainer = document.getElementById("player-container");
-  if (videoContainer) {
-    videoContainer.innerHTML = "";
+function updateIntervalDescriptionText(hours) {
+  const descriptionEl = document.getElementById("updateIntervalDescription");
+  if (descriptionEl) {
+    descriptionEl.textContent = `Automatically check for new content every ${hours} hour${hours > 1 ? "s" : ""}`;
   }
+}
 
-  document
-    .querySelectorAll(
-      ".network-status, .error-notification, .play-fallback-overlay"
-    )
-    .forEach((el) => {
-      el.remove();
+function setupSettingsModal() {
+  const settingsBtn = document.getElementById("settingsBtn");
+  const closeSettings = document.getElementById("closeSettings");
+  const settingsModal = document.getElementById("settingsModal");
+  const autoUpdateToggle = document.getElementById("autoUpdateToggle");
+  const updateIntervalSelect = document.getElementById("updateInterval");
+  const manualUpdateBtn = document.getElementById("manualUpdateBtn");
+  
+  if (settingsBtn) {
+    settingsBtn.addEventListener("click", showSettingsModal);
+  }
+  
+  if (closeSettings) {
+    closeSettings.addEventListener("click", hideSettingsModal);
+  }
+  
+  if (settingsModal) {
+    settingsModal.addEventListener("click", (e) => {
+      if (e.target === settingsModal) {
+        hideSettingsModal();
+      }
     });
-
-  if (lastFocusedElement && lastFocusedElement.isConnected) {
-    lastFocusedElement.focus();
-  } else if (allChannelItems.length > 0) {
-    allChannelItems[0].focus();
+  }
+  
+  if (autoUpdateToggle) {
+    autoUpdateToggle.addEventListener("change", (e) => {
+      toggleAutoUpdate(e.target.checked);
+    });
+  }
+  
+  if (updateIntervalSelect) {
+    updateIntervalSelect.addEventListener("change", (e) => {
+      changeUpdateInterval(e.target.value);
+    });
+  }
+  
+  if (manualUpdateBtn) {
+    manualUpdateBtn.addEventListener("click", manualUpdate);
+  }
+  
+  updateIntervalDescriptionText(updateIntervalHours);
+  
+  const manageApiKeyBtn = document.getElementById("manageApiKeyBtn");
+  if (manageApiKeyBtn) {
+    manageApiKeyBtn.addEventListener("click", () => {
+      hideSettingsModal();
+      setTimeout(showAPIKeyModal, 300);
+    });
   }
 }
 
-function processRSSData(data, feed) {
-  if (!data.items || data.items.length === 0) return;
+// ============================================
+// API KEY MODAL
+// ============================================
 
-  let latestValid = data.items.find((item) => !item.link.includes("/shorts/"));
-  if (!latestValid) return;
-
-  const videoId = extractYouTubeID(latestValid.link);
-  if (!videoId) return;
-
-  const channelObj = youtubeItemToChannel(videoId, latestValid.title, feed);
-  updateOrAddChannel(channelObj);
-
-  log(`✅ ${feed.name} Successfully updated`);
-}
-
-function saveAPIKey(apiKey) {
-  if (apiKey && apiKey.trim()) {
-    localStorage.setItem(API_KEY_STORAGE_KEY, btoa(apiKey.trim()));
-    API_KEY = apiKey.trim();
-    //console.log("✅ API Key saved to localStorage");
-    return true;
-  }
-  return false;
-}
-
-function getStoredAPIKey() {
-  const encoded = localStorage.getItem(API_KEY_STORAGE_KEY);
-  if (encoded) {
-    try {
-      API_KEY = atob(encoded); // Decode from Base64
-      //console.log("✅ API Key loaded from localStorage");
-      return API_KEY;
-    } catch (e) {
-      console.error("Error decoding API key:", e);
-      return null;
-    }
-  }
-  return null;
-}
-
-function hasValidAPIKey() {
-  const storedKey = getStoredAPIKey();
-  return storedKey && storedKey.length > 10;
-}
-
-function clearAPIKey() {
-  localStorage.removeItem(API_KEY_STORAGE_KEY);
-  API_KEY = "";
-  //console.log("🗑️ API Key cleared from localStorage");
-}
-
-// ✅ Show API Key Modal (UPDATED)
 function showAPIKeyModal() {
   const apiModal = document.getElementById("apiKeyModal");
   if (!apiModal) return;
-
+  
   apiModal.style.display = "flex";
-
+  
   const apiKeyInput = document.getElementById("apiKeyInput");
   if (apiKeyInput) {
-    // Clear input or show masked existing key
     const existingKey = getStoredAPIKey();
     if (existingKey) {
       apiKeyInput.value = existingKey;
@@ -1734,15 +2229,13 @@ function showAPIKeyModal() {
     } else {
       apiKeyInput.value = "";
     }
-
-    // Focus on input after a small delay for animation
+    
     setTimeout(() => apiKeyInput.focus(), 100);
   }
-
+  
   setupAPIKeyModalEvents();
 }
 
-// ✅ Hide API Key Modal (UPDATED)
 function hideAPIKeyModal() {
   const apiModal = document.getElementById("apiKeyModal");
   if (apiModal) {
@@ -1750,75 +2243,66 @@ function hideAPIKeyModal() {
   }
 }
 
-// ✅ Setup API Key Modal Events (UPDATED)
 function setupAPIKeyModalEvents() {
   const submitBtn = document.getElementById("submitApiKey");
   const skipBtn = document.getElementById("skipApiKey");
   const apiKeyInput = document.getElementById("apiKeyInput");
   const toggleVisibilityBtn = document.getElementById("toggleApiKeyVisibility");
   const apiModal = document.getElementById("apiKeyModal");
-
-  // Remove existing listeners to prevent duplicates
+  
   if (submitBtn) {
     const newSubmitBtn = submitBtn.cloneNode(true);
     submitBtn.parentNode.replaceChild(newSubmitBtn, submitBtn);
-
+    
     newSubmitBtn.addEventListener("click", function () {
       const apiKey = apiKeyInput.value.trim();
       const remember = document.getElementById("rememberKey")?.checked;
-
-      // Validate API key
+      
       if (!apiKey) {
         apiKeyInput.classList.add("invalid");
         showNotification("Please enter a valid API key", "error");
         setTimeout(() => apiKeyInput.classList.remove("invalid"), 400);
         return;
       }
-
-      // Basic validation - YouTube API keys are usually 39 characters
+      
       if (apiKey.length < 30) {
         apiKeyInput.classList.add("invalid");
         showNotification("API key seems too short. Please check it.", "error");
         setTimeout(() => apiKeyInput.classList.remove("invalid"), 400);
         return;
       }
-
+      
       if (remember) {
         saveAPIKey(apiKey);
       } else {
         API_KEY = apiKey;
       }
-
+      
       hideAPIKeyModal();
       showNotification("✅ API Key saved successfully!", "success");
-
-      // Start live feeds update after a short delay
+      
       setTimeout(() => {
         log("🔄 Starting live feeds update with new API key...");
         loadYouTubeLiveFeeds().catch(console.error);
       }, 1000);
     });
   }
-
+  
   if (skipBtn) {
     const newSkipBtn = skipBtn.cloneNode(true);
     skipBtn.parentNode.replaceChild(newSkipBtn, skipBtn);
-
+    
     newSkipBtn.addEventListener("click", function () {
       hideAPIKeyModal();
       showNotification("⏭️ Live channels update skipped", "info");
       log("ℹ️ User skipped API key configuration");
     });
   }
-
-  // Toggle password visibility
+  
   if (toggleVisibilityBtn && apiKeyInput) {
     const newToggleBtn = toggleVisibilityBtn.cloneNode(true);
-    toggleVisibilityBtn.parentNode.replaceChild(
-      newToggleBtn,
-      toggleVisibilityBtn
-    );
-
+    toggleVisibilityBtn.parentNode.replaceChild(newToggleBtn, toggleVisibilityBtn);
+    
     newToggleBtn.addEventListener("click", function () {
       if (apiKeyInput.type === "password") {
         apiKeyInput.type = "text";
@@ -1829,8 +2313,7 @@ function setupAPIKeyModalEvents() {
       }
     });
   }
-
-  // Enter key to submit
+  
   if (apiKeyInput) {
     apiKeyInput.addEventListener("keypress", function (e) {
       if (e.key === "Enter") {
@@ -1839,8 +2322,7 @@ function setupAPIKeyModalEvents() {
       }
     });
   }
-
-  // Close on backdrop click
+  
   if (apiModal) {
     apiModal.addEventListener("click", (e) => {
       if (e.target === apiModal) {
@@ -1848,126 +2330,211 @@ function setupAPIKeyModalEvents() {
       }
     });
   }
-
-  // ESC key to close
+  
   document.addEventListener("keydown", function escapeHandler(e) {
-    if (e.key === "Escape" && apiModal.style.display === "flex") {
+    if (e.key === "Escape" && apiModal && apiModal.style.display === "flex") {
       hideAPIKeyModal();
       document.removeEventListener("keydown", escapeHandler);
     }
   });
 }
 
-// ✅ Add API Key management to Settings Modal
-function showAPISettings() {
-  showAPIKeyModal();
-}
-
-function showNotification(message, type = "info") {
-  console.log(`📢 ${type.toUpperCase()}: ${message}`);
-  log(message, type === "error");
-}
+// ============================================
+// NETWORK MONITORING
+// ============================================
 
 function setupNetworkMonitoring() {
   window.addEventListener("online", handleNetworkRestored);
   window.addEventListener("offline", handleNetworkLost);
-  setInterval(checkConnectionQuality, 30000);
 }
 
 function handleNetworkLost() {
   isOnline = false;
   console.log("📡 Network connection lost");
-
-  if (playerInstance && !playerInstance.paused()) {
-    playerInstance.pause();
-    showNetworkStatus("Connection lost - video paused", "error");
+  
+  const player = channelLoader.getPlayer();
+  if (player && !player.paused()) {
+    player.pause();
+    showNotification("Connection lost - video paused", "error");
   }
 }
 
-async function handleNetworkRestored() {
+function handleNetworkRestored() {
   isOnline = true;
-  reconnectAttempts = 0;
   console.log("📡 Network connection restored");
   log("📡 Network connection restored");
+  
+  showNotification("Connection restored", "success");
+  
+  const player = channelLoader.getPlayer();
+  if (player && player.paused()) {
+    setTimeout(() => {
+      player.play()
+        .then(() => {
+          showNotification("Resuming playback...", "success");
+          log("▶️ Resuming playback after network recovery");
+        })
+        .catch((error) => {
+          console.warn("Could not auto-resume playback:", error);
+          log("❌ Could not auto-resume playback after network recovery");
+        });
+    }, 1000);
+  }
+}
 
-  showNetworkStatus("Connection restored", "success");
+// ============================================
+// CLEANUP & INITIALIZATION
+// ============================================
 
-  if (playerInstance && playerInstance.paused() && currentVideoUrl) {
+function cleanup() {
+  console.log("🧹 Performing cleanup...");
+  
+  stopWatching();
+  stopAutoUpdateService();
+  
+  if (overlayTimeoutShow) {
+    clearTimeout(overlayTimeoutShow);
+    overlayTimeoutShow = null;
+  }
+  if (overlayTimeoutHide) {
+    clearTimeout(overlayTimeoutHide);
+    overlayTimeoutHide = null;
+  }
+  if (numberTimeout) {
+    clearTimeout(numberTimeout);
+    numberTimeout = null;
+  }
+  if (navigationDebounce) {
+    clearTimeout(navigationDebounce);
+    navigationDebounce = null;
+  }
+  
+  channelLoader.cleanupPlayer().then(() => {
+    console.log("✅ Player cleanup complete");
+  }).catch(error => {
+    console.warn("Error during player cleanup:", error);
+  });
+  
+  document.querySelectorAll(".network-status, .error-notification, .play-fallback-overlay, .notification").forEach((el) => {
+    if (el.parentNode) {
+      el.parentNode.removeChild(el);
+    }
+  });
+  
+  if (lastFocusedElement && lastFocusedElement.isConnected) {
+    lastFocusedElement.focus();
+  } else if (allChannelItems.length > 0) {
+    allChannelItems[0].focus();
+  }
+  
+  console.log("✅ Cleanup complete");
+}
+
+async function initialize() {
+  console.log("🚀 Initializing IPTV Channel Manager...");
+  
+  const contentGrid = document.querySelector(".content-grid");
+  const loadingElement = document.getElementById("loading-spinner");
+  
+  if (contentGrid) contentGrid.style.display = "none";
+  if (loadingElement) loadingElement.style.display = "block";
+  
+  const closeBtn = document.querySelector(".closeModal");
+  if (closeBtn) closeBtn.addEventListener("click", closeModal);
+  
+  const modal = document.getElementById("videoModal");
+  if (modal) {
+    modal.addEventListener("click", (event) => {
+      if (event.target === modal) closeModal();
+    });
+  }
+  
+  setupNetworkMonitoring();
+  setupSettingsModal();
+  setupSearchBar();
+  
+  let savedChannels = localStorage.getItem(STORAGE_KEYS.channels);
+  
+  if (savedChannels) {
     try {
-      setTimeout(async () => {
-        await playerInstance.play();
-        showNetworkStatus("Resuming playback...", "success");
-        log("▶️ Resuming playback after network recovery");
-      }, 1000);
-    } catch (error) {
-      console.warn("Could not auto-resume playback:", error);
-      log("❌ Could not auto-resume playback after network recovery");
-      showPlayButtonFallback();
+      allChannels = JSON.parse(savedChannels);
+      log(`Successfully loaded ${allChannels.length} channels from localStorage.`);
+    } catch (e) {
+      log("Invalid 'allChannelsData' found in localStorage. The data will be ignored.", true);
+      log(`Error details: ${e.message}`, true);
+      console.warn("Invalid allChannelsData in localStorage, ignoring.", e);
+      allChannels = [];
     }
+  } else {
+    log("No previous 'allChannelsData' found in localStorage. Starting fresh.");
+    allChannels = [];
   }
+  
+  API_KEY = getStoredAPIKey() || "";
+  
+  if (hasValidAPIKey()) {
+    console.log("✅ Using stored API key");
+  } else {
+    console.log("ℹ️ No valid API key stored");
+  }
+  
+  startChannelAutoUpdate();
+  
+  allChannels.forEach((ch, i) => {
+    if (!ch.number) ch.number = i + 1;
+  });
+  
+  loadWatchTime();
+  
+  const savedSort = localStorage.getItem("defaultSortMethod") || "none";
+  handleSortChange(savedSort);
+  
+  renderFavorites();
+  renderRecentlyWatched();
+  updateFavoriteIcons();
+  updateAllChannelItems();
+  
+  if (loadingElement) loadingElement.style.display = "none";
+  if (contentGrid) contentGrid.style.display = "grid";
+  
+  if (lastFocusedElement && lastFocusedElement.isConnected) {
+    lastFocusedElement.focus();
+  } else if (allChannelItems.length > 0) {
+    allChannelItems[0].focus();
+  }
+  
+  console.log("✅ Initialization complete");
 }
 
-function showNetworkStatus(message, type = "info") {
-  const existingStatus = document.querySelector(".network-status");
-  if (existingStatus) {
-    existingStatus.remove();
-  }
-
-  const statusDiv = document.createElement("div");
-  statusDiv.className = `network-status ${type}`;
-  statusDiv.textContent = message;
-  statusDiv.style.cssText = `
-    position: fixed;
-    top: 20px;
-    left: 50%;
-    transform: translateX(-50%);
-    background: ${type === "error" ? "#9b2c2c" : type === "warning" ? "#ef6c00" : "#3c6300"
-    };
-    color: white;
-    padding: 10px 20px;
-    border-radius: 4px;
-    z-index: 10001;
-    font-weight: bold;
-    transition: opacity 0.3s;
-  `;
-
-  document.body.appendChild(statusDiv);
-
-  setTimeout(() => {
-    if (statusDiv.parentNode) {
-      statusDiv.style.opacity = "0";
-      setTimeout(() => {
-        if (statusDiv.parentNode) {
-          statusDiv.parentNode.removeChild(statusDiv);
-        }
-      }, 300);
-    }
-  }, 3000);
-}
+// ============================================
+// EVENT LISTENERS
+// ============================================
 
 window.addEventListener("DOMContentLoaded", async () => {
   await initialize();
 });
 
-window.addEventListener("beforeunload", cleanup);
+window.addEventListener("beforeunload", () => {
+  cleanup();
+});
 
 document.addEventListener("visibilitychange", function () {
+  const player = channelLoader.getPlayer();
+  
   if (document.hidden) {
-    // Save when tab becomes hidden
     saveCurrentWatchTime();
-    // Tab is hidden → pause video
-    if (playerInstance && !playerInstance.paused()) {
-      playerInstance.pause();
+    
+    if (player && !player.paused()) {
+      player.pause();
       console.log("⏸️ Video paused due to tab switch");
     }
   } else {
-    // Tab is visible again → resume video
-    if (playerInstance && playerInstance.paused()) {
-      const playPromise = playerInstance.play();
+    if (player && player.paused()) {
+      const playPromise = player.play();
       if (playPromise !== undefined) {
         playPromise
           .then(() => {
-            console.log("Video resumed after returning to tab");
+            console.log("▶️ Video resumed after returning to tab");
           })
           .catch((error) => {
             console.error("Resume failed:", error);
@@ -1977,223 +2544,22 @@ document.addEventListener("visibilitychange", function () {
   }
 });
 
-// ✅ Show Settings Modal
-function showSettingsModal() {
-  const settingsModal = document.getElementById("settingsModal");
-  if (!settingsModal) return;
+// ============================================
+// EXPORT GLOBAL FUNCTIONS
+// ============================================
 
-  settingsModal.style.display = "flex";
+window.selectChannel = selectChannel;
+window.handleSortChange = handleSortChange;
+window.showSettingsModal = showSettingsModal;
+window.hideSettingsModal = hideSettingsModal;
+window.toggleAutoUpdate = toggleAutoUpdate;
+window.changeUpdateInterval = changeUpdateInterval;
+window.manualUpdate = manualUpdate;
+window.showAPIKeyModal = showAPIKeyModal;
+window.hideAPIKeyModal = hideAPIKeyModal;
+window.closeModal = closeModal;
+window.toggleFullscreen = toggleFullscreen;
+window.searchChannels = searchChannels;
+window.clearSearch = clearSearch;
 
-  // Load current settings
-  const autoUpdateToggle = document.getElementById("autoUpdateToggle");
-  const updateIntervalSelect = document.getElementById("updateInterval");
-
-  if (autoUpdateToggle) {
-    autoUpdateToggle.checked = isAutoUpdateEnabled;
-  }
-
-  if (updateIntervalSelect) {
-    updateIntervalSelect.value = updateIntervalHours.toString();
-  }
-
-  // ✅ Update description text when opening modal
-  updateIntervalDescriptionText(updateIntervalHours);
-
-  // Update last update display
-  updateLastUpdateDisplay();
-}
-
-// ✅ Hide Settings Modal
-function hideSettingsModal() {
-  const settingsModal = document.getElementById("settingsModal");
-  if (settingsModal) {
-    settingsModal.style.display = "none";
-  }
-}
-
-// ✅ Toggle Auto-Update
-function toggleAutoUpdate(enabled) {
-  isAutoUpdateEnabled = enabled;
-  localStorage.setItem(AUTO_UPDATE_KEY, enabled.toString());
-
-  if (enabled) {
-    log("✅ Auto-update enabled");
-    showNotification("Auto-update enabled", "success");
-
-    // Restart auto-update service
-    stopAutoUpdateService();
-    startChannelAutoUpdate();
-  } else {
-    log("⏸️ Auto-update disabled");
-    showNotification("Auto-update disabled", "info");
-  }
-}
-
-// ✅ Change Update Interval (UPDATED)
-function changeUpdateInterval(hours) {
-  updateIntervalHours = parseInt(hours);
-  localStorage.setItem(UPDATE_INTERVAL_KEY, hours.toString());
-
-  // ✅ Update the description text dynamically
-  updateIntervalDescriptionText(hours);
-
-  log(`⏱️ Update interval changed to ${hours} hours`);
-  showNotification(`Update interval set to ${hours} hours`, "success");
-
-  // Restart auto-update service with new interval
-  if (isAutoUpdateEnabled) {
-    stopAutoUpdateService();
-    startChannelAutoUpdate();
-  }
-}
-
-// ✅ Manual Update
-async function manualUpdate() {
-  const manualUpdateBtn = document.getElementById("manualUpdateBtn");
-  if (!manualUpdateBtn) return;
-
-  // Disable button and show loading state
-  manualUpdateBtn.disabled = true;
-  const originalText = manualUpdateBtn.textContent;
-  manualUpdateBtn.textContent = "Updating...";
-
-  try {
-    log("🔄 Manual update initiated...");
-
-    const success = await loadAllChannelFeeds();
-
-    if (success) {
-      const newTimestamp = Date.now();
-      localStorage.setItem(CACHE_KEY, newTimestamp.toString());
-
-      log("✅ Manual update completed successfully");
-      showNotification("Channels updated successfully!", "success");
-
-      updateLastUpdateDisplay();
-    } else {
-      log("❌ Manual update failed", true);
-      showNotification("Update failed. Please try again.", "error");
-    }
-  } catch (error) {
-    log(`❌ Manual update error: ${error.message}`, true);
-    showNotification("Update failed. Check console for details.", "error");
-  } finally {
-    // Re-enable button
-    manualUpdateBtn.disabled = false;
-    manualUpdateBtn.textContent = originalText;
-  }
-}
-
-// ✅ Update Last Update Display
-function updateLastUpdateDisplay() {
-  const lastUpdate = parseInt(localStorage.getItem(CACHE_KEY) || "0");
-  const lastUpdateEl = document.getElementById("lastUpdateDisplay");
-
-  if (!lastUpdateEl) return;
-
-  if (lastUpdate === 0) {
-    lastUpdateEl.textContent = "Never updated";
-    lastUpdateEl.style.color = "#ff9800";
-  } else {
-    const timeAgo = getTimeAgo(lastUpdate);
-    const date = new Date(lastUpdate);
-    const formattedDate = date.toLocaleString();
-
-    lastUpdateEl.textContent = `Last updated: ${timeAgo} (${formattedDate})`;
-    lastUpdateEl.style.color = "#4caf50";
-  }
-}
-
-// ✅ Get Time Ago String
-function getTimeAgo(timestamp) {
-  const seconds = Math.floor((Date.now() - timestamp) / 1000);
-
-  if (seconds < 60) return "just now";
-
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes} minute${minutes > 1 ? "s" : ""} ago`;
-
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours} hour${hours > 1 ? "s" : ""} ago`;
-
-  const days = Math.floor(hours / 24);
-  return `${days} day${days > 1 ? "s" : ""} ago`;
-}
-
-// ✅ Stop Auto-Update Service
-function stopAutoUpdateService() {
-  if (autoUpdateInterval) {
-    clearInterval(autoUpdateInterval);
-    autoUpdateInterval = null;
-    console.log("Auto-update service stopped");
-  }
-}
-
-// ✅ Setup Settings Modal Event Listeners
-function setupSettingsModal() {
-  const settingsBtn = document.getElementById("settingsBtn");
-  const closeSettings = document.getElementById("closeSettings");
-  const settingsModal = document.getElementById("settingsModal");
-  const autoUpdateToggle = document.getElementById("autoUpdateToggle");
-  const updateIntervalSelect = document.getElementById("updateInterval");
-  const manualUpdateBtn = document.getElementById("manualUpdateBtn");
-
-  // Open settings
-  if (settingsBtn) {
-    settingsBtn.addEventListener("click", showSettingsModal);
-  }
-
-  // Close settings
-  if (closeSettings) {
-    closeSettings.addEventListener("click", hideSettingsModal);
-  }
-
-  // Close on backdrop click
-  if (settingsModal) {
-    settingsModal.addEventListener("click", (e) => {
-      if (e.target === settingsModal) {
-        hideSettingsModal();
-      }
-    });
-  }
-
-  // Auto-update toggle
-  if (autoUpdateToggle) {
-    autoUpdateToggle.addEventListener("change", (e) => {
-      toggleAutoUpdate(e.target.checked);
-    });
-  }
-
-  // Update interval change
-  if (updateIntervalSelect) {
-    updateIntervalSelect.addEventListener("change", (e) => {
-      changeUpdateInterval(e.target.value);
-    });
-  }
-
-  // Manual update button
-  if (manualUpdateBtn) {
-    manualUpdateBtn.addEventListener("click", manualUpdate);
-  }
-
-  // ✅ Set initial description text on page load
-  updateIntervalDescriptionText(updateIntervalHours);
-
-  // ✅ Manage API Key button
-  const manageApiKeyBtn = document.getElementById("manageApiKeyBtn");
-  if (manageApiKeyBtn) {
-    manageApiKeyBtn.addEventListener("click", () => {
-      hideSettingsModal(); // Close settings first
-      setTimeout(showAPIKeyModal, 300); // Open API modal
-    });
-  }
-}
-
-// ✅ NEW FUNCTION: Update description text
-function updateIntervalDescriptionText(hours) {
-  const descriptionEl = document.getElementById("updateIntervalDescription");
-  if (descriptionEl) {
-    descriptionEl.textContent = `Automatically check for new content every ${hours} hour${hours > 1 ? "s" : ""
-      }`;
-  }
-}
+//console.log("✅ IPTV Channel Manager - Optimized Version Loaded Successfully");
