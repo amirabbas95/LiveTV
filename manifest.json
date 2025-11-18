@@ -1,0 +1,23 @@
+{
+  "name": "Live TV Player",
+  "short_name": "LiveTV",
+  "description": "An optimized, remote-friendly web player for watching live television channels.",
+  "start_url": "/LiveTV/index.html",
+  "scope": "/LiveTV/",
+  "display": "standalone",
+  "orientation": "landscape",
+  "theme_color": "#121212",
+  "background_color": "#121212",
+  "icons": [
+    {
+      "src": "/LiveTV/logo.svg",
+      "sizes": "192x192",
+      "type": "image/svg+xml"
+    },
+    {
+      "src": "/LiveTV/logo.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml"
+    }
+  ]
+}
