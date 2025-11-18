@@ -2598,22 +2598,48 @@ document.addEventListener("visibilitychange", function () {
 });
 
 // Add to initialize()
+/**
+ * Sets up Progressive Web App features (Service Worker registration and prompt).
+ * This uses dynamic path logic to correctly register the SW on GitHub Project Pages.
+ */
 function setupPWA() {
-  // Service Worker registration
+  // 1. Determine the Base Path
+  let basePath = '/';
+  
+  // Check if we are on a GitHub Pages hostname
+  if (location.hostname.endsWith('github.io')) {
+    // If the path is not just '/', it means we are in a sub-directory (a Project Page)
+    if (location.pathname !== '/') {
+      // Extracts the project name (e.g., from /LiveTV/index.html to /LiveTV/)
+      const pathParts = location.pathname.split('/');
+      // The project name is typically at index 1
+      if (pathParts.length > 1 && pathParts[1].length > 0) {
+        basePath = '/' + pathParts[1] + '/';
+      }
+    }
+  }
+
+  // 2. Service Worker registration
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('/sw.js')
-      .then(registration => console.log('SW registered successfully'))
-      .catch(error => console.error('SW registration failed:', error));
+    const swPath = basePath + 'sw.js';
+    
+    // Example path for your case: /LiveTV/sw.js
+    navigator.serviceWorker.register(swPath)
+      .then(registration => {
+        console.log(`✅ SW registered successfully with scope: ${registration.scope}`);
+      })
+      .catch(error => {
+        console.error('❌ SW registration failed:', error);
+      });
   }
   
-  // Add to homescreen prompt (Optional: You'll need to define showInstallPrompt() somewhere)
+  // 3. Add to homescreen prompt logic
   let deferredPrompt;
   window.addEventListener('beforeinstallprompt', (e) => {
     e.preventDefault();
     deferredPrompt = e;
-    // Call a function to show your custom "Install App" button/UI here
-    // showInstallPrompt(); 
     console.log('Before Install Prompt deferred.');
+    // You would call a function here to show your custom install button (e.g., showInstallPrompt());
   });
 }
 
