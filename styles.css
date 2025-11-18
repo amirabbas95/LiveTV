@@ -192,7 +192,7 @@ main {
 
 .content-card:hover,
 .content-card:focus {
-  transform: translateY(-2px);
+  transform: translateY(-5px);
   box-shadow: 0 12px 24px rgba(0, 0, 0, 0.6), 0 0 15px var(--accent-color);
   outline: var(--b) solid var(--accent-color);
 }
@@ -1211,7 +1211,7 @@ main {
 }
 
 #channelSearch:focus {
-  border-color: #ff0000;
+  border-color: var(--accent-color);
   background: #333;
   box-shadow: 0 0 0 3px rgba(255, 0, 0, 0.1);
 }
@@ -1238,7 +1238,7 @@ main {
 }
 
 #clearSearch:hover {
-  color: #ff0000;
+  color: var(--accent-color);
   background: rgba(255, 255, 255, 0.1);
 }
 
@@ -1282,7 +1282,7 @@ main {
   
   #channelSearch:focus {
     background: #fff;
-    border-color: #ff0000;
+    border-color: var(--accent-color);
   }
   
   #channelSearch::placeholder {
@@ -1294,7 +1294,7 @@ main {
   }
   
   #clearSearch:hover {
-    color: #ff0000;
+    color: var(--accent-color);
     background: rgba(0, 0, 0, 0.05);
   }
   

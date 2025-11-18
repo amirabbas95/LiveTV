@@ -10,19 +10,16 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
   <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
-
   <link rel="stylesheet" href="styles.css">
-
 </head>
 
 <body>
-
   <header class="bg-[#121212] text-gray-100 py-4 px-6 flex justify-between items-center shadow-lg sticky top-0 z-10"
     style="background-color: #121212;">
-    <div class="flex items-center space-x-4">
-      <img src="logo.svg" alt="logo" class="h-10 w-10">
-      <h1 class="text-2xl font-bold">LiveTV Player</h1>
-    </div>
+        <div class="flex items-center space-x-4">
+            <img src="logo.svg" alt="logo" class="h-10 w-10">
+            <h1 class="text-2xl font-bold">LiveTV Player</h1>
+            </div>
     <nav class="flex items-center space-x-4">
       <!-- Admin link with icon -->
       <a href="admin.html" class="settings-btn" title="Admin Panel">
@@ -32,39 +29,11 @@
       <button id="settingsBtn" class="settings-btn" title="Settings">
         <i class="fas fa-cog"></i>
       </button>
-
     </nav>
-
   </header>
-
   <main>
-
     <div class="container">
-
-      <!-- Log Area -->
-      <div>
-        <div id="logArea" class="text-white-400 p-4 h-40 overflow-y-scroll rounded-lg text-sm whitespace-pre-wrap">
-          Press **Left/Right** to navigate, **Enter** to play, **Enter** for
-          fullscreen, and **Left** to close.
-        </div>
-      </div>
-
-      <div id="channel-number-overlay">
-      </div>
-
-      <div id="recentlyWatched" class="section">
-        <h2 class="text-xl font-bold mt-6 mb-4 col-span-full">Recently
-          Watched</h2>
-        <div class="content-grid" id="recentlyWatchedGrid"></div>
-      </div>
-
-      <div id="favorites" class="section">
-        <h2 class="text-xl font-bold mt-6 mb-4 col-span-full">Favorites</h2>
-        <div class="content-grid" id="favoritesGrid"></div>
-      </div>
-
-      <div id="loading-spinner"></div>
-
+      <!-- search Area -->
       <div class="search-container">
         <div class="search-wrapper">
           <input type="text" id="channelSearch" placeholder="Search channels..." autocomplete="off" />
@@ -72,12 +41,24 @@
         </div>
         <div id="search-results-message" style="display: none;"></div>
       </div>
-
+      <div id="channel-number-overlay">
+      </div>
+      <div id="recentlyWatched" class="section">
+        <h2 class="text-xl font-bold mt-6 mb-4 col-span-full">Recently
+          Watched
+        </h2>
+        <div class="content-grid" id="recentlyWatchedGrid"></div>
+      </div>
+      <div id="favorites" class="section">
+        <h2 class="text-xl font-bold mt-6 mb-4 col-span-full">Favorites</h2>
+        <div class="content-grid" id="favoritesGrid"></div>
+      </div>
+      <div id="loading-spinner"></div>
       <div id="channels" class="section">
         <div class="sort-container">
           <h2 class="text-xl font-bold mt-6 mb-4 col-span-full">All
-            Channels</h2>
-
+            Channels
+          </h2>
           <div class="sort-controls">
             <button onclick="handleSortChange('none')" title="No Sort">
               <i class="fas fa-ban"></i>
@@ -92,15 +73,12 @@
               <i class="fas fa-clock"></i>
             </button>
           </div>
-
         </div>
       </div>
-
       <!-- Settings Modal -->
       <div id="settingsModal" class="settings-modal" style="display: none;">
         <div class="settings-content">
           <h2>Settings</h2>
-
           <!-- Auto-update settings -->
           <div class="setting-item">
             <label>
@@ -111,7 +89,6 @@
               Automatically check for new content every 8 hours
             </p>
           </div>
-
           <div class="setting-item">
             <label>Update interval</label>
             <select id="updateInterval">
@@ -121,13 +98,11 @@
               <option value="24">24 hours</option>
             </select>
           </div>
-
           <div class="setting-item">
             <button id="manualUpdateBtn" class="btn-primary">Update
               Now</button>
             <span id="lastUpdateDisplay"></span>
           </div>
-
           <!-- ✅ NEW: API Key Management -->
           <div class="setting-item">
             <label>YouTube API Key</label>
@@ -138,16 +113,13 @@
               Configure your YouTube API key for live stream detection
             </p>
           </div>
-
           <button id="closeSettings" class="btn-secondary">Close</button>
         </div>
       </div>
-
       <!-- API Key Modal -->
       <div id="apiKeyModal" class="settings-modal" style="display: none;">
         <div class="settings-content">
           <h2>🔑 YouTube API Configuration</h2>
-
           <div class="setting-item">
             <label for="apiKeyInput">API Key</label>
             <input type="password" id="apiKeyInput" class="api-key-input" placeholder="Enter your YouTube API key"
@@ -162,7 +134,6 @@
               </a>
             </p>
           </div>
-
           <div class="setting-item">
             <label class="checkbox-label">
               <input type="checkbox" id="rememberKey" checked>
@@ -173,7 +144,6 @@
               storage
             </p>
           </div>
-
           <div class="api-key-actions">
             <button id="submitApiKey" class="btn-primary">
               ✓ Save & Continue
@@ -182,61 +152,47 @@
               Skip for now
             </button>
           </div>
-
           <div class="api-key-info">
             <p><strong>Why do we need this?</strong></p>
             <p>The YouTube API key allows us to detect which channels are
-              currently live streaming.</p>
+              currently live streaming.
+            </p>
           </div>
         </div>
       </div>
-
   </main>
-
   <div id="videoModal" class="fixed inset-0 bg-black bg-opacity-90 flex justify-center items-center z-50 hidden">
     <div class="relative w-full h-full flex flex-col justify-center items-center">
       <span id=".closeModal" class="closeModal">&times;</span>
-
       <!-- New location for channel number overlay -->
       <div id="channel-number-overlay"></div>
-
       <div id="player-container">
         <div id="player"></div>
       </div>
-
       <div id="channel-info-overlay" class="channel-info-overlay">
         <div id="video-info-container" class="flex items-center space-x-4">
           <img id="content-image" alt="Content Image" class="w-16 h-16 rounded-full shadow-md">
-
           <div class="text-white">
-
             <h2 class="text-xl font-bold mt-6 mb-4 col-span-full">
               <span id="channel-number"></span>
               <span id="video-title"></span>
               <span id="video-quality"></span>
               <span id="live_span">Live</span>
             </h2>
-
             <p id="channel-description" class="text-gray-300 text-sm"></p>
           </div>
-
         </div>
       </div>
     </div>
   </div>
   </div>
-
   <footer class="bg-[#121212] text-gray-400 text-center py-4 px-6 mt-auto shadow-inner"
     style="background-color: #121212;">
     <p>&copy; 2025 All Rights Reserved.</p>
   </footer>
-
   <script src="https://vjs.zencdn.net/8.23.4/video.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/videojs-youtube@3.0.1/dist/Youtube.min.js"></script>
   <script src="https://unpkg.com/@videojs/http-streaming@3.17.2/dist/videojs-http-streaming.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
-
-
   <script src="script.js"></script>
 </body>
 
