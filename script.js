@@ -1164,6 +1164,14 @@ function createChannelItem(channel) {
   wrapper.className = "thumb-wrapper";
 
   const img = document.createElement("img");
+    // FIX: Replace HTTPS with HTTP for problematic domains
+  let imageUrl = channel.image;
+
+  if (imageUrl) {
+    imageUrl = imageUrl.replace('https://', 'http://');
+  }
+  
+
   img.src = channel.image;
   img.alt = `${channel.name} Logo`;
   img.loading = "lazy";
