@@ -135,25 +135,23 @@ class ChannelLoader {
     }
   }
 
-  updateChannelUI(name, image, description, number) {
-    const updates = {
-      'content-image': (el) => el.src = image || '',
-      'video-title': (el) => el.textContent = name || 'Unknown Channel',
-      'channel-description': (el) => el.textContent = description || '',
-      'channel-number': (el) => el.textContent = number ? `${number}.` : '',
-      'video-quality': (el) => el.textContent = ''
-    };
+updateChannelUI(name, image, description, number) {
+  const updates = {
+    'content-image': (el) => el.src = fixImageUrl(image) || 'placeholder.png',
+    'video-title': (el) => el.textContent = name || 'Unknown Channel',
+    'channel-description': (el) => el.textContent = description || '',
+    'channel-number': (el) => el.textContent = number ? `${number}.` : '',
+    'video-quality': (el) => el.textContent = ''
+  };
 
-    Object.entries(updates).forEach(([id, updateFn]) => {
-      const element = document.getElementById(id);
-      if (element) updateFn(element);
-    });
+  Object.entries(updates).forEach(([id, updateFn]) => {
+    const element = document.getElementById(id);
+    if (element) updateFn(element);
+  });
 
-    lastFocusedElement = document.activeElement;
-
-
-    showChannelInfoOverlay();
-  }
+  lastFocusedElement = document.activeElement;
+  showChannelInfoOverlay();
+}
 
   async cleanupPlayer() {
     stopWatching();
@@ -404,26 +402,57 @@ class ChannelLoader {
     this.playerInstance.off();
 
     const errorHandler = () => {
-      if (token.isCancelled()) return;
+  if (token.isCancelled()) return;
 
-      const error = this.playerInstance.error();
+  const error = this.playerInstance.error();
+  
+  console.error('🚨 Player error details:', {
+    code: error?.code,
+    message: error?.message,
+    type: error?.type,
+    metadata: error?.metadata
+  });
 
-      // Handle specific HLS errors
-      if (error && error.code === 4) {
-        console.warn('⚠️ Media source not supported, trying fallback...');
-        // Don't show error to user immediately for media errors
-        attemptCorsProxy(this.currentStreamUrl);
-        return;
-      }
+  // Handle specific error codes
+  if (error) {
+    switch(error.code) {
+      case 1: // MEDIA_ERR_ABORTED
+        console.warn('⚠️ Media loading aborted');
+        break;
+        
+      case 2: // MEDIA_ERR_NETWORK
+        console.warn('⚠️ Network error - attempting recovery...');
+        // Try to reload the source
+        setTimeout(() => {
+          if (this.playerInstance && !token.isCancelled()) {
+            console.log('🔄 Attempting to reload stream...');
+            const currentSrc = this.playerInstance.currentSrc();
+            this.playerInstance.src(currentSrc);
+            this.playerInstance.play().catch(e => {
+              console.error('❌ Reload failed:', e);
+              showErrorToUser('Stream failed to load. Please try again.');
+            });
+          }
+        }, 2000);
+        return; // Don't stop watching yet
+        
+      case 3: // MEDIA_ERR_DECODE
+        console.error('❌ Decoding error - stream format issue');
+        showErrorToUser('Stream format not supported');
+        break;
+        
+      case 4: // MEDIA_ERR_SRC_NOT_SUPPORTED
+        console.error('❌ Source not supported');
+        showErrorToUser('Stream format not supported');
+        break;
+        
+      default:
+        console.error('❌ Unknown player error:', error.code);
+    }
+  }
 
-      console.error('🚨 Player error:', error);
-      stopWatching();
-
-      // Only show error for critical issues
-      if (error && error.code !== 4) {
-        showErrorToUser('Playback error occurred');
-      }
-    };
+  stopWatching();
+};
 
     const waitingHandler = () => {
       if (token.isCancelled()) return;
@@ -1144,7 +1173,6 @@ function createChannelItem(channel) {
   item.setAttribute("aria-label", `Select channel ${channel.name}`);
   item.setAttribute("tabindex", "0");
 
-  // Add live indicator ARIA
   if (channel.isLive) {
     item.setAttribute("aria-live", "polite");
   }
@@ -1181,7 +1209,8 @@ function createChannelItem(channel) {
   wrapper.className = "thumb-wrapper";
 
   const img = document.createElement("img");
-  img.src = channel.image;
+  // FIX: Use the proxy function for images
+  img.src = fixImageUrl(channel.image);
   img.alt = `${channel.name} Logo`;
   img.loading = "lazy";
   img.decoding = "async";
@@ -2674,6 +2703,31 @@ function setupPWA() {
       console.log('✨ Before Install Prompt deferred. Ready to show UI.');
     });
   }
+}
+
+
+
+function fixImageUrl(imageUrl) {
+  if (!imageUrl) return 'placeholder.png';
+  
+  // If image is already HTTPS, return as-is
+  if (imageUrl.startsWith('https://')) {
+    return imageUrl;
+  }
+  
+  // If image is HTTP, use a CORS proxy
+  if (imageUrl.startsWith('http://')) {
+    // Option 1: Use corsproxy.io
+    return `https://corsproxy.io/?${encodeURIComponent(imageUrl)}`;
+    
+    // Option 2: Use images.weserv.nl (optimized for images)
+    // return `https://images.weserv.nl/?url=${encodeURIComponent(imageUrl.replace('http://', ''))}`;
+    
+    // Option 3: Use allorigins.win
+    // return `https://api.allorigins.win/raw?url=${encodeURIComponent(imageUrl)}`;
+  }
+  
+  return imageUrl;
 }
 
 // ============================================

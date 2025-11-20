@@ -1303,3 +1303,12 @@ main {
     color: #333;
   }
 }
+
+.vjs-error-display {
+  display: none !important;
+}
+
+.vjs-loading-spinner {
+  border-color: rgba(255, 255, 255, 0.3);
+  border-top-color: #fff;
+}
