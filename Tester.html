@@ -1,0 +1,779 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stream URL Tester</title>
+    
+    <!-- Video.js CSS -->
+    <link href="https://vjs.zencdn.net/7.20.3/video-js.css" rel="stylesheet" />
+    
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #1a2a6c, #b21f1f, #fdbb2d);
+            color: white;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+            padding: 20px;
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 15px;
+            backdrop-filter: blur(10px);
+        }
+
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+        }
+
+        .header p {
+            font-size: 1.1em;
+            opacity: 0.9;
+        }
+
+        .test-section {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+            margin-bottom: 30px;
+        }
+
+        @media (max-width: 768px) {
+            .test-section {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .url-tester, .player-section {
+            background: rgba(0, 0, 0, 0.4);
+            padding: 25px;
+            border-radius: 15px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .url-tester h2, .player-section h2 {
+            margin-bottom: 20px;
+            color: #ffd700;
+            font-size: 1.5em;
+        }
+
+        .url-input-group {
+            margin-bottom: 20px;
+        }
+
+        .url-input-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+        }
+
+        .url-input {
+            width: 100%;
+            padding: 12px 15px;
+            border: 2px solid rgba(255, 255, 255, 0.2);
+            border-radius: 8px;
+            background: rgba(0, 0, 0, 0.6);
+            color: white;
+            font-size: 16px;
+            transition: all 0.3s ease;
+        }
+
+        .url-input:focus {
+            outline: none;
+            border-color: #ffd700;
+            box-shadow: 0 0 10px rgba(255, 215, 0, 0.3);
+        }
+
+        .test-buttons {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            margin-bottom: 25px;
+        }
+
+        .btn {
+            padding: 12px 20px;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-align: center;
+        }
+
+        .btn-primary {
+            background: linear-gradient(45deg, #ff6b6b, #ee5a24);
+            color: white;
+        }
+
+        .btn-secondary {
+            background: linear-gradient(45deg, #4834d4, #686de0);
+            color: white;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+        }
+
+        .preset-urls {
+            margin-top: 25px;
+        }
+
+        .preset-urls h3 {
+            margin-bottom: 15px;
+            color: #ffd700;
+        }
+
+        .preset-grid {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 10px;
+        }
+
+        .preset-btn {
+            padding: 10px 15px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 6px;
+            color: white;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-align: left;
+            font-size: 14px;
+        }
+
+        .preset-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+            border-color: #ffd700;
+        }
+
+        .player-container {
+            width: 100%;
+            height: 400px;
+            background: #000;
+            border-radius: 10px;
+            overflow: hidden;
+            margin-bottom: 20px;
+        }
+
+        .player-info {
+            background: rgba(0, 0, 0, 0.5);
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+        }
+
+        .info-line {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+            padding: 5px 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .info-label {
+            font-weight: 600;
+            color: #ffd700;
+        }
+
+        .info-value {
+            color: #fff;
+        }
+
+        .logs-section {
+            background: rgba(0, 0, 0, 0.4);
+            padding: 25px;
+            border-radius: 15px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .logs-section h2 {
+            margin-bottom: 15px;
+            color: #ffd700;
+        }
+
+        .log-area {
+            height: 200px;
+            background: rgba(0, 0, 0, 0.7);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 8px;
+            padding: 15px;
+            overflow-y: auto;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            line-height: 1.4;
+        }
+
+        .log-entry {
+            margin-bottom: 5px;
+            padding: 3px 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .log-error {
+            color: #ff6b6b;
+        }
+
+        .log-success {
+            color: #7bed9f;
+        }
+
+        .log-info {
+            color: #70a1ff;
+        }
+
+        .status-indicators {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-top: 20px;
+        }
+
+        .status-item {
+            background: rgba(0, 0, 0, 0.3);
+            padding: 15px;
+            border-radius: 8px;
+            text-align: center;
+        }
+
+        .status-value {
+            font-size: 1.2em;
+            font-weight: bold;
+            margin-top: 5px;
+        }
+
+        .status-online {
+            color: #7bed9f;
+        }
+
+        .status-offline {
+            color: #ff6b6b;
+        }
+
+        .video-js {
+            width: 100%;
+            height: 100%;
+        }
+
+        .native-video-player {
+            width: 100%;
+            height: 100%;
+            background: #000;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🎬 Stream URL Tester</h1>
+            <p>Test any streaming URL (HLS, MP4, YouTube, M3U8) in real-time</p>
+        </div>
+
+        <div class="test-section">
+            <div class="url-tester">
+                <h2>🔧 URL Testing</h2>
+                
+                <div class="url-input-group">
+                    <label for="streamUrl">Enter Stream URL:</label>
+                    <input type="url" id="streamUrl" class="url-input" 
+                           placeholder="https://example.com/stream.m3u8 or YouTube URL"
+                           value="http://live.geoiptv.org:8880/live/1ea16dc9/8ce52cc5/404384.m3u8">
+                </div>
+
+                <div class="url-input-group">
+                    <label for="streamName">Stream Name (Optional):</label>
+                    <input type="text" id="streamName" class="url-input" 
+                           placeholder="My Test Stream" value="Geo IPTV Test Stream">
+                </div>
+
+                <div class="test-buttons">
+                    <button class="btn btn-primary" onclick="testStream()">
+                        🚀 Test Stream
+                    </button>
+                    <button class="btn btn-secondary" onclick="testWithVideoJS()">
+                        📹 Test with Video.js
+                    </button>
+                </div>
+
+                <div class="preset-urls">
+                    <h3>📋 Preset Test URLs</h3>
+                    <div class="preset-grid">
+                        <button class="preset-btn" onclick="loadPreset('hls1')">
+                            HLS Stream 1 (Geo IPTV)
+                        </button>
+                        <button class="preset-btn" onclick="loadPreset('hls2')">
+                            HLS Stream 2 (Apple Sample)
+                        </button>
+                        <button class="preset-btn" onclick="loadPreset('youtube')">
+                            YouTube Live Stream
+                        </button>
+                        <button class="preset-btn" onclick="loadPreset('mp4')">
+                            MP4 Sample Video
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="player-section">
+                <h2>📺 Player</h2>
+                
+                <div class="player-info">
+                    <div class="info-line">
+                        <span class="info-label">Current URL:</span>
+                        <span class="info-value" id="currentUrl">None</span>
+                    </div>
+                    <div class="info-line">
+                        <span class="info-label">Stream Type:</span>
+                        <span class="info-value" id="streamType">Unknown</span>
+                    </div>
+                    <div class="info-line">
+                        <span class="info-label">Status:</span>
+                        <span class="info-value" id="streamStatus">Not loaded</span>
+                    </div>
+                </div>
+
+                <div class="player-container" id="playerContainer">
+                    <div id="playerPlaceholder" style="display: flex; align-items: center; justify-content: center; height: 100%; color: #666; font-size: 18px;">
+                        🎬 Stream will appear here
+                    </div>
+                </div>
+
+                <div class="status-indicators">
+                    <div class="status-item">
+                        <div>Player Technology</div>
+                        <div class="status-value" id="techStatus">None</div>
+                    </div>
+                    <div class="status-item">
+                        <div>Stream Health</div>
+                        <div class="status-value" id="healthStatus">Unknown</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="logs-section">
+            <h2>📊 Test Logs</h2>
+            <div class="log-area" id="logArea">
+                <div class="log-info">Stream URL Tester Ready</div>
+                <div class="log-info">Enter a URL and click "Test Stream" to begin</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Video.js Library -->
+    <script src="https://vjs.zencdn.net/7.20.3/video.min.js"></script>
+    <!-- Video.js HTTP Streaming (HLS) -->
+    <script src="https://unpkg.com/@videojs/http-streaming@3.0.2/dist/videojs-http-streaming.min.js"></script>
+
+    <script>
+        // Global variables
+        let playerInstance = null;
+        let currentStreamUrl = '';
+        let testSessionId = Date.now();
+
+        // Logging function
+        function log(message, type = 'info') {
+            const logArea = document.getElementById('logArea');
+            const timestamp = new Date().toLocaleTimeString();
+            const logEntry = document.createElement('div');
+            logEntry.className = `log-entry log-${type}`;
+            logEntry.textContent = `[${timestamp}] ${message}`;
+            logArea.appendChild(logEntry);
+            logArea.scrollTop = logArea.scrollHeight;
+        }
+
+        // Update status display
+        function updateStatus(status, type = 'info') {
+            document.getElementById('streamStatus').textContent = status;
+            document.getElementById('streamStatus').className = `info-value log-${type}`;
+        }
+
+        // Update stream type display
+        function updateStreamType(url) {
+            let type = 'Unknown';
+            if (url.includes('.m3u8')) type = 'HLS Stream';
+            else if (url.includes('youtube.com') || url.includes('youtu.be')) type = 'YouTube';
+            else if (url.includes('.mp4') || url.includes('.mkv')) type = 'MP4 Video';
+            else if (url.includes('.m3u')) type = 'M3U Playlist';
+            
+            document.getElementById('streamType').textContent = type;
+            document.getElementById('currentUrl').textContent = url;
+        }
+
+        // Cleanup previous player
+        function cleanupPlayer() {
+            if (playerInstance) {
+                try {
+                    playerInstance.pause();
+                    playerInstance.dispose();
+                    playerInstance = null;
+                } catch (e) {
+                    console.warn('Error during player cleanup:', e);
+                }
+            }
+            
+            const playerContainer = document.getElementById('playerContainer');
+            const placeholder = document.getElementById('playerPlaceholder');
+            
+            // Clear container and show placeholder
+            playerContainer.innerHTML = '';
+            const newPlaceholder = document.createElement('div');
+            newPlaceholder.id = 'playerPlaceholder';
+            newPlaceholder.style.cssText = 'display: flex; align-items: center; justify-content: center; height: 100%; color: #666; font-size: 18px;';
+            newPlaceholder.textContent = '🎬 Stream will appear here';
+            playerContainer.appendChild(newPlaceholder);
+        }
+
+        // Extract YouTube ID
+        function extractYouTubeID(url) {
+            const match = url.match(/(?:youtube\.com\/(?:.*v=|live\/|embed\/)|youtu\.be\/)([^&?/]+)/i);
+            return match ? match[1] : null;
+        }
+
+        // Test stream with native video element
+        function testStream() {
+            const url = document.getElementById('streamUrl').value.trim();
+            const name = document.getElementById('streamName').value.trim() || 'Test Stream';
+            
+            if (!url) {
+                alert('Please enter a stream URL');
+                return;
+            }
+
+            testSessionId = Date.now();
+            currentStreamUrl = url;
+            
+            log(`Starting test for: ${url}`, 'info');
+            updateStatus('Testing stream...', 'info');
+            updateStreamType(url);
+
+            cleanupPlayer();
+
+            // Use native HTML5 video for quick testing
+            const playerContainer = document.getElementById('playerContainer');
+            playerContainer.innerHTML = '';
+
+            const videoEl = document.createElement('video');
+            videoEl.id = 'nativeTestPlayer';
+            videoEl.className = 'native-video-player';
+            videoEl.controls = true;
+            videoEl.autoplay = true;
+            videoEl.playsInline = true;
+
+            const sourceEl = document.createElement('source');
+            sourceEl.src = url;
+            
+            // Set appropriate MIME type
+            if (url.includes('.m3u8')) {
+                sourceEl.type = 'application/x-mpegURL';
+            } else if (url.includes('.mp4')) {
+                sourceEl.type = 'video/mp4';
+            } else {
+                sourceEl.type = 'video/mp4'; // Default
+            }
+
+            videoEl.appendChild(sourceEl);
+            playerContainer.appendChild(videoEl);
+
+            // Event listeners for native video
+            videoEl.addEventListener('loadstart', () => {
+                log('Native player: Load started', 'info');
+                updateStatus('Loading...', 'info');
+            });
+
+            videoEl.addEventListener('loadeddata', () => {
+                log('Native player: Data loaded successfully', 'success');
+                updateStatus('Loaded - Playing', 'success');
+                document.getElementById('techStatus').textContent = 'HTML5 Native';
+                document.getElementById('healthStatus').textContent = 'Good';
+            });
+
+            videoEl.addEventListener('canplay', () => {
+                log('Native player: Stream can play', 'success');
+                videoEl.play().catch(e => {
+                    log(`Native player autoplay blocked: ${e.message}`, 'info');
+                    updateStatus('Loaded - Click to play', 'info');
+                });
+            });
+
+            videoEl.addEventListener('error', (e) => {
+                log(`Native player error: ${getVideoErrorText(videoEl.error)}`, 'error');
+                updateStatus('Error loading stream', 'error');
+                document.getElementById('healthStatus').textContent = 'Error';
+                
+                // Try with Video.js as fallback
+                setTimeout(() => {
+                    log('Attempting fallback with Video.js...', 'info');
+                    testWithVideoJS();
+                }, 2000);
+            });
+
+            videoEl.addEventListener('waiting', () => {
+                log('Native player: Buffering...', 'info');
+                updateStatus('Buffering...', 'info');
+            });
+
+            videoEl.addEventListener('playing', () => {
+                log('Native player: Stream is playing', 'success');
+                updateStatus('Playing', 'success');
+            });
+        }
+
+        // Test with Video.js
+        function testWithVideoJS() {
+            const url = document.getElementById('streamUrl').value.trim();
+            const name = document.getElementById('streamName').value.trim() || 'Test Stream';
+            
+            if (!url) {
+                alert('Please enter a stream URL');
+                return;
+            }
+
+            testSessionId = Date.now();
+            currentStreamUrl = url;
+            
+            log(`Testing with Video.js: ${url}`, 'info');
+            updateStatus('Initializing Video.js...', 'info');
+            updateStreamType(url);
+
+            cleanupPlayer();
+
+            const playerContainer = document.getElementById('playerContainer');
+            playerContainer.innerHTML = '';
+
+            const videoEl = document.createElement('video-js');
+            videoEl.id = 'videojsTestPlayer';
+            videoEl.className = 'video-js vjs-default-skin vjs-fluid';
+            videoEl.setAttribute('controls', 'true');
+            videoEl.setAttribute('preload', 'auto');
+            playerContainer.appendChild(videoEl);
+
+            const isYouTube = extractYouTubeID(url);
+            const isHLS = url.includes('.m3u8');
+            const isMP4 = url.includes('.mp4') || url.includes('.mkv');
+
+            let playerOptions = {
+                autoplay: true,
+                controls: true,
+                preload: 'auto',
+                fluid: true,
+                liveui: true,
+                responsive: true,
+                html5: {
+                    vhs: {
+                        overrideNative: true,
+                        enableLowInitialPlaylist: true,
+                        smoothQualityChange: true
+                    },
+                    nativeAudioTracks: false,
+                    nativeVideoTracks: false
+                }
+            };
+
+            // Configure based on stream type
+            if (isYouTube) {
+                playerOptions.techOrder = ['youtube'];
+                playerOptions.sources = [{
+                    src: url,
+                    type: 'video/youtube'
+                }];
+                playerOptions.youtube = {
+                    ytControls: true,
+                    playerVars: {
+                        autoplay: 1,
+                        playsinline: 1,
+                        controls: 1,
+                        mute: 1,
+                        rel: 0,
+                        modestbranding: 1
+                    }
+                };
+            } else if (isHLS) {
+                playerOptions.techOrder = ['html5'];
+                playerOptions.sources = [{
+                    src: url,
+                    type: 'application/x-mpegURL',
+                    withCredentials: false
+                }];
+            } else if (isMP4) {
+                playerOptions.techOrder = ['html5'];
+                playerOptions.sources = [{
+                    src: url,
+                    type: 'video/mp4'
+                }];
+            } else {
+                playerOptions.techOrder = ['html5'];
+                playerOptions.sources = [{
+                    src: url,
+                    type: 'application/x-mpegURL'
+                }];
+            }
+
+            // Initialize Video.js player
+            playerInstance = videojs('videojsTestPlayer', playerOptions);
+
+            playerInstance.ready(() => {
+                log('Video.js player ready', 'success');
+                updateStatus('Video.js ready - Playing', 'info');
+                document.getElementById('techStatus').textContent = 'Video.js';
+
+                playerInstance.play().catch((e) => {
+                    log(`Video.js autoplay blocked: ${e.message}`, 'info');
+                    updateStatus('Ready - Click to play', 'info');
+                });
+            });
+
+            playerInstance.on('loadstart', () => {
+                log('Video.js: Load started', 'info');
+                updateStatus('Loading stream...', 'info');
+            });
+
+            playerInstance.on('loadeddata', () => {
+                log('Video.js: Data loaded successfully', 'success');
+                updateStatus('Loaded - Playing', 'success');
+                document.getElementById('healthStatus').textContent = 'Good';
+            });
+
+            playerInstance.on('error', (e) => {
+                const error = playerInstance.error();
+                log(`Video.js error: ${getVideoJSErrorText(error)}`, 'error');
+                updateStatus('Video.js Error', 'error');
+                document.getElementById('healthStatus').textContent = 'Error';
+
+                // Try CORS proxy for HLS streams
+                if (isHLS && error.code === 4) {
+                    log('Attempting CORS proxy fallback...', 'info');
+                    attemptCorsProxy(url);
+                }
+            });
+
+            playerInstance.on('waiting', () => {
+                log('Video.js: Buffering...', 'info');
+                updateStatus('Buffering...', 'info');
+            });
+
+            playerInstance.on('playing', () => {
+                log('Video.js: Stream is playing', 'success');
+                updateStatus('Playing', 'success');
+                document.getElementById('healthStatus').textContent = 'Excellent';
+            });
+        }
+
+        // CORS proxy fallback
+        function attemptCorsProxy(url) {
+            const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(url)}`;
+            log(`Trying CORS proxy: ${proxyUrl}`, 'info');
+            
+            if (playerInstance) {
+                playerInstance.src({
+                    src: proxyUrl,
+                    type: 'application/x-mpegURL'
+                });
+                playerInstance.play().catch(e => {
+                    log(`CORS proxy also failed: ${e.message}`, 'error');
+                });
+            }
+        }
+
+        // Error text helpers
+        function getVideoErrorText(error) {
+            if (!error) return 'Unknown error';
+            switch(error.code) {
+                case 1: return 'MEDIA_ERR_ABORTED - Fetching process aborted';
+                case 2: return 'MEDIA_ERR_NETWORK - Network error';
+                case 3: return 'MEDIA_ERR_DECODE - Decoding error';
+                case 4: return 'MEDIA_ERR_SRC_NOT_SUPPORTED - Format not supported';
+                default: return `Error code: ${error.code}`;
+            }
+        }
+
+        function getVideoJSErrorText(error) {
+            if (!error) return 'Unknown error';
+            switch(error.code) {
+                case 1: return 'Aborted - The fetching process was aborted';
+                case 2: return 'Network - A network error occurred';
+                case 3: return 'Decode - Decoding error occurred';
+                case 4: return 'SRC_NOT_SUPPORTED - Source not supported';
+                case 5: return 'ENCRYPTED - Encrypted media error';
+                default: return `Error code: ${error.code} - ${error.message}`;
+            }
+        }
+
+        // Preset URLs
+        const presetUrls = {
+            hls1: {
+                url: 'http://live.geoiptv.org:8880/live/1ea16dc9/8ce52cc5/404384.m3u8',
+                name: 'Geo IPTV Test Stream'
+            },
+            hls2: {
+                url: 'https://devstreaming-cdn.apple.com/videos/streaming/examples/img_bipbop_adv_example_ts/master.m3u8',
+                name: 'Apple HLS Sample'
+            },
+            youtube: {
+                url: 'https://www.youtube.com/watch?v=jNQXAC9IVRw',
+                name: 'YouTube Test Video'
+            },
+            mp4: {
+                url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4',
+                name: 'MP4 Sample Video'
+            }
+        };
+
+        function loadPreset(presetKey) {
+            const preset = presetUrls[presetKey];
+            if (preset) {
+                document.getElementById('streamUrl').value = preset.url;
+                document.getElementById('streamName').value = preset.name;
+                log(`Loaded preset: ${preset.name}`, 'success');
+            }
+        }
+
+        // Clear logs
+        function clearLogs() {
+            document.getElementById('logArea').innerHTML = '';
+            log('Logs cleared', 'info');
+        }
+
+        // Keyboard shortcuts
+        document.addEventListener('keydown', (e) => {
+            if (e.ctrlKey || e.metaKey) {
+                switch(e.key) {
+                    case 'k':
+                        e.preventDefault();
+                        clearLogs();
+                        break;
+                    case 'Enter':
+                        e.preventDefault();
+                        testStream();
+                        break;
+                }
+            }
+        });
+
+        // Initialize
+        log('Stream URL Tester initialized', 'success');
+        log('Press Ctrl+Enter to test stream, Ctrl+K to clear logs', 'info');
+    </script>
+</body>
+</html>
