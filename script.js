@@ -2649,97 +2649,48 @@ document.addEventListener("visibilitychange", function () {
   }
 });
 
-// Add to initialize()
-/**
- * Sets up Progressive Web App features (Service Worker registration and prompt).
- * Skips registration on localhost to allow seamless live reloading.
- */
+// Add an element to your HTML, e.g., <button id="installButton" hidden>Install App</button>
+
 function setupPWA() {
-  const isLocalHost = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+  // ... (existing code for isLocalHost and basePath) ...
+  
+  // 3. Add to homescreen prompt logic
+  let deferredPrompt;
+  const installButton = document.getElementById('installButton'); // Get your install button
 
-  // Skip Service Worker registration during local development 
-  if (isLocalHost) {
-    console.warn("⚠️ Service Worker skipped for local development.");
-    return;
-  } else {
-
-    // 1. Determine the Base Path (Needed for GitHub Project Pages like /LiveTV/)
-    let basePath = '/';
-
-    // Check if we are on a GitHub Pages hostname
-    if (location.hostname.endsWith('github.io')) {
-      // If the path is not just '/', it means we are in a sub-directory (a Project Page)
-      if (location.pathname !== '/') {
-        // Extracts the project name (e.g., from /LiveTV/index.html to /LiveTV/)
-        const pathParts = location.pathname.split('/');
-        // The project name is typically at index 1
-        if (pathParts.length > 1 && pathParts[1].length > 0) {
-          basePath = '/' + pathParts[1] + '/';
-        }
-      }
+  window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    deferredPrompt = e;
+    console.log('✨ Before Install Prompt deferred. Ready to show UI.');
+    
+    // **Show your custom install button now**
+    if (installButton) {
+      installButton.hidden = false;
     }
+  });
 
-    // 2. Service Worker registration
-    if ('serviceWorker' in navigator) {
-      const swPath = basePath + 'sw.js';
-
-      // The correct registration path is now dynamic (e.g., /LiveTV/sw.js)
-      navigator.serviceWorker.register(swPath)
-        .then(registration => {
-          // Corrected emojis for success
-          console.log(`✅ SW registered successfully with scope: ${registration.scope}`);
-        })
-        .catch(error => {
-          // Corrected emojis for failure
-          console.error('❌ SW registration failed:', error);
-        });
-    }
-
-    // 3. Add to homescreen prompt logic
-    let deferredPrompt;
-    window.addEventListener('beforeinstallprompt', (e) => {
-      e.preventDefault();
-      deferredPrompt = e;
-      console.log('✨ Before Install Prompt deferred. Ready to show UI.');
-    });
-  }
-}
-
-let deferredPrompt;
-
-window.addEventListener('beforeinstallprompt', (e) => {
-  // Prevent the default browser prompt
-  e.preventDefault();
-  // Store the event for later use
-  deferredPrompt = e;
-  // Optionally, show your own custom UI to invite the user to install
-  // For example, display a button or banner
-  showInstallButton(); 
-});
-
-function showInstallButton() {
-  // ... code to make a custom install button visible ...
-  const installButton = document.getElementById('install-pwa-button');
+  // **Event listener for your custom install button**
   if (installButton) {
     installButton.addEventListener('click', () => {
-      // Show the browser's install prompt
       if (deferredPrompt) {
-        deferredPrompt.prompt();
+        // **This is the key line to show the banner**
+        deferredPrompt.prompt(); 
+        
         // Wait for the user to respond to the prompt
         deferredPrompt.userChoice.then((choiceResult) => {
           if (choiceResult.outcome === 'accepted') {
-            console.log('User accepted the PWA prompt');
+            console.log('User accepted the A2HS prompt');
           } else {
-            console.log('User dismissed the PWA prompt');
+            console.log('User dismissed the A2HS prompt');
           }
-          // Reset the deferredPrompt after it's been used
+          // The prompt is no longer deferred, hide the button
           deferredPrompt = null;
+          installButton.hidden = true;
         });
       }
     });
   }
 }
-
 
 
 function fixImageUrl(imageUrl) {
