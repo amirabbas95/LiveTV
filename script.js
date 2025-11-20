@@ -841,6 +841,15 @@ function createStreamConfig(url) {
     };
   }
 
+    // 2. Fix mixed content: proxy HTTP URLs on HTTPS sites
+  if (window.location.protocol === 'https:' && url.startsWith('http://')) {
+    console.log(`⚠️ HTTP stream detected on HTTPS site, using proxy for: ${url}`);
+    url = `https://cors-anywhere.herokuapp.com/${url}`;
+    // Alternative proxies if the above doesn't work:
+    // url = `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`;
+    // url = `https://corsproxy.io/?${encodeURIComponent(url)}`;
+  }
+
   // 2. NEW CONDITION: Check for 'imarkaz' link and force MP4 type
   if (url.includes('imarkaz')) {
     //console.log(`Detected 'imarkaz' link for URL: ${url}. Forcing stream type to MP4.`);
