@@ -2705,6 +2705,41 @@ function setupPWA() {
   }
 }
 
+let deferredPrompt;
+
+window.addEventListener('beforeinstallprompt', (e) => {
+  // Prevent the default browser prompt
+  e.preventDefault();
+  // Store the event for later use
+  deferredPrompt = e;
+  // Optionally, show your own custom UI to invite the user to install
+  // For example, display a button or banner
+  showInstallButton(); 
+});
+
+function showInstallButton() {
+  // ... code to make a custom install button visible ...
+  const installButton = document.getElementById('install-pwa-button');
+  if (installButton) {
+    installButton.addEventListener('click', () => {
+      // Show the browser's install prompt
+      if (deferredPrompt) {
+        deferredPrompt.prompt();
+        // Wait for the user to respond to the prompt
+        deferredPrompt.userChoice.then((choiceResult) => {
+          if (choiceResult.outcome === 'accepted') {
+            console.log('User accepted the PWA prompt');
+          } else {
+            console.log('User dismissed the PWA prompt');
+          }
+          // Reset the deferredPrompt after it's been used
+          deferredPrompt = null;
+        });
+      }
+    });
+  }
+}
+
 
 
 function fixImageUrl(imageUrl) {
