@@ -805,6 +805,19 @@ function createStreamConfig(url) {
     };
   }
 
+    // 3. NEW: Force HTTPS for all streams to avoid mixed content
+  let processedUrl = url;
+  if (processedUrl.startsWith('http://')) {
+    processedUrl = processedUrl.replace('http://', 'https://');
+    console.log(`🔒 Forced HTTPS for stream: ${processedUrl}`);
+  }
+
+  // 4. Use CORS proxy as fallback for problematic HTTPS streams
+  if (processedUrl.includes('live.geoiptv.org') || processedUrl.includes('.m3u8')) {
+    processedUrl = `https://corsproxy.io/?${encodeURIComponent(processedUrl)}`;
+    console.log(`🔧 Using CORS proxy for HLS stream: ${processedUrl}`);
+  }
+
   // 3. Fallback to file extension check
   const ext = url.split('?')[0].split('.').pop().toLowerCase();
 
