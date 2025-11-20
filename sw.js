@@ -85,3 +85,17 @@ self.addEventListener('fetch', (event) => {
             })
     );
 });
+
+
+// In your sw.js (service worker)
+self.addEventListener('fetch', (event) => {
+  if (event.request.url.includes('.m3u8') || event.request.url.includes('live.geoiptv.org')) {
+    event.respondWith(
+      fetch(event.request.url.replace('http://', 'https://'))
+        .catch(() => {
+          // Fallback to CORS proxy
+          return fetch(`https://api.allorigins.win/raw?url=${encodeURIComponent(event.request.url)}`);
+        })
+    );
+  }
+});
