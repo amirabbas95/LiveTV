@@ -899,10 +899,15 @@ function buildPlayerOptions(streamConfig, metadata) {
     sources: [streamConfig.source],
     playbackRates: [0.5, 1, 1.25, 1.5, 2],
     loadingSpinner: true,
-    // Add this to suppress automatic error display
-    errorDisplay: false
+    errorDisplay: false, // Suppress automatic error display
+    // Additional recommended options
+    html5: {
+      nativeTextTracks: false,
+      preloadTextTracks: false
+    }
   };
 
+  // YouTube-specific configuration
   if (streamConfig.type === 'youtube') {
     baseOptions.youtube = {
       ytControls: true,
@@ -913,40 +918,51 @@ function buildPlayerOptions(streamConfig, metadata) {
         mute: 0,
         rel: 0,
         modestbranding: 1,
-        iv_load_policy: 3
+        iv_load_policy: 3,
+        enablejsapi: 1, // Enable JS API for better control
+        origin: window.location.origin // Security improvement
       }
     };
   }
 
+  // HLS-specific configuration
   if (streamConfig.type === 'hls') {
     baseOptions.html5 = {
       vhs: {
         overrideNative: true,
         enableLowInitialPlaylist: true,
         smoothQualityChange: true,
-        bandwidth: 4194304,
-        // CRITICAL FIXES for Geo IPTV streams:
+        bandwidth: 4194304, // 4 Mbps initial bandwidth estimate
         withCredentials: false,
-        limitRenditionByPlayerDimensions: false, // Changed from true
-        useDevicePixelRatio: false, // Changed from true
-        useNetworkInformationApi: false, // Changed from true
-        maxPlaylistRetries: 10, // Increased from 5
+        limitRenditionByPlayerDimensions: false,
+        useDevicePixelRatio: false,
+        useNetworkInformationApi: false,
+        maxPlaylistRetries: 5,
         experimentalBufferBasedABR: false,
         experimentalLLHLS: false,
         handleManifestRedirects: true,
         useBandwidthFromLocalStorage: false,
-        // NEW: Add timeout settings
-        timeout: 45000, // 45 seconds timeout
-        // NEW: Enable playlist refresh
+        timeout: 45000,
         enablePlaylistRefresh: true,
-        playlistRefreshInterval: 30000 // 30 seconds
+        playlistRefreshInterval: 30000,
+        // Additional HLS optimizations
+        maxBufferLength: 30,
+        maxBufferSize: 60 * 1024 * 1024, // 60MB buffer
+        bufferBehind: 30
       },
       nativeAudioTracks: false,
       nativeVideoTracks: false
     };
+  }
 
-    // Add error recovery handler
-    baseOptions.errorDisplay = false;
+  // Add DASH support if needed
+  if (streamConfig.type === 'dash') {
+    baseOptions.html5 = baseOptions.html5 || {};
+    baseOptions.html5.vhs = {
+      ...baseOptions.html5.vhs,
+      overrideNative: true,
+      withCredentials: false
+    };
   }
 
   return baseOptions;
@@ -1062,7 +1078,7 @@ function stopWatching() {
 
   saveCurrentWatchTime();
 
-  console.log(`⏸️ Stopped watching: ${currentChannelId}`);
+  //console.log(`⏸️ Stopped watching: ${currentChannelId}`);
   currentChannelId = "";
   watchStartTime = 0;
 }
@@ -2649,48 +2665,63 @@ document.addEventListener("visibilitychange", function () {
   }
 });
 
-// Add an element to your HTML, e.g., <button id="installButton" hidden>Install App</button>
-
+// Add to initialize()
+/**
+ * Sets up Progressive Web App features (Service Worker registration and prompt).
+ * Skips registration on localhost to allow seamless live reloading.
+ */
 function setupPWA() {
-  // ... (existing code for isLocalHost and basePath) ...
-  
-  // 3. Add to homescreen prompt logic
-  let deferredPrompt;
-  const installButton = document.getElementById('installButton'); // Get your install button
+  const isLocalHost = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
 
-  window.addEventListener('beforeinstallprompt', (e) => {
-    e.preventDefault();
-    deferredPrompt = e;
-    console.log('✨ Before Install Prompt deferred. Ready to show UI.');
-    
-    // **Show your custom install button now**
-    if (installButton) {
-      installButton.hidden = false;
-    }
-  });
+  // Skip Service Worker registration during local development 
+  if (isLocalHost) {
+    console.warn("⚠️ Service Worker skipped for local development.");
+    return;
+  } else {
 
-  // **Event listener for your custom install button**
-  if (installButton) {
-    installButton.addEventListener('click', () => {
-      if (deferredPrompt) {
-        // **This is the key line to show the banner**
-        deferredPrompt.prompt(); 
-        
-        // Wait for the user to respond to the prompt
-        deferredPrompt.userChoice.then((choiceResult) => {
-          if (choiceResult.outcome === 'accepted') {
-            console.log('User accepted the A2HS prompt');
-          } else {
-            console.log('User dismissed the A2HS prompt');
-          }
-          // The prompt is no longer deferred, hide the button
-          deferredPrompt = null;
-          installButton.hidden = true;
-        });
+    // 1. Determine the Base Path (Needed for GitHub Project Pages like /LiveTV/)
+    let basePath = '/';
+
+    // Check if we are on a GitHub Pages hostname
+    if (location.hostname.endsWith('github.io')) {
+      // If the path is not just '/', it means we are in a sub-directory (a Project Page)
+      if (location.pathname !== '/') {
+        // Extracts the project name (e.g., from /LiveTV/index.html to /LiveTV/)
+        const pathParts = location.pathname.split('/');
+        // The project name is typically at index 1
+        if (pathParts.length > 1 && pathParts[1].length > 0) {
+          basePath = '/' + pathParts[1] + '/';
+        }
       }
+    }
+
+    // 2. Service Worker registration
+    if ('serviceWorker' in navigator) {
+      const swPath = basePath + 'sw.js';
+
+      // The correct registration path is now dynamic (e.g., /LiveTV/sw.js)
+      navigator.serviceWorker.register(swPath)
+        .then(registration => {
+          // Corrected emojis for success
+          console.log(`✅ SW registered successfully with scope: ${registration.scope}`);
+        })
+        .catch(error => {
+          // Corrected emojis for failure
+          console.error('❌ SW registration failed:', error);
+        });
+    }
+
+    // 3. Add to homescreen prompt logic
+    let deferredPrompt;
+    window.addEventListener('beforeinstallprompt', (e) => {
+      e.preventDefault();
+      deferredPrompt = e;
+      console.log('✨ Before Install Prompt deferred. Ready to show UI.');
     });
   }
 }
+
+
 
 
 function fixImageUrl(imageUrl) {
