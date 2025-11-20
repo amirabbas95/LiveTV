@@ -852,8 +852,9 @@ function buildPlayerOptions(streamConfig, metadata) {
     techOrder: streamConfig.techOrder,
     sources: [streamConfig.source],
     playbackRates: [0.5, 1, 1.25, 1.5, 2],
-    // Custom loading spinner
     loadingSpinner: true,
+    // Add this to suppress automatic error display
+    errorDisplay: false
   };
 
   if (streamConfig.type === 'youtube') {
@@ -878,16 +879,21 @@ function buildPlayerOptions(streamConfig, metadata) {
         enableLowInitialPlaylist: true,
         smoothQualityChange: true,
         bandwidth: 4194304,
+        // CRITICAL FIXES for Geo IPTV streams:
         withCredentials: false,
-        limitRenditionByPlayerDimensions: true,
-        useDevicePixelRatio: true,
-        useNetworkInformationApi: true,
-        maxPlaylistRetries: 5,
+        limitRenditionByPlayerDimensions: false, // Changed from true
+        useDevicePixelRatio: false, // Changed from true
+        useNetworkInformationApi: false, // Changed from true
+        maxPlaylistRetries: 10, // Increased from 5
         experimentalBufferBasedABR: false,
         experimentalLLHLS: false,
-        // Add error recovery options
         handleManifestRedirects: true,
         useBandwidthFromLocalStorage: false,
+        // NEW: Add timeout settings
+        timeout: 45000, // 45 seconds timeout
+        // NEW: Enable playlist refresh
+        enablePlaylistRefresh: true,
+        playlistRefreshInterval: 30000 // 30 seconds
       },
       nativeAudioTracks: false,
       nativeVideoTracks: false
@@ -1121,7 +1127,7 @@ function createChannelItem(channel) {
   item.setAttribute("aria-label", `Select channel ${channel.name}`);
   item.setAttribute("tabindex", "0");
 
-    // Add live indicator ARIA
+  // Add live indicator ARIA
   if (channel.isLive) {
     item.setAttribute("aria-live", "polite");
   }
@@ -1221,7 +1227,7 @@ function cleanupChannelItems() {
       favoriteIcon.removeEventListener("click", item._favoriteHandler);
       delete item._favoriteHandler;
     }
-// Remove from DOM if not connected
+    // Remove from DOM if not connected
     if (!item.isConnected) {
       item.remove();
     }
@@ -1545,19 +1551,19 @@ function getGridColumns() {
 
 document.addEventListener("keydown", (e) => {
   const searchInput = document.getElementById('channelSearch');
-  
+
   // 🎯 NEW CONDITION: Check if the currently focused element is the search bar
   // If the user is focused on the search bar, do nothing and return.
   if (searchInput && document.activeElement === searchInput) {
     return;
   }
-  
+
   // Also check if any other input or textarea is focused to prevent accidental triggers
   const focusedTag = document.activeElement.tagName.toLowerCase();
   if (focusedTag === 'input' || focusedTag === 'textarea') {
-      return;
+    return;
   }
-  
+
   if (e.key >= "0" && e.key <= "9") {
     numberBuffer += e.key;
 
@@ -1765,7 +1771,7 @@ function processRSSData(data, feed) {
   const channelObj = youtubeItemToChannel(videoId, latestValid.title, feed);
   updateOrAddChannel(channelObj);
 
-console.log(`✅ ${feed.name} Successfully updated`);
+  console.log(`✅ ${feed.name} Successfully updated`);
 }
 
 async function loadYouTubeLatestFeeds() {
@@ -1796,7 +1802,7 @@ async function loadYouTubeLatestFeeds() {
       const cached = rssCache.get(cacheKey);
 
       if (cached && Date.now() - cached.timestamp < CACHE_DURATION) {
-      console.log(`📦 Using cached data for ${feed.name}`);
+        console.log(`📦 Using cached data for ${feed.name}`);
         processRSSData(cached.data, feed);
         continue;
       }
@@ -1817,7 +1823,7 @@ async function loadYouTubeLatestFeeds() {
 
       processRSSData(data, feed);
     } catch (e) {
-    console.log(`❌ Error loading RSS feed for ${feed.name}: ${e.message}`, true);
+      console.log(`❌ Error loading RSS feed for ${feed.name}: ${e.message}`, true);
     }
   }
 }
@@ -1862,7 +1868,7 @@ async function loadYouTubeLiveFeeds() {
       }
 
       if (apiQuotaExceeded) {
-      console.log(`⏸️ Skipping ${feed.name} - API quota exceeded`);
+        console.log(`⏸️ Skipping ${feed.name} - API quota exceeded`);
         failedUpdates++;
         continue;
       }
@@ -1877,7 +1883,7 @@ async function loadYouTubeLiveFeeds() {
       const cached = liveCache.get(cacheKey);
 
       if (cached && Date.now() - cached.timestamp < CACHE_DURATION) {
-      console.log(`📦 Using cached live data for ${feed.name}`);
+        console.log(`📦 Using cached live data for ${feed.name}`);
         cacheHits++;
 
         if (cached.data && cached.data.videoId) {
@@ -1894,11 +1900,11 @@ async function loadYouTubeLiveFeeds() {
       if (!res.ok) {
         if (res.status === 403) {
           apiQuotaExceeded = true;
-        console.log("🚫 YouTube API quota exceeded. Stopping live stream updates.");
+          console.log("🚫 YouTube API quota exceeded. Stopping live stream updates.");
           failedUpdates++;
           continue;
         } else if (res.status === 404) {
-        console.log(`❌ Channel not found for ${feed.name}`);
+          console.log(`❌ Channel not found for ${feed.name}`);
           failedUpdates++;
           continue;
         }
@@ -1910,7 +1916,7 @@ async function loadYouTubeLiveFeeds() {
       if (data.error) {
         if (data.error.code === 403) {
           apiQuotaExceeded = true;
-        console.log("🚫 YouTube API quota exceeded (in response). Stopping live stream updates.");
+          console.log("🚫 YouTube API quota exceeded (in response). Stopping live stream updates.");
           failedUpdates++;
           continue;
         }
@@ -1930,9 +1936,9 @@ async function loadYouTubeLiveFeeds() {
         updateOrAddChannel(channelObj);
         successfulUpdates++;
 
-      console.log(`✅ ${feed.name} Successfully updated`);
+        console.log(`✅ ${feed.name} Successfully updated`);
       } else {
-      console.log(`ℹ️ No live stream found for ${feed.name}`);
+        console.log(`ℹ️ No live stream found for ${feed.name}`);
         cacheData = null;
       }
 
@@ -1944,14 +1950,14 @@ async function loadYouTubeLiveFeeds() {
       failedUpdates++;
       if (e.message.includes("quota exceeded") || e.message.includes("403")) {
         apiQuotaExceeded = true;
-      console.log("🚫 YouTube API quota exceeded. Stopping live stream updates.");
+        console.log("🚫 YouTube API quota exceeded. Stopping live stream updates.");
       } else {
-      console.log(`❌ Error loading live feed for ${feed.name}: ${e.message}`, true);
+        console.log(`❌ Error loading live feed for ${feed.name}: ${e.message}`, true);
       }
     }
   }
 
-console.log(`Live streams update completed: ${successfulUpdates} successful, ${failedUpdates} failed, ${cacheHits} cache hits`);
+  console.log(`Live streams update completed: ${successfulUpdates} successful, ${failedUpdates} failed, ${cacheHits} cache hits`);
 
   if (successfulUpdates === 0 && failedUpdates > 0 && apiQuotaExceeded) {
     throw new Error("YouTube API quota exceeded - no live streams updated");
@@ -1959,32 +1965,32 @@ console.log(`Live streams update completed: ${successfulUpdates} successful, ${f
 }
 
 async function loadAllChannelFeeds() {
-console.log("Starting full channel update (RSS and Live API)...");
+  console.log("Starting full channel update (RSS and Live API)...");
 
   try {
-  console.log("1/2: Loading latest uploads from RSS...");
+    console.log("1/2: Loading latest uploads from RSS...");
     await loadYouTubeLatestFeeds();
-  console.log("1/2: Latest uploads loaded successfully.");
+    console.log("1/2: Latest uploads loaded successfully.");
 
-  console.log("2/2: Loading live streams (YouTube API)...");
+    console.log("2/2: Loading live streams (YouTube API)...");
     await loadYouTubeLiveFeeds();
-  console.log("2/2: Live streams loaded successfully.");
+    console.log("2/2: Live streams loaded successfully.");
 
-  console.log("Saving updated channel data to localStorage...");
+    console.log("Saving updated channel data to localStorage...");
     localStorage.setItem(STORAGE_KEYS.channels, JSON.stringify(allChannels));
 
-  console.log("Rendering UI and updating components...");
+    console.log("Rendering UI and updating components...");
     renderChannels(allChannels);
     updateFavoriteIcons();
     renderRecentlyWatched();
     updateAllChannelItems();
 
-  console.log("✅ Full channels update COMPLETE.");
+    console.log("✅ Full channels update COMPLETE.");
     return true;
   } catch (e) {
-  console.log(`❌ Critical error during full channel update: ${e.message}`, true);
+    console.log(`❌ Critical error during full channel update: ${e.message}`, true);
 
-  console.log("Updating UI with available data...");
+    console.log("Updating UI with available data...");
     localStorage.setItem(STORAGE_KEYS.channels, JSON.stringify(allChannels));
     renderChannels(allChannels);
     updateFavoriteIcons();
@@ -2023,7 +2029,7 @@ function startChannelAutoUpdate() {
     const shouldUpdate = lastUpdateTimestamp === 0 || timeSinceLastUpdate >= cacheExpiryMs;
 
     if (shouldUpdate) {
-    console.log("Cache has expired. Initiating full data update now.");
+      console.log("Cache has expired. Initiating full data update now.");
 
       try {
         const success = await loadAllChannelFeeds();
@@ -2035,15 +2041,15 @@ function startChannelAutoUpdate() {
           const newLastUpdateDate = new Date(newTimestamp).toLocaleString();
           const newNextUpdateDate = new Date(newTimestamp + cacheExpiryMs).toLocaleString();
 
-        console.log("✅ Channels updated successfully.");
-        console.log(`New Last Update Time: ${newLastUpdateDate}`);
-        console.log(`Next Scheduled Check (Expiry): ${newNextUpdateDate}`);
+          console.log("✅ Channels updated successfully.");
+          console.log(`New Last Update Time: ${newLastUpdateDate}`);
+          console.log(`Next Scheduled Check (Expiry): ${newNextUpdateDate}`);
         } else {
-        console.log("❌ Update failed. Cache timestamp preserved for retry.", true);
+          console.log("❌ Update failed. Cache timestamp preserved for retry.", true);
         }
       } catch (error) {
-      console.log(`❌ Unexpected error during update: ${error.message}`, true);
-      console.log("Cache timestamp preserved for retry.");
+        console.log(`❌ Unexpected error during update: ${error.message}`, true);
+        console.log("Cache timestamp preserved for retry.");
       }
     } else {
       const timeRemaining = cacheExpiryMs - timeSinceLastUpdate;
@@ -2061,7 +2067,7 @@ function startChannelAutoUpdate() {
 
   const initialLastUpdate = parseInt(localStorage.getItem(CACHE_KEY) || "0");
   if (initialLastUpdate === 0) {
-  console.log("Last Update: Never. Starting initial data fetch now.");
+    console.log("Last Update: Never. Starting initial data fetch now.");
   } else {
     const lastUpdateDate = new Date(initialLastUpdate).toLocaleString();
     const nextExpiry = initialLastUpdate + cacheExpiryMs;
@@ -2069,9 +2075,9 @@ function startChannelAutoUpdate() {
     const timeRemaining = nextExpiry - Date.now();
     const minutesRemaining = Math.ceil(timeRemaining / (60 * 1000));
 
-  console.log(`Last Update: ${lastUpdateDate}`);
-  console.log(`Next update available after: ${nextUpdateDate}`);
-  console.log(`Time remaining: ${minutesRemaining} minutes`);
+    console.log(`Last Update: ${lastUpdateDate}`);
+    console.log(`Next update available after: ${nextUpdateDate}`);
+    console.log(`Time remaining: ${minutesRemaining} minutes`);
   }
 
   if (isAutoUpdateEnabled) {
@@ -2128,12 +2134,12 @@ function toggleAutoUpdate(enabled) {
   localStorage.setItem(AUTO_UPDATE_KEY, enabled.toString());
 
   if (enabled) {
-  console.log("✅ Auto-update enabled");
+    console.log("✅ Auto-update enabled");
     showNotification("Auto-update enabled", "success");
     stopAutoUpdateService();
     startChannelAutoUpdate();
   } else {
-  console.log("⏸️ Auto-update disabled");
+    console.log("⏸️ Auto-update disabled");
     showNotification("Auto-update disabled", "info");
   }
 }
@@ -2144,7 +2150,7 @@ function changeUpdateInterval(hours) {
 
   updateIntervalDescriptionText(hours);
 
-console.log(`⏱️ Update interval changed to ${hours} hours`);
+  console.log(`⏱️ Update interval changed to ${hours} hours`);
   showNotification(`Update interval set to ${hours} hours`, "success");
 
   if (isAutoUpdateEnabled) {
@@ -2162,7 +2168,7 @@ async function manualUpdate() {
   manualUpdateBtn.textContent = "Updating...";
 
   try {
-  console.log("🔄 Manual update initiated...");
+    console.log("🔄 Manual update initiated...");
 
     const success = await loadAllChannelFeeds();
 
@@ -2170,16 +2176,16 @@ async function manualUpdate() {
       const newTimestamp = Date.now();
       localStorage.setItem(CACHE_KEY, newTimestamp.toString());
 
-    console.log("✅ Manual update completed successfully");
+      console.log("✅ Manual update completed successfully");
       showNotification("Channels updated successfully!", "success");
 
       updateLastUpdateDisplay();
     } else {
-    console.log("❌ Manual update failed", true);
+      console.log("❌ Manual update failed", true);
       showNotification("Update failed. Please try again.", "error");
     }
   } catch (error) {
-  console.log(`❌ Manual update error: ${error.message}`, true);
+    console.log(`❌ Manual update error: ${error.message}`, true);
     showNotification("Update failed. Check console for details.", "error");
   } finally {
     manualUpdateBtn.disabled = false;
@@ -2336,7 +2342,7 @@ function setupAPIKeyModalEvents() {
       showNotification("✅ API Key saved successfully!", "success");
 
       setTimeout(() => {
-      console.log("🔄 Starting live feeds update with new API key...");
+        console.log("🔄 Starting live feeds update with new API key...");
         loadYouTubeLiveFeeds().catch(console.error);
       }, 1000);
     });
@@ -2349,7 +2355,7 @@ function setupAPIKeyModalEvents() {
     newSkipBtn.addEventListener("click", function () {
       hideAPIKeyModal();
       showNotification("⏭️ Live channels update skipped", "info");
-    console.log("ℹ️ User skipped API key configuration");
+      console.log("ℹ️ User skipped API key configuration");
     });
   }
 
@@ -2426,7 +2432,7 @@ function handleNetworkRestored() {
       player.play()
         .then(() => {
           showNotification("Resuming playback...", "success");
-        console.log("▶️ Resuming playback after network recovery");
+          console.log("▶️ Resuming playback after network recovery");
         })
         .catch((error) => {
           console.warn("❌ Could not auto-resume playback:", error);
@@ -2511,15 +2517,15 @@ async function initialize() {
   if (savedChannels) {
     try {
       allChannels = JSON.parse(savedChannels);
-    console.log(`Successfully loaded ${allChannels.length} channels from localStorage.`);
+      console.log(`Successfully loaded ${allChannels.length} channels from localStorage.`);
     } catch (e) {
-    console.log("Invalid 'allChannelsData' found in localStorage. The data will be ignored.", true);
-    console.log(`Error details: ${e.message}`, true);
+      console.log("Invalid 'allChannelsData' found in localStorage. The data will be ignored.", true);
+      console.log(`Error details: ${e.message}`, true);
       console.warn("Invalid allChannelsData in localStorage, ignoring.", e);
       allChannels = [];
     }
   } else {
-  console.log("No previous 'allChannelsData' found in localStorage. Starting fresh.");
+    console.log("No previous 'allChannelsData' found in localStorage. Starting fresh.");
     allChannels = [];
   }
 
@@ -2600,47 +2606,57 @@ document.addEventListener("visibilitychange", function () {
 // Add to initialize()
 /**
  * Sets up Progressive Web App features (Service Worker registration and prompt).
- * This uses dynamic path logic to correctly register the SW on GitHub Project Pages.
+ * Skips registration on localhost to allow seamless live reloading.
  */
 function setupPWA() {
-  // 1. Determine the Base Path
-  let basePath = '/';
-  
-  // Check if we are on a GitHub Pages hostname
-  if (location.hostname.endsWith('github.io')) {
-    // If the path is not just '/', it means we are in a sub-directory (a Project Page)
-    if (location.pathname !== '/') {
-      // Extracts the project name (e.g., from /LiveTV/index.html to /LiveTV/)
-      const pathParts = location.pathname.split('/');
-      // The project name is typically at index 1
-      if (pathParts.length > 1 && pathParts[1].length > 0) {
-        basePath = '/' + pathParts[1] + '/';
+  const isLocalHost = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+
+  // Skip Service Worker registration during local development 
+  if (isLocalHost) {
+    console.warn("⚠️ Service Worker skipped for local development.");
+    return;
+  } else {
+
+    // 1. Determine the Base Path (Needed for GitHub Project Pages like /LiveTV/)
+    let basePath = '/';
+
+    // Check if we are on a GitHub Pages hostname
+    if (location.hostname.endsWith('github.io')) {
+      // If the path is not just '/', it means we are in a sub-directory (a Project Page)
+      if (location.pathname !== '/') {
+        // Extracts the project name (e.g., from /LiveTV/index.html to /LiveTV/)
+        const pathParts = location.pathname.split('/');
+        // The project name is typically at index 1
+        if (pathParts.length > 1 && pathParts[1].length > 0) {
+          basePath = '/' + pathParts[1] + '/';
+        }
       }
     }
-  }
 
-  // 2. Service Worker registration
-  if ('serviceWorker' in navigator) {
-    const swPath = basePath + 'sw.js';
-    
-    // Example path for your case: /LiveTV/sw.js
-    navigator.serviceWorker.register(swPath)
-      .then(registration => {
-        console.log(`✅ SW registered successfully with scope: ${registration.scope}`);
-      })
-      .catch(error => {
-        console.error('❌ SW registration failed:', error);
-      });
+    // 2. Service Worker registration
+    if ('serviceWorker' in navigator) {
+      const swPath = basePath + 'sw.js';
+
+      // The correct registration path is now dynamic (e.g., /LiveTV/sw.js)
+      navigator.serviceWorker.register(swPath)
+        .then(registration => {
+          // Corrected emojis for success
+          console.log(`✅ SW registered successfully with scope: ${registration.scope}`);
+        })
+        .catch(error => {
+          // Corrected emojis for failure
+          console.error('❌ SW registration failed:', error);
+        });
+    }
+
+    // 3. Add to homescreen prompt logic
+    let deferredPrompt;
+    window.addEventListener('beforeinstallprompt', (e) => {
+      e.preventDefault();
+      deferredPrompt = e;
+      console.log('✨ Before Install Prompt deferred. Ready to show UI.');
+    });
   }
-  
-  // 3. Add to homescreen prompt logic
-  let deferredPrompt;
-  window.addEventListener('beforeinstallprompt', (e) => {
-    e.preventDefault();
-    deferredPrompt = e;
-    console.log('Before Install Prompt deferred.');
-    // You would call a function here to show your custom install button (e.g., showInstallPrompt());
-  });
 }
 
 // ============================================
