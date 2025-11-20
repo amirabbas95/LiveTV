@@ -412,6 +412,7 @@ class ChannelLoader {
       if (error && error.code === 4) {
         console.warn('⚠️ Media source not supported, trying fallback...');
         // Don't show error to user immediately for media errors
+        attemptCorsProxy(this.currentStreamUrl);
         return;
       }
 
@@ -426,13 +427,13 @@ class ChannelLoader {
 
     const waitingHandler = () => {
       if (token.isCancelled()) return;
-      console.log('⏳ Buffering...');
+      console.log('⏱ Buffering...');
     };
 
     const playingHandler = () => {
       if (token.isCancelled()) return;
       startWatching(name);
-      //console.log('▶️ Playing');
+      console.log('▶️ Playing');
     };
 
     const pauseHandler = () => {
@@ -647,6 +648,22 @@ const channelLoader = new ChannelLoader();
 // UTILITY FUNCTIONS
 // ============================================
 
+// CORS proxy fallback
+function attemptCorsProxy(url) {
+  const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(url)}`;
+  log(`Trying CORS proxy: ${proxyUrl}`, 'info');
+
+  if (playerInstance) {
+    playerInstance.src({
+      src: proxyUrl,
+      type: 'application/x-mpegURL'
+    });
+    playerInstance.play().catch(e => {
+      log(`CORS proxy also failed: ${e.message}`, 'error');
+    });
+  }
+}
+
 function extractYouTubeID(url) {
   const match = url.match(
     /(?:youtube\.com\/(?:.*v=|live\/|embed\/)|youtu\.be\/)([^&?/]+)/i
@@ -803,19 +820,6 @@ function createStreamConfig(url) {
       techOrder: ['html5'],
       source: { src: url, type: "video/mp4" } // Force the MIME type to video/mp4
     };
-  }
-
-    // 3. NEW: Force HTTPS for all streams to avoid mixed content
-  let processedUrl = url;
-  if (processedUrl.startsWith('http://')) {
-    processedUrl = processedUrl.replace('http://', 'https://');
-    console.log(`🔒 Forced HTTPS for stream: ${processedUrl}`);
-  }
-
-  // 4. Use CORS proxy as fallback for problematic HTTPS streams
-  if (processedUrl.includes('live.geoiptv.org') || processedUrl.includes('.m3u8')) {
-    processedUrl = `https://corsproxy.io/?${encodeURIComponent(processedUrl)}`;
-    console.log(`🔧 Using CORS proxy for HLS stream: ${processedUrl}`);
   }
 
   // 3. Fallback to file extension check
@@ -1177,14 +1181,6 @@ function createChannelItem(channel) {
   wrapper.className = "thumb-wrapper";
 
   const img = document.createElement("img");
-    // FIX: Replace HTTPS with HTTP for problematic domains
-  let imageUrl = channel.image;
-
-  if (imageUrl) {
-    imageUrl = imageUrl.replace('https://', 'http://');
-  }
-  
-
   img.src = channel.image;
   img.alt = `${channel.name} Logo`;
   img.loading = "lazy";
