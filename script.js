@@ -43,6 +43,10 @@ let isOnline = navigator.onLine;
 let API_KEY = "";
 let isAutoUpdateEnabled = true;
 let updateIntervalHours = 8;
+let touchStartX = 0;
+let touchEndX = 0;
+let touchStartY = 0;
+let touchEndY = 0;
 
 // Search state
 let searchQuery = "";
@@ -462,7 +466,6 @@ updateChannelUI(name, image, description, number) {
     const playingHandler = () => {
       if (token.isCancelled()) return;
       startWatching(name);
-      console.log('▶️ Playing');
     };
 
     const pauseHandler = () => {
@@ -712,8 +715,11 @@ function log(message, isError = false) {
   logArea.scrollTop = logArea.scrollHeight;
 }
 
+// ONLY SHOWING THE FIXED showNotification FUNCTION
+// Replace this function in your existing script.js
+
 function showNotification(message, type = "info") {
-  console.log(`📢 ${type.toUpperCase()}: ${message}`);
+  console.log(`🔔 ${type.toUpperCase()}: ${message}`);
 
   const colors = {
     info: '#2196F3',
@@ -727,8 +733,7 @@ function showNotification(message, type = "info") {
   notification.style.cssText = `
     position: fixed;
     top: 20px;
-    left: 50%;
-    transform: translateX(-50%);
+    left: -350px;
     background: ${colors[type] || colors.info};
     color: white;
     padding: 12px 24px;
@@ -736,40 +741,52 @@ function showNotification(message, type = "info") {
     z-index: 10001;
     font-weight: 500;
     box-shadow: 0 4px 6px rgba(0,0,0,0.3);
-    animation: slideDown 0.3s ease;
+    min-width: 250px;
+    transition: left 0.4s ease, opacity 0.4s ease;
   `;
   notification.textContent = message;
 
   document.body.appendChild(notification);
 
+  // Trigger slide-in animation
+  requestAnimationFrame(() => {
+    notification.style.left = '20px';
+    notification.style.opacity = '1';
+  });
+
+  // Auto-hide after 3 seconds
   setTimeout(() => {
+    notification.style.left = '-350px';
     notification.style.opacity = '0';
-    notification.style.transition = 'opacity 0.3s';
-    setTimeout(() => notification.remove(), 300);
+    
+    setTimeout(() => {
+      if (notification.parentNode) {
+        notification.remove();
+      }
+    }, 400);
   }, 3000);
 }
 
 function showErrorToUser(message) {
   const errorDiv = document.createElement("div");
-  errorDiv.className = "error-notification";
-  errorDiv.textContent = message;
-  errorDiv.style.cssText = `
-    position: fixed;
-    top: 20px;
-    right: 20px;
-    background: #ff4444;
-    color: white;
-    padding: 12px 20px;
-    border-radius: 8px;
-    z-index: 10000;
-    box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+  errorDiv.className = "fixed top-4 right-4 bg-red-600 text-white p-4 rounded-lg shadow-lg z-50 max-w-sm animate-slide-in";
+  errorDiv.innerHTML = `
+    <div class="flex items-start gap-3">
+      <i class="fas fa-exclamation-circle text-2xl"></i>
+      <div>
+        <p class="font-semibold">Error</p>
+        <p class="text-sm">${message}</p>
+      </div>
+      <button onclick="this.parentElement.parentElement.remove()" class="ml-auto">
+        <i class="fas fa-times"></i>
+      </button>
+    </div>
   `;
-
+  
   document.body.appendChild(errorDiv);
-
+  
   setTimeout(() => {
     errorDiv.style.opacity = '0';
-    errorDiv.style.transition = 'opacity 0.3s';
     setTimeout(() => errorDiv.remove(), 300);
   }, 5000);
 }
@@ -794,7 +811,8 @@ function getTimeAgo(timestamp) {
 
 function saveAPIKey(apiKey) {
   if (apiKey && apiKey.trim()) {
-    localStorage.setItem(API_KEY_STORAGE_KEY, btoa(apiKey.trim()));
+    const encrypted = btoa(btoa(apiKey.trim())); // Double encoding
+    localStorage.setItem(API_KEY_STORAGE_KEY, encrypted);
     API_KEY = apiKey.trim();
     return true;
   }
@@ -805,7 +823,7 @@ function getStoredAPIKey() {
   const encoded = localStorage.getItem(API_KEY_STORAGE_KEY);
   if (encoded) {
     try {
-      API_KEY = atob(encoded);
+      API_KEY = atob(atob(encoded));
       return API_KEY;
     } catch (e) {
       console.error("Error decoding API key:", e);
@@ -841,13 +859,30 @@ function createStreamConfig(url) {
     };
   }
 
-  // 2. NEW CONDITION: Check for 'imarkaz' link and force MP4 type
+    // 2. Fix mixed content: Show error for HTTP URLs on HTTPS sites
+  if (window.location.protocol === 'https:' && url.startsWith('http://')) {
+    console.error(`❌ Mixed Content Error: Cannot load HTTP stream on HTTPS page`);
+    console.log(`Stream URL: ${url}`);
+    
+    // Show user-friendly error
+    setTimeout(() => {
+      showErrorToUser('⚠️ This stream uses HTTP and cannot be played on this HTTPS site. Please contact the stream provider for an HTTPS URL.');
+    }, 500);
+    
+    // Return a dummy config that will fail gracefully
+    return {
+      type: 'hls',
+      techOrder: ['html5'],
+      source: { src: '', type: "application/x-mpegURL" }
+    };
+  }
+
+  // 3. Check for 'imarkaz' link and force MP4 type
   if (url.includes('imarkaz')) {
-    //console.log(`Detected 'imarkaz' link for URL: ${url}. Forcing stream type to MP4.`);
     return {
       type: 'mp4',
       techOrder: ['html5'],
-      source: { src: url, type: "video/mp4" } // Force the MIME type to video/mp4
+      source: { src: url, type: "video/mp4" }
     };
   }
 
@@ -2137,6 +2172,7 @@ function startChannelAutoUpdate() {
     const timeRemaining = nextExpiry - Date.now();
     const minutesRemaining = Math.ceil(timeRemaining / (60 * 1000));
 
+
     console.log(`Last Update: ${lastUpdateDate}`);
     console.log(`Next update available after: ${nextUpdateDate}`);
     console.log(`Time remaining: ${minutesRemaining} minutes`);
@@ -2493,8 +2529,8 @@ function handleNetworkRestored() {
     setTimeout(() => {
       player.play()
         .then(() => {
-          showNotification("Resuming playback...", "success");
-          console.log("▶️ Resuming playback after network recovery");
+          showNotification("▶️ Resuming playback...", "success");
+          //console.log("▶️ Resuming playback after network recovery");
         })
         .catch((error) => {
           console.warn("❌ Could not auto-resume playback:", error);
@@ -2572,6 +2608,7 @@ async function initialize() {
   setupNetworkMonitoring();
   setupSettingsModal();
   setupSearchBar();
+  setupTouchGestures();
   setupPWA();
 
   let savedChannels = localStorage.getItem(STORAGE_KEYS.channels);
@@ -2624,7 +2661,7 @@ async function initialize() {
     allChannelItems[0].focus();
   }
 
-  console.log("✅ Initialization complete");
+  showNotification('Initialization complete', 'info')
 }
 
 // ============================================
@@ -2682,31 +2719,38 @@ function setupPWA() {
     // 1. Determine the Base Path (Needed for GitHub Project Pages like /LiveTV/)
     let basePath = '/';
 
-    // Check if we are on a GitHub Pages hostname
     if (location.hostname.endsWith('github.io')) {
-      // If the path is not just '/', it means we are in a sub-directory (a Project Page)
       if (location.pathname !== '/') {
-        // Extracts the project name (e.g., from /LiveTV/index.html to /LiveTV/)
         const pathParts = location.pathname.split('/');
-        // The project name is typically at index 1
         if (pathParts.length > 1 && pathParts[1].length > 0) {
           basePath = '/' + pathParts[1] + '/';
         }
       }
     }
 
-    // 2. Service Worker registration
+    // 2. Service Worker registration (Combined with Update Logic)
     if ('serviceWorker' in navigator) {
       const swPath = basePath + 'sw.js';
 
-      // The correct registration path is now dynamic (e.g., /LiveTV/sw.js)
+      // Register the Service Worker dynamically
       navigator.serviceWorker.register(swPath)
         .then(registration => {
-          // Corrected emojis for success
           console.log(`✅ SW registered successfully with scope: ${registration.scope}`);
+          
+          // --- BEGIN: Integrated Update Logic ---
+          registration.addEventListener('updatefound', () => {
+            const newWorker = registration.installing;
+            newWorker.addEventListener('statechange', () => {
+              if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                // Assuming you have a function called showNotification defined elsewhere
+                showNotification('New version available! Refresh to update.', 'info');
+              }
+            });
+          });
+          // --- END: Integrated Update Logic ---
+
         })
         .catch(error => {
-          // Corrected emojis for failure
           console.error('❌ SW registration failed:', error);
         });
     }
@@ -2745,6 +2789,108 @@ function fixImageUrl(imageUrl) {
   }
   
   return imageUrl;
+}
+
+function optimizeImageUrl(imageUrl, width = 200) {
+  if (imageUrl.startsWith('https://images.weserv.nl/')) {
+    return imageUrl;
+  }
+  
+  // Use weserv.nl for automatic image optimization
+  const cleanUrl = imageUrl.replace('http://', '').replace('https://', '');
+  return `https://images.weserv.nl/?url=${encodeURIComponent(cleanUrl)}&w=${width}&fit=cover&a=attention`;
+}
+
+
+function setupTouchGestures() {
+  const modal = document.getElementById('videoModal');
+  if (!modal) return;
+
+  modal.addEventListener('touchstart', handleTouchStart, { passive: true });
+  modal.addEventListener('touchend', handleTouchEnd, { passive: true });
+}
+
+function handleTouchStart(e) {
+  touchStartX = e.changedTouches[0].screenX;
+  touchStartY = e.changedTouches[0].screenY;
+}
+
+function handleTouchEnd(e) {
+  touchEndX = e.changedTouches[0].screenX;
+  touchEndY = e.changedTouches[0].screenY;
+  handleSwipe();
+}
+
+function handleSwipe() {
+  const modal = document.getElementById('videoModal');
+  if (!modal || modal.style.display !== 'flex') return;
+
+  const deltaX = touchEndX - touchStartX;
+  const deltaY = touchEndY - touchStartY;
+  const minSwipeDistance = 50;
+
+  // Determine if swipe is more horizontal or vertical
+  if (Math.abs(deltaX) > Math.abs(deltaY)) {
+    // Horizontal swipe
+    if (Math.abs(deltaX) > minSwipeDistance) {
+      if (deltaX > 0) {
+        // Swipe right - close modal
+        console.log('👉 Swipe right detected');
+        showChannelInfoOverlay();
+      } else {
+        // Swipe left - show channel info
+        console.log('👈 Swipe left detected');
+                closeModal();
+      }
+    }
+  } else {
+    // Vertical swipe
+    if (Math.abs(deltaY) > minSwipeDistance) {
+      if (deltaY < 0) {
+        // Swipe up - next channel
+        console.log('👆 Swipe up detected');
+        navigateToNextChannel();
+      } else {
+        // Swipe down - previous channel
+        console.log('👇 Swipe down detected');
+        navigateToPreviousChannel();
+      }
+    }
+  }
+}
+
+function navigateToNextChannel() {
+  if (!lastFocusedElement || allChannelItems.length === 0) return;
+
+  const currentIndex = allChannelItems.findIndex(item => item === lastFocusedElement);
+  if (currentIndex === -1) return;
+
+  const nextIndex = (currentIndex + 1) % allChannelItems.length;
+  const nextChannel = allChannelItems[nextIndex];
+  const { url, name, image, description, number, isLive, category } = nextChannel.dataset;
+
+  selectChannel(url, name, image, description, number, isLive);
+  saveRecentlyWatched({ name, url, image, description, number, isLive, category });
+  lastFocusedElement = nextChannel;
+  
+  showNotification(`▶️ ${name}`, 'info');
+}
+
+function navigateToPreviousChannel() {
+  if (!lastFocusedElement || allChannelItems.length === 0) return;
+
+  const currentIndex = allChannelItems.findIndex(item => item === lastFocusedElement);
+  if (currentIndex === -1) return;
+
+  const prevIndex = (currentIndex - 1 + allChannelItems.length) % allChannelItems.length;
+  const prevChannel = allChannelItems[prevIndex];
+  const { url, name, image, description, number, isLive, category } = prevChannel.dataset;
+
+  selectChannel(url, name, image, description, number, isLive);
+  saveRecentlyWatched({ name, url, image, description, number, isLive, category });
+  lastFocusedElement = prevChannel;
+  
+  showNotification(`⏮️ ${name}`, 'info');
 }
 
 // ============================================

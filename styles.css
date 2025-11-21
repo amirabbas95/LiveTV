@@ -385,8 +385,6 @@ main {
 .modal-content {
   background-color: var(--bg-color-dark);
   border-radius: var(--border-radius-sm);
-  width: 95%;
-  max-width: 1000px;
   box-shadow: 0 8px 25px rgba(0, 0, 0, 0.7);
   position: relative;
   display: flex;
@@ -1308,7 +1306,3 @@ main {
   display: none !important;
 }
 
-.vjs-loading-spinner {
-  border-color: rgba(255, 255, 255, 0.3);
-  border-top-color: #fff;
-}

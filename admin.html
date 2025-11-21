@@ -1,898 +1,876 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <link
-      rel="stylesheet"
-      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"
-    />
 
-    <title>Live TV Player Admin</title>
-    <style>
-      :root {
-        --bg-color-dark: #121212;
-        --bg-color-medium: #1f1f1f;
-        --bg-color-light: #242424;
-        --text-color-primary: #e0e0e0;
-        --text-color-secondary: #a0a0a0;
-        --border-color: #475569;
-        --accent-color-primary: #007bff;
-        --accent-color-secondary: #276749;
-        --accent-color-danger: #dc3545;
-        --accent-color-success: #2ea44f;
-      }
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
 
-      * {
-        box-sizing: border-box;
-      }
+  <title>Live TV Player Admin</title>
+  <style>
+    :root {
+      --bg-color-dark: #121212;
+      --bg-color-medium: #1f1f1f;
+      --bg-color-light: #242424;
+      --text-color-primary: #e0e0e0;
+      --text-color-secondary: #a0a0a0;
+      --border-color: #475569;
+      --accent-color-primary: #007bff;
+      --accent-color-secondary: #276749;
+      --accent-color-danger: #dc3545;
+      --accent-color-success: #2ea44f;
+    }
 
-      body {
-        font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
-        background-color: var(--bg-color-dark);
-        color: var(--text-color-primary);
-        margin: 0;
-        padding: 20px;
-      }
+    * {
+      box-sizing: border-box;
+    }
 
-      h1,
-      h2,
-      h3 {
-        color: var(--text-color-secondary);
-        border-bottom: 1px solid var(--border-color);
-        padding-bottom: 10px;
-        margin-top: 0;
-      }
+    body {
+      font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+      background-color: var(--bg-color-dark);
+      color: var(--text-color-primary);
+      margin: 0;
+      padding: 20px;
+    }
 
+    h1,
+    h2,
+    h3 {
+      color: var(--text-color-secondary);
+      border-bottom: 1px solid var(--border-color);
+      padding-bottom: 10px;
+      margin-top: 0;
+    }
+
+    .container {
+      display: grid;
+      grid-template-columns: 1fr 2fr;
+      gap: 20px;
+    }
+
+    @media (max-width: 992px) {
       .container {
-        display: grid;
-        grid-template-columns: 1fr 2fr;
-        gap: 20px;
-      }
-
-      @media (max-width: 992px) {
-        .container {
-          grid-template-columns: 1fr;
-        }
-      }
-
-      .panel {
-        background-color: var(--bg-color-medium);
-        padding: 25px;
-        border-radius: 12px;
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-        display: flex;
-        flex-direction: column;
-        gap: 20px;
-      }
-
-      .controls-panel {
-        min-width: 40%;
-      }
-
-      .preview-panel {
-        min-width: 60%;
-      }
-
-      form {
-        display: flex;
-        flex-direction: column;
-        gap: 12px;
-      }
-
-      label {
-        font-weight: bold;
-        color: var(--text-color-secondary);
-      }
-
-      input,
-      select,
-      textarea {
-        padding: 10px;
-        border-radius: 6px;
-        border: 1px solid var(--border-color);
-        background-color: var(--bg-color-light);
-        color: var(--text-color-primary);
-        font-size: 1em;
-        transition: border-color 0.2s ease;
-      }
-
-      input:focus,
-      select:focus,
-      textarea:focus {
-        outline: none;
-        border-color: var(--accent-color-primary);
-      }
-
-      .button-1,
-      .button-3,
-      .btn-primary,
-      .btn-secondary,
-      .btn-danger {
-        padding: 10px 16px;
-        font-size: 0.95em;
-        font-weight: bold;
-        border: none;
-        border-radius: 6px;
-        cursor: pointer;
-        transition: 0.2s ease all;
-        color: white;
-      }
-
-      .button-1 {
-        background-color: #ea4c89;
-      }
-
-      .button-1:hover,
-      .button-1:focus {
-        background-color: #f082ac;
-      }
-
-      .button-3 {
-        background-color: var(--accent-color-success);
-      }
-
-      .button-3:hover {
-        background-color: #2c974b;
-      }
-
-      .btn-primary {
-        background-color: var(--accent-color-primary);
-      }
-
-      .btn-primary:hover {
-        background-color: #0056b3;
-      }
-
-      .btn-secondary {
-        background-color: var(--accent-color-secondary);
-      }
-
-      .btn-secondary:hover {
-        background-color: #5a6268;
-      }
-
-      .btn-danger {
-        background-color: var(--accent-color-danger);
-      }
-
-      .btn-danger:hover {
-        background-color: #c82333;
-      }
-
-      .btn-primary:disabled,
-      .btn-secondary:disabled {
-        opacity: 0.5;
-        cursor: not-allowed;
-      }
-
-      .channel-item-button {
-        width: 36px;
-        height: 36px;
-        border-radius: 20%;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 0.85em;
-      }
-      .channel-item-button i {
-        pointer-events: none; /* ensures clicks go to the button */
-      }
-
-      .file-controls,
-      .json-preview,
-      .visual-preview,
-      #addChannelForm,
-      #addCategoryForm {
-        border: 1px solid var(--border-color);
-        padding: 15px;
-        border-radius: 8px;
-      }
-
-      #jsonOutput {
-        white-space: pre-wrap;
-        word-wrap: break-word;
-        padding: 15px;
-        background-color: var(--bg-color-light);
-        border-radius: 8px;
-        overflow-x: auto;
-        max-height: 400px;
-      }
-
-      .category-list-preview,
-      .channel-list-category {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 10px;
-        margin-top: 10px;
-      }
-
-      .channel-preview-item {
-        width: 100%;
-        display: flex;
-        align-items: center;
-        gap: 12px;
-        background-color: var(--bg-color-light);
-        padding: 10px;
-        border-radius: 8px;
-        transition: transform 0.2s ease;
-      }
-
-      .category-preview-item {
-        width: 100%;
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 12px;
-        background-color: var(--bg-color-light);
-        padding: 10px;
-        border-radius: 8px;
-        transition: transform 0.2s ease;
-      }
-
-      .channel-preview-item:hover,
-      .category-preview-item:hover {
-        transform: translateY(-2px);
-      }
-
-      .channel-preview-item img {
-        width: 80px;
-        height: 80px;
-        object-fit: cover;
-        border-radius: 6px;
-        background-color: #1e293b;
-      }
-
-      .channel-preview-item .actions,
-      .category-preview-item .actions {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 5px;
-      }
-
-      #fileInput {
-        display: none;
-      }
-
-      .tab-container {
-        border-bottom: 1px solid var(--border-color);
-        margin-bottom: 15px;
-      }
-
-      .tab-button {
-        background-color: transparent;
-        color: var(--text-color-secondary);
-        border: none;
-        padding: 10px 15px;
-        cursor: pointer;
-        border-bottom: 3px solid transparent;
-        margin-bottom: -1px;
-        transition: color 0.2s ease, border-bottom-color 0.2s ease;
-      }
-
-      .tab-button.active {
-        color: var(--text-color-primary);
-        border-bottom-color: var(--accent-color-primary);
-      }
-
-      .tab-content {
-        display: none;
-      }
-
-      .tab-content.active {
-        display: block;
-      }
-
-      .file-controls {
-        display: flex;
-        flex-direction: column;
-        gap: 10px;
-      }
-
-      .button-row {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 10px;
-        margin-top: 10px;
-      }
-
-      .button-row button,
-      .button-row label {
-        padding: 10px 15px;
-        cursor: pointer;
-      }
-
-      .btn-soft-green {
-        background-color: var(--accent-color-success);
-        color: #dcdcdc;
-        border: none;
-        border-radius: 6px;
-        padding: 12px;
-        font-weight: bold;
-        font-size: 0.95em;
-        transition: background-color 0.2s ease;
-      }
-
-      .btn-soft-green:hover {
-        background-color: #2c974b;
-      }
-
-      .btn-soft-red {
-        background-color: var(--accent-color-danger);
-        color: #dcdcdc;
-        border: none;
-        border-radius: 6px;
-        padding: 12px;
-        font-weight: bold;
-        font-size: 0.95em;
-        transition: background-color 0.2s ease;
-      }
-
-      .btn-soft-red:hover {
-        background-color: #c82333;
-      }
-
-      .btn-soft-blue {
-        background-color: var(--accent-color-primary);
-        color: #dcdcdc;
-        border: none;
-        border-radius: 6px;
-        padding: 12px;
-        font-weight: bold;
-        font-size: 0.95em;
-        transition: background-color 0.2s ease;
-      }
-
-      .btn-soft-blue:hover {
-        background-color: #0056b3;
-      }
-
-      .full-width {
-        width: 100%;
-        text-align: center;
-        margin-bottom: 10px;
-      }
-
-      .modal {
-        display: none;
-        position: fixed;
-        top: 0;
-        left: 0;
-        right: 0;
-        bottom: 0;
-        background: rgba(0, 0, 0, 0.85);
-        z-index: 10000;
-        align-items: center;
-        justify-content: center;
-        animation: fadeIn 0.3s ease;
-      }
-
-      .modal.active {
-        display: flex;
-      }
-
-      @keyframes fadeIn {
-        from {
-          opacity: 0;
-        }
-
-        to {
-          opacity: 1;
-        }
-      }
-
-      .modal-content {
-        background: var(--bg-color-medium);
-        padding: 30px;
-        border-radius: 12px;
-        max-width: 600px;
-        width: 90%;
-        color: white;
-        box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
-        animation: slideUp 0.3s ease;
-        max-height: 90vh;
-        overflow-y: auto;
-      }
-
-      @keyframes slideUp {
-        from {
-          transform: translateY(20px);
-          opacity: 0;
-        }
-
-        to {
-          transform: translateY(0);
-          opacity: 1;
-        }
-      }
-
-      .modal-content h2 {
-        margin: 0 0 25px 0;
-        font-size: 24px;
-        font-weight: 600;
-        border-bottom: 2px solid rgba(255, 255, 255, 0.1);
-        padding-bottom: 15px;
-        color: var(--text-color-primary);
-      }
-
-      .modal-actions {
-        display: flex;
-        gap: 10px;
-        margin-top: 20px;
-      }
-
-      .modal-actions button {
-        flex: 1;
-      }
-
-      .json-editor-container {
-        background: var(--bg-color-light);
-        border: 1px solid var(--border-color);
-        border-radius: 8px;
-        padding: 15px;
-        margin-top: 15px;
-      }
-
-      .json-editor-container textarea {
-        width: 100%;
-        min-height: 400px;
-        font-family: "Courier New", monospace;
-        font-size: 0.9em;
-        background: var(--bg-color-dark);
-        border: 1px solid var(--border-color);
-        border-radius: 6px;
-        padding: 15px;
-        color: var(--text-color-primary);
-        resize: vertical;
-      }
-
-      .json-editor-actions {
-        display: flex;
-        gap: 10px;
-        margin-top: 10px;
-        flex-wrap: wrap;
-      }
-
-      .json-editor-actions button {
-        flex: 1;
-        min-width: 120px;
-      }
-
-      .info-box {
-        background: rgba(76, 175, 80, 0.1);
-        border: 1px solid rgba(76, 175, 80, 0.3);
-        border-radius: 8px;
-        padding: 15px;
-        margin-bottom: 15px;
-      }
-
-      .info-box p {
-        margin: 0;
-        color: #4caf50;
-        font-size: 0.9em;
-        line-height: 1.6;
-      }
-
-      .warning-box {
-        background: rgba(255, 152, 0, 0.1);
-        border: 1px solid rgba(255, 152, 0, 0.3);
-        border-radius: 8px;
-        padding: 15px;
-        margin-bottom: 15px;
-      }
-
-      .warning-box p {
-        margin: 0;
-        color: #ff9800;
-        font-size: 0.9em;
-        line-height: 1.6;
-      }
-
-      .stats-display {
-        display: flex;
-        gap: 15px;
-        margin-bottom: 15px;
-        flex-wrap: wrap;
-      }
-
-      .stat-card {
-        flex: 1;
-        min-width: 150px;
-        background: rgba(76, 175, 80, 0.1);
-        border: 1px solid rgba(76, 175, 80, 0.2);
-        border-radius: 8px;
-        padding: 15px;
-        text-align: center;
-      }
-
-      .stat-label {
-        font-size: 0.85em;
-        color: var(--text-color-secondary);
-        margin-bottom: 5px;
-      }
-
-      .stat-value {
-        font-size: 2em;
-        font-weight: 700;
-        color: #4caf50;
-      }
-
-      .notification {
-        position: fixed;
-        top: 20px;
-        right: 20px;
-        background: var(--accent-color-success);
-        color: white;
-        padding: 15px 20px;
-        border-radius: 8px;
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-        z-index: 10001;
-        animation: slideInRight 0.3s ease;
-        max-width: 400px;
-      }
-
-      .notification.error {
-        background: var(--accent-color-danger);
-      }
-
-      .notification.warning {
-        background: #ff9800;
-      }
-
-      @keyframes slideInRight {
-        from {
-          transform: translateX(400px);
-          opacity: 0;
-        }
-
-        to {
-          transform: translateX(0);
-          opacity: 1;
-        }
-      }
-
-      @keyframes slideOutRight {
-        from {
-          transform: translateX(0);
-          opacity: 1;
-        }
-
-        to {
-          transform: translateX(400px);
-          opacity: 0;
-        }
-      }
-
-      ::-webkit-scrollbar {
-        width: 10px;
-        height: 10px;
-      }
-
-      ::-webkit-scrollbar-track {
-        background: var(--bg-color-dark);
-        border-radius: 5px;
-      }
-
-      ::-webkit-scrollbar-thumb {
-        background: var(--border-color);
-        border-radius: 5px;
-      }
-
-      ::-webkit-scrollbar-thumb:hover {
-        background: var(--text-color-secondary);
-      }
-
-      .form-changed {
-        border: 2px solid #ff9800 !important;
-        background-color: rgba(255, 152, 0, 0.05);
-        padding: 15px;
-        border-radius: 8px;
-      }
-
-      .btn-pulse {
-        animation: pulse 2s infinite;
-      }
-
-      @keyframes pulse {
-        0%,
-        100% {
-          box-shadow: 0 0 0 0 rgba(0, 123, 255, 0.7);
-        }
-
-        50% {
-          box-shadow: 0 0 0 10px rgba(46, 164, 79, 0);
-        }
-      }
-    </style>
-  </head>
-
-  <body>
-    <h1>📺 Admin Panel</h1>
-
-    <div class="container">
-      <div class="controls-panel panel">
-        <h2>Controls</h2>
-
-        <div class="tab-container">
-          <button class="tab-button active" onclick="showTab('tab-file')">
-            📁 File
-          </button>
-          <button class="tab-button" onclick="showTab('tab-category')">
-            📂 Categories
-          </button>
-          <button class="tab-button" onclick="showTab('tab-channel')">
-            📺 Channels
-          </button>
-          <button class="tab-button" onclick="showTab('tab-live')">
-            🔴 Live Channels
-          </button>
-          <button class="tab-button" onclick="showTab('tab-feeds')">
-            📡 RSS Feeds
-          </button>
-        </div>
-
-        <div id="tab-file" class="tab-content active">
-          <div class="file-controls">
-            <h3>File Management</h3>
-
-            <div class="info-box">
-              <p>
-                💡 <strong>Tip:</strong> All data is stored in localStorage. Use
-                Export/Import to backup your channels.
-              </p>
-            </div>
-
-            <input
-              type="file"
-              id="fileInput"
-              accept=".json"
-              style="display: none"
-            />
-
-            <button
-              class="btn-soft-green full-width"
-              onclick="loadChannelsFromStorage()"
-            >
-              ✎ Edit Channels
-            </button>
-
-            <button
-              class="btn-soft-blue full-width"
-              onclick="saveAllChannels()"
-            >
-              💾 Save Channels
-            </button>
-
-            <button
-              class="btn-soft-green full-width"
-              onclick="document.getElementById('fileInput').click();"
-            >
-              📂 Import Channels
-            </button>
-
-            <button class="btn-soft-blue full-width" onclick="exportChannels()">
-              💾 Export Channels
-            </button>
-
-            <button
-              class="btn-soft-green full-width"
-              onclick="importAllChannels()"
-            >
-              📂 Import All Data
-            </button>
-
-            <button class="btn-soft-blue full-width" onclick="saveData()">
-              💾 Export All Data
-            </button>
-
-            <button class="btn-soft-red full-width" onclick="clearAllData()">
-              🗑️ Clear All Data
-            </button>
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .panel {
+      background-color: var(--bg-color-medium);
+      padding: 25px;
+      border-radius: 12px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    .controls-panel {
+      min-width: 40%;
+    }
+
+    .preview-panel {
+      min-width: 60%;
+    }
+
+    form {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    label {
+      font-weight: bold;
+      color: var(--text-color-secondary);
+    }
+
+    input,
+    select,
+    textarea {
+      padding: 10px;
+      border-radius: 6px;
+      border: 1px solid var(--border-color);
+      background-color: var(--bg-color-light);
+      color: var(--text-color-primary);
+      font-size: 1em;
+      transition: border-color 0.2s ease;
+    }
+
+    input:focus,
+    select:focus,
+    textarea:focus {
+      outline: none;
+      border-color: var(--accent-color-primary);
+    }
+
+    .button-1,
+    .button-3,
+    .btn-primary,
+    .btn-secondary,
+    .btn-danger {
+      padding: 10px 16px;
+      font-size: 0.95em;
+      font-weight: bold;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: 0.2s ease all;
+      color: white;
+    }
+
+    .button-1 {
+      background-color: #ea4c89;
+    }
+
+    .button-1:hover,
+    .button-1:focus {
+      background-color: #f082ac;
+    }
+
+    .button-3 {
+      background-color: var(--accent-color-success);
+    }
+
+    .button-3:hover {
+      background-color: #2c974b;
+    }
+
+    .btn-primary {
+      background-color: var(--accent-color-primary);
+    }
+
+    .btn-primary:hover {
+      background-color: #0056b3;
+    }
+
+    .btn-secondary {
+      background-color: var(--accent-color-secondary);
+    }
+
+    .btn-secondary:hover {
+      background-color: #5a6268;
+    }
+
+    .btn-danger {
+      background-color: var(--accent-color-danger);
+    }
+
+    .btn-danger:hover {
+      background-color: #c82333;
+    }
+
+    .btn-primary:disabled,
+    .btn-secondary:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .channel-item-button {
+      width: 36px;
+      height: 36px;
+      border-radius: 20%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.85em;
+    }
+
+    .channel-item-button i {
+      pointer-events: none;
+      /* ensures clicks go to the button */
+    }
+
+    .file-controls,
+    .json-preview,
+    .visual-preview,
+    #addChannelForm,
+    #addCategoryForm {
+      border: 1px solid var(--border-color);
+      padding: 15px;
+      border-radius: 8px;
+    }
+
+    #jsonOutput {
+      white-space: pre-wrap;
+      word-wrap: break-word;
+      padding: 15px;
+      background-color: var(--bg-color-light);
+      border-radius: 8px;
+      overflow-x: auto;
+      max-height: 400px;
+    }
+
+    .category-list-preview,
+    .channel-list-category {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 10px;
+    }
+
+    .channel-preview-item {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      background-color: var(--bg-color-light);
+      padding: 10px;
+      border-radius: 8px;
+      transition: transform 0.2s ease;
+    }
+
+    .category-preview-item {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      background-color: var(--bg-color-light);
+      padding: 10px;
+      border-radius: 8px;
+      transition: transform 0.2s ease;
+    }
+
+    .channel-preview-item:hover,
+    .category-preview-item:hover {
+      transform: translateY(-2px);
+    }
+
+    .channel-preview-item img {
+      width: 80px;
+      height: 80px;
+      object-fit: cover;
+      border-radius: 6px;
+      background-color: #1e293b;
+    }
+
+    .channel-preview-item .actions,
+    .category-preview-item .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 5px;
+    }
+
+    #fileInput {
+      display: none;
+    }
+
+    .tab-container {
+      border-bottom: 1px solid var(--border-color);
+      margin-bottom: 15px;
+    }
+
+    .tab-button {
+      background-color: transparent;
+      color: var(--text-color-secondary);
+      border: none;
+      padding: 10px 15px;
+      cursor: pointer;
+      border-bottom: 3px solid transparent;
+      margin-bottom: -1px;
+      transition: color 0.2s ease, border-bottom-color 0.2s ease;
+    }
+
+    .tab-button.active {
+      color: var(--text-color-primary);
+      border-bottom-color: var(--accent-color-primary);
+    }
+
+    .tab-content {
+      display: none;
+    }
+
+    .tab-content.active {
+      display: block;
+    }
+
+    .file-controls {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .button-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 10px;
+    }
+
+    .button-row button,
+    .button-row label {
+      padding: 10px 15px;
+      cursor: pointer;
+    }
+
+    .btn-soft-green {
+      background-color: var(--accent-color-success);
+      color: #dcdcdc;
+      border: none;
+      border-radius: 6px;
+      padding: 12px;
+      font-weight: bold;
+      font-size: 0.95em;
+      transition: background-color 0.2s ease;
+    }
+
+    .btn-soft-green:hover {
+      background-color: #2c974b;
+    }
+
+    .btn-soft-red {
+      background-color: var(--accent-color-danger);
+      color: #dcdcdc;
+      border: none;
+      border-radius: 6px;
+      padding: 12px;
+      font-weight: bold;
+      font-size: 0.95em;
+      transition: background-color 0.2s ease;
+    }
+
+    .btn-soft-red:hover {
+      background-color: #c82333;
+    }
+
+    .btn-soft-blue {
+      background-color: var(--accent-color-primary);
+      color: #dcdcdc;
+      border: none;
+      border-radius: 6px;
+      padding: 12px;
+      font-weight: bold;
+      font-size: 0.95em;
+      transition: background-color 0.2s ease;
+    }
+
+    .btn-soft-blue:hover {
+      background-color: #0056b3;
+    }
+
+    .full-width {
+      width: 100%;
+      text-align: center;
+      margin-bottom: 10px;
+    }
+
+    .modal {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.85);
+      z-index: 10000;
+      align-items: center;
+      justify-content: center;
+      animation: fadeIn 0.3s ease;
+    }
+
+    .modal.active {
+      display: flex;
+    }
+
+    @keyframes fadeIn {
+      from {
+        opacity: 0;
+      }
+
+      to {
+        opacity: 1;
+      }
+    }
+
+    .modal-content {
+      background: var(--bg-color-medium);
+      padding: 30px;
+      border-radius: 12px;
+      max-width: 600px;
+      width: 90%;
+      color: white;
+      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+      animation: slideUp 0.3s ease;
+      max-height: 90vh;
+      overflow-y: auto;
+    }
+
+    @keyframes slideUp {
+      from {
+        transform: translateY(20px);
+        opacity: 0;
+      }
+
+      to {
+        transform: translateY(0);
+        opacity: 1;
+      }
+    }
+
+    .modal-content h2 {
+      margin: 0 0 25px 0;
+      font-size: 24px;
+      font-weight: 600;
+      border-bottom: 2px solid rgba(255, 255, 255, 0.1);
+      padding-bottom: 15px;
+      color: var(--text-color-primary);
+    }
+
+    .modal-actions {
+      display: flex;
+      gap: 10px;
+      margin-top: 20px;
+    }
+
+    .modal-actions button {
+      flex: 1;
+    }
+
+    .json-editor-container {
+      background: var(--bg-color-light);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      padding: 15px;
+      margin-top: 15px;
+    }
+
+    .json-editor-container textarea {
+      width: 100%;
+      min-height: 400px;
+      font-family: "Courier New", monospace;
+      font-size: 0.9em;
+      background: var(--bg-color-dark);
+      border: 1px solid var(--border-color);
+      border-radius: 6px;
+      padding: 15px;
+      color: var(--text-color-primary);
+      resize: vertical;
+    }
+
+    .json-editor-actions {
+      display: flex;
+      gap: 10px;
+      margin-top: 10px;
+      flex-wrap: wrap;
+    }
+
+    .json-editor-actions button {
+      flex: 1;
+      min-width: 120px;
+    }
+
+    .info-box {
+      background: rgba(76, 175, 80, 0.1);
+      border: 1px solid rgba(76, 175, 80, 0.3);
+      border-radius: 8px;
+      padding: 15px;
+      margin-bottom: 15px;
+    }
+
+    .info-box p {
+      margin: 0;
+      color: #4caf50;
+      font-size: 0.9em;
+      line-height: 1.6;
+    }
+
+    .warning-box {
+      background: rgba(255, 152, 0, 0.1);
+      border: 1px solid rgba(255, 152, 0, 0.3);
+      border-radius: 8px;
+      padding: 15px;
+      margin-bottom: 15px;
+    }
+
+    .warning-box p {
+      margin: 0;
+      color: #ff9800;
+      font-size: 0.9em;
+      line-height: 1.6;
+    }
+
+    .stats-display {
+      display: flex;
+      gap: 15px;
+      margin-bottom: 15px;
+      flex-wrap: wrap;
+    }
+
+    .stat-card {
+      flex: 1;
+      min-width: 150px;
+      background: rgba(76, 175, 80, 0.1);
+      border: 1px solid rgba(76, 175, 80, 0.2);
+      border-radius: 8px;
+      padding: 15px;
+      text-align: center;
+    }
+
+    .stat-label {
+      font-size: 0.85em;
+      color: var(--text-color-secondary);
+      margin-bottom: 5px;
+    }
+
+    .stat-value {
+      font-size: 2em;
+      font-weight: 700;
+      color: #4caf50;
+    }
+
+    .notification {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      background: var(--accent-color-success);
+      color: white;
+      padding: 15px 20px;
+      border-radius: 8px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+      z-index: 10001;
+      animation: slideInRight 0.3s ease;
+      max-width: 400px;
+    }
+
+    .notification.error {
+      background: var(--accent-color-danger);
+    }
+
+    .notification.warning {
+      background: #ff9800;
+    }
+
+    @keyframes slideInRight {
+      from {
+        transform: translateX(400px);
+        opacity: 0;
+      }
+
+      to {
+        transform: translateX(0);
+        opacity: 1;
+      }
+    }
+
+    @keyframes slideOutRight {
+      from {
+        transform: translateX(0);
+        opacity: 1;
+      }
+
+      to {
+        transform: translateX(400px);
+        opacity: 0;
+      }
+    }
+
+    ::-webkit-scrollbar {
+      width: 10px;
+      height: 10px;
+    }
+
+    ::-webkit-scrollbar-track {
+      background: var(--bg-color-dark);
+      border-radius: 5px;
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: var(--border-color);
+      border-radius: 5px;
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+      background: var(--text-color-secondary);
+    }
+
+    .form-changed {
+      border: 2px solid #ff9800 !important;
+      background-color: rgba(255, 152, 0, 0.05);
+      padding: 15px;
+      border-radius: 8px;
+    }
+
+    .btn-pulse {
+      animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+
+      0%,
+      100% {
+        box-shadow: 0 0 0 0 rgba(0, 123, 255, 0.7);
+      }
+
+      50% {
+        box-shadow: 0 0 0 10px rgba(46, 164, 79, 0);
+      }
+    }
+
+    .back-button-container {
+      padding: 15px 15px 0;
+      /* Add top padding to separate it from the top edge */
+    }
+
+    .back-button {
+      /* Basic Button Styling */
+      display: inline-block;
+      padding: 8px 15px;
+      background-color: #3498db;
+      /* A blue color */
+      color: white;
+      text-decoration: none;
+      /* Remove underline from the link */
+      border-radius: 5px;
+      font-size: 16px;
+      transition: background-color 0.2s;
+      /* Smooth hover effect */
+    }
+
+    .back-button:hover {
+      background-color: #2980b9;
+      /* Slightly darker blue on hover */
+    }
+  </style>
+</head>
+
+<body>
+
+  <div class="back-button-container">
+    <a href="index.html" class="back-button">
+      &larr; Back to Channels
+    </a>
+  </div>
+
+  <h1>📺 Admin Panel</h1>
+
+  <div class="container">
+    <div class="controls-panel panel">
+      <h2>Controls</h2>
+
+      <div class="tab-container">
+        <button class="tab-button active" onclick="showTab('tab-file')">
+          📁 File
+        </button>
+        <button class="tab-button" onclick="showTab('tab-category')">
+          📂 Categories
+        </button>
+        <button class="tab-button" onclick="showTab('tab-channel')">
+          📺 Channels
+        </button>
+        <button class="tab-button" onclick="showTab('tab-live')">
+          🔴 Live Channels
+        </button>
+        <button class="tab-button" onclick="showTab('tab-feeds')">
+          📡 RSS Feeds
+        </button>
+      </div>
+
+      <div id="tab-file" class="tab-content active">
+        <div class="file-controls">
+          <h3>File Management</h3>
+
+          <div class="info-box">
+            <p>
+              💡 <strong>Tip:</strong> All data is stored in localStorage. Use
+              Export/Import to backup your channels.
+            </p>
           </div>
+
+          <input type="file" id="fileInput" accept=".json" style="display: none" />
+
+          <button class="btn-soft-green full-width" onclick="loadChannelsFromStorage()">
+            ✎ Edit Channels
+          </button>
+
+          <button class="btn-soft-blue full-width" onclick="saveAllChannels()">
+            💾 Save Channels
+          </button>
+
+          <button class="btn-soft-green full-width" onclick="document.getElementById('fileInput').click();">
+            📂 Import Channels
+          </button>
+
+          <button class="btn-soft-blue full-width" onclick="exportChannels()">
+            💾 Export Channels
+          </button>
+
+          <button class="btn-soft-green full-width" onclick="importAllChannels()">
+            📂 Import All Data
+          </button>
+
+          <button class="btn-soft-blue full-width" onclick="saveData()">
+            💾 Export All Data
+          </button>
+
+          <button class="btn-soft-red full-width" onclick="clearAllData()">
+            🗑️ Clear All Data
+          </button>
         </div>
+      </div>
 
-        <div id="tab-category" class="tab-content">
-          <div id="addCategoryForm">
-            <h3>Add/Edit Category</h3>
-            <form onsubmit="event.preventDefault(); addCategory()">
-              <label for="newCategoryName">Category Name:</label>
-              <input type="text" id="newCategoryName" required />
-              <button class="btn-primary" type="submit">Add Category</button>
-            </form>
-          </div>
-          <h3>Categories</h3>
-          <div id="categoryListPreview" class="category-list-preview"></div>
+      <div id="tab-category" class="tab-content">
+        <div id="addCategoryForm">
+          <h3>Add/Edit Category</h3>
+          <form onsubmit="event.preventDefault(); addCategory()">
+            <label for="newCategoryName">Category Name:</label>
+            <input type="text" id="newCategoryName" required />
+            <button class="btn-primary" type="submit">Add Category</button>
+          </form>
         </div>
+        <h3>Categories</h3>
+        <div id="categoryListPreview" class="category-list-preview"></div>
+      </div>
 
-        <div id="tab-channel" class="tab-content">
-          <div id="addChannelForm">
-            <h3>Add/Edit Channel</h3>
-            <form onsubmit="event.preventDefault(); saveChannel()">
-              <input type="hidden" id="channelIndex" />
+      <div id="tab-channel" class="tab-content">
+        <div id="addChannelForm">
+          <h3>Add/Edit Channel</h3>
+          <form onsubmit="event.preventDefault(); saveChannel()">
+            <input type="hidden" id="channelIndex" />
 
-              <img
-                id="imagePreview"
-                src=""
-                alt="Channel Image Preview"
-                style="
+            <img id="imagePreview" src="" alt="Channel Image Preview" style="
                   width: 100px;
                   height: 100px;
                   display: none;
                   object-fit: cover;
                   border-radius: 8px;
                   border: 1px solid var(--border-color);
-                "
-              />
+                " />
 
-              <label for="displayChannelIndex">Channel Index:</label>
-              <input type="text" id="displayChannelIndex" disabled />
+            <label for="displayChannelIndex">Channel Index:</label>
+            <input type="text" id="displayChannelIndex" disabled />
 
-              <label for="channelName">Channel Name:</label>
-              <input type="text" id="channelName" required />
+            <label for="channelName">Channel Name:</label>
+            <input type="text" id="channelName" required />
 
-              <label for="channelUrl">Channel URL:</label>
-              <input type="url" id="channelUrl" required />
+            <label for="channelUrl">Channel URL:</label>
+            <input type="url" id="channelUrl" required />
 
-              <label for="channelImage">Image URL:</label>
-              <input type="url" id="channelImage" required />
+            <label for="channelImage">Image URL:</label>
+            <input type="url" id="channelImage" required />
 
-              <label for="channelDescription">Description:</label>
-              <input type="text" id="channelDescription" required />
+            <label for="channelDescription">Description:</label>
+            <input type="text" id="channelDescription" required />
 
-              <label for="channelCategory">Category:</label>
-              <select id="channelCategory" required></select>
+            <label for="channelCategory">Category:</label>
+            <select id="channelCategory" required></select>
 
-              <label for="channelStatus">Live Status:</label>
-              <select id="channelStatus" required>
-                <option value="false">False</option>
-                <option value="true">True</option>
-              </select>
+            <label for="channelStatus">Live Status:</label>
+            <select id="channelStatus" required>
+              <option value="false">False</option>
+              <option value="true">True</option>
+            </select>
 
-              <div
-                style="
+            <div style="
                   display: flex;
                   gap: 10px;
                   margin-top: 10px;
                   justify-content: space-between;
-                "
-              >
-                <button
-                  class="btn-secondary channel-item-button"
-                  type="button"
-                  id="prevChannelBtn"
-                  onclick="navigateChannel(-1)"
-                  title="Previous"
-                >
-                  <i class="fas fa-arrow-left"></i>
-                </button>
+                ">
+              <button class="btn-secondary channel-item-button" type="button" id="prevChannelBtn"
+                onclick="navigateChannel(-1)" title="Previous">
+                <i class="fas fa-arrow-left"></i>
+              </button>
 
-                <button
-                  class="btn-primary channel-item-button"
-                  type="submit"
-                  title="Save"
-                >
-                  <i class="fas fa-save"></i>
-                </button>
+              <button class="btn-primary channel-item-button" type="submit" title="Save">
+                <i class="fas fa-save"></i>
+              </button>
 
-                <button
-                  class="btn-danger channel-item-button"
-                  type="button"
-                  onclick="deleteCurrentChannel()"
-                  title="Delete"
-                >
-                  <i class="fas fa-trash"></i>
-                </button>
+              <button class="btn-danger channel-item-button" type="button" onclick="deleteCurrentChannel()"
+                title="Delete">
+                <i class="fas fa-trash"></i>
+              </button>
 
-                <button
-                  class="btn-secondary channel-item-button"
-                  type="button"
-                  onclick="clearChannelForm()"
-                  title="Cancel"
-                >
-                  <i class="fas fa-times"></i>
-                </button>
+              <button class="btn-secondary channel-item-button" type="button" onclick="clearChannelForm()"
+                title="Cancel">
+                <i class="fas fa-times"></i>
+              </button>
 
-                <button
-                  class="btn-secondary channel-item-button"
-                  type="button"
-                  id="nextChannelBtn"
-                  onclick="navigateChannel(1)"
-                  title="Next"
-                >
-                  <i class="fas fa-arrow-right"></i>
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-
-        <div id="tab-live" class="tab-content">
-          <h3>🔴 Live Channels Editor</h3>
-
-          <div class="warning-box">
-            <p>
-              ⚠️ <strong>Important:</strong> Live channels require a channel_id
-              parameter in the URL for YouTube API integration.
-            </p>
-          </div>
-
-          <div class="stats-display">
-            <div class="stat-card">
-              <div class="stat-label">Total Live Channels</div>
-              <div class="stat-value" id="liveChannelsCount">0</div>
+              <button class="btn-secondary channel-item-button" type="button" id="nextChannelBtn"
+                onclick="navigateChannel(1)" title="Next">
+                <i class="fas fa-arrow-right"></i>
+              </button>
             </div>
-          </div>
-
-          <button class="btn-soft-green full-width" onclick="showLiveEditor()">
-            📝 Edit Live Channels
-          </button>
-
-          <button class="btn-soft-blue full-width" onclick="importLive()">
-            📂 Import live.json
-          </button>
-
-          <button class="btn-soft-green full-width" onclick="exportLive()">
-            💾 Export live.json
-          </button>
-        </div>
-
-        <div id="tab-feeds" class="tab-content">
-          <h3>📡 RSS Feeds Editor</h3>
-
-          <div class="info-box">
-            <p>
-              💡 RSS feeds use YouTube's RSS feed URL format:<br />
-              <code
-                >https://www.youtube.com/feeds/videos.xml?channel_id=XXXXX</code
-              >
-            </p>
-          </div>
-
-          <div class="stats-display">
-            <div class="stat-card">
-              <div class="stat-label">Total RSS Feeds</div>
-              <div class="stat-value" id="rssFeedsCount">0</div>
-            </div>
-          </div>
-
-          <button class="btn-soft-blue full-width" onclick="showFeedsEditor()">
-            📝 Edit Feeds
-          </button>
-
-          <button class="btn-soft-blue full-width" onclick="importFeeds()">
-            📂 Import feeds.json
-          </button>
-
-          <button class="btn-soft-green full-width" onclick="exportFeeds()">
-            💾 Export feeds.json
-          </button>
+          </form>
         </div>
       </div>
 
-      <div class="preview-panel panel">
-        <h2>Live Preview</h2>
+      <div id="tab-live" class="tab-content">
+        <h3>🔴 Live Channels Editor</h3>
+
+        <div class="warning-box">
+          <p>
+            ⚠️ <strong>Important:</strong> Live channels require a channel_id
+            parameter in the URL for YouTube API integration.
+          </p>
+        </div>
 
         <div class="stats-display">
           <div class="stat-card">
-            <div class="stat-label">Total Channels</div>
-            <div class="stat-value" id="totalChannelsCount">0</div>
-          </div>
-          <div class="stat-card">
-            <div class="stat-label">Categories</div>
-            <div class="stat-value" id="totalCategoriesCount">0</div>
+            <div class="stat-label">Total Live Channels</div>
+            <div class="stat-value" id="liveChannelsCount">0</div>
           </div>
         </div>
 
-        <div
-          class="search-container"
-          style="position: relative; margin: 20px 0"
-        >
-          <input
-            type="text"
-            id="searchInput"
-            placeholder="🔍 Search channels by name, category, or URL..."
-            oninput="toggleClearButton(); searchChannels();"
-            style="
+        <button class="btn-soft-green full-width" onclick="showLiveEditor()">
+          📝 Edit Live Channels
+        </button>
+
+        <button class="btn-soft-blue full-width" onclick="importLive()">
+          📂 Import live.json
+        </button>
+
+        <button class="btn-soft-green full-width" onclick="exportLive()">
+          💾 Export live.json
+        </button>
+      </div>
+
+      <div id="tab-feeds" class="tab-content">
+        <h3>📡 RSS Feeds Editor</h3>
+
+        <div class="info-box">
+          <p>
+            💡 RSS feeds use YouTube's RSS feed URL format:<br />
+            <code>https://www.youtube.com/feeds/videos.xml?channel_id=XXXXX</code>
+          </p>
+        </div>
+
+        <div class="stats-display">
+          <div class="stat-card">
+            <div class="stat-label">Total RSS Feeds</div>
+            <div class="stat-value" id="rssFeedsCount">0</div>
+          </div>
+        </div>
+
+        <button class="btn-soft-blue full-width" onclick="showFeedsEditor()">
+          📝 Edit Feeds
+        </button>
+
+        <button class="btn-soft-blue full-width" onclick="importFeeds()">
+          📂 Import feeds.json
+        </button>
+
+        <button class="btn-soft-green full-width" onclick="exportFeeds()">
+          💾 Export feeds.json
+        </button>
+      </div>
+    </div>
+
+    <div class="preview-panel panel">
+      <h2>Live Preview</h2>
+
+      <div class="stats-display">
+        <div class="stat-card">
+          <div class="stat-label">Total Channels</div>
+          <div class="stat-value" id="totalChannelsCount">0</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Categories</div>
+          <div class="stat-value" id="totalCategoriesCount">0</div>
+        </div>
+      </div>
+
+      <div class="search-container" style="position: relative; margin: 20px 0">
+        <input type="text" id="searchInput" placeholder="🔍 Search channels by name, category, or URL..."
+          oninput="toggleClearButton(); searchChannels();" style="
               width: 96%;
               padding: 12px 35px 12px 15px;
               border-radius: 8px;
@@ -900,12 +878,8 @@
               background-color: var(--bg-color-light);
               color: var(--text-color-primary);
               font-size: 14px;
-            "
-          />
-          <button
-            id="clearBtn"
-            onclick="clearSearch()"
-            style="
+            " />
+        <button id="clearBtn" onclick="clearSearch()" style="
               position: absolute;
               right: 15px;
               top: 50%;
@@ -916,22 +890,18 @@
               color: var(--text-color-secondary);
               cursor: pointer;
               display: none;
-            "
-          >
-            ✕
-          </button>
-        </div>
+            ">
+          ✕
+        </button>
+      </div>
 
-        <div class="visual-preview">
-          <div id="channelListPreview"></div>
-        </div>
+      <div class="visual-preview">
+        <div id="channelListPreview"></div>
+      </div>
 
-        <div class="json-preview">
-          <h3>Live JSON Output</h3>
-          <textarea
-            id="jsonOutput"
-            rows="20"
-            style="
+      <div class="json-preview">
+        <h3>Live JSON Output</h3>
+        <textarea id="jsonOutput" rows="20" style="
               width: 96%;
               height: 300px;
               padding: 15px;
@@ -939,649 +909,640 @@
               border: 1px solid var(--border-color);
               background-color: var(--bg-color-light);
               color: var(--text-color-primary);
-            "
-          ></textarea>
-          <div
-            style="margin-top: 10px; display: flex; gap: 10px; flex-wrap: wrap"
-          >
-            <button class="btn-primary" onclick="loadDataFromTextarea()">
-              📥 Load from Text
-            </button>
-            <button class="btn-primary" onclick="sortJson()">Sort JSON</button>
-            <button class="btn-soft-blue" onclick="formatJSON()">
-              🎨 Format JSON
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <div id="liveEditorModal" class="modal">
-      <div class="modal-content">
-        <h2>🔴 Edit Live Channels</h2>
-        <div class="json-editor-container">
-          <textarea
-            id="liveJsonEditor"
-            placeholder="Paste or edit your live.json data here..."
-          ></textarea>
-        </div>
-        <div class="json-editor-actions">
-          <button class="btn-soft-green" onclick="validateAndSaveLive()">
-            💾 Validate & Save
+            "></textarea>
+        <div style="margin-top: 10px; display: flex; gap: 10px; flex-wrap: wrap">
+          <button class="btn-primary" onclick="loadDataFromTextarea()">
+            📥 Load from Text
           </button>
-          <button class="btn-soft-blue" onclick="formatLiveJSON()">
+          <button class="btn-primary" onclick="sortJson()">Sort JSON</button>
+          <button class="btn-soft-blue" onclick="formatJSON()">
             🎨 Format JSON
           </button>
-          <button class="btn-secondary" onclick="closeLiveEditor()">
-            Cancel
-          </button>
         </div>
       </div>
     </div>
+  </div>
 
-    <div id="feedsEditorModal" class="modal">
-      <div class="modal-content">
-        <h2>📡 Edit RSS Feeds JSON</h2>
-        <div class="json-editor-container">
-          <textarea
-            id="feedsJsonEditor"
-            placeholder="Paste or edit your feeds.json data here..."
-          ></textarea>
-        </div>
-        <div class="json-editor-actions">
-          <button class="btn-soft-green" onclick="validateAndSaveFeeds()">
-            💾 Validate & Save
-          </button>
-          <button class="btn-soft-blue" onclick="formatFeedsJSON()">
-            🎨 Format JSON
-          </button>
-          <button class="btn-secondary" onclick="closeFeedsEditor()">
-            Cancel
-          </button>
-        </div>
+  <div id="liveEditorModal" class="modal">
+    <div class="modal-content">
+      <h2>🔴 Edit Live Channels</h2>
+      <div class="json-editor-container">
+        <textarea id="liveJsonEditor" placeholder="Paste or edit your live.json data here..."></textarea>
+      </div>
+      <div class="json-editor-actions">
+        <button class="btn-soft-green" onclick="validateAndSaveLive()">
+          💾 Validate & Save
+        </button>
+        <button class="btn-soft-blue" onclick="formatLiveJSON()">
+          🎨 Format JSON
+        </button>
+        <button class="btn-secondary" onclick="closeLiveEditor()">
+          Cancel
+        </button>
       </div>
     </div>
+  </div>
 
-    <script>
-      let channelsData = [];
-      let categoriesData = [];
-      let originalChannelData = null;
-      let liveChannelsData = [];
-      let rssFeedsData = [];
-      let hasUnsavedChanges = false;
+  <div id="feedsEditorModal" class="modal">
+    <div class="modal-content">
+      <h2>📡 Edit RSS Feeds JSON</h2>
+      <div class="json-editor-container">
+        <textarea id="feedsJsonEditor" placeholder="Paste or edit your feeds.json data here..."></textarea>
+      </div>
+      <div class="json-editor-actions">
+        <button class="btn-soft-green" onclick="validateAndSaveFeeds()">
+          💾 Validate & Save
+        </button>
+        <button class="btn-soft-blue" onclick="formatFeedsJSON()">
+          🎨 Format JSON
+        </button>
+        <button class="btn-secondary" onclick="closeFeedsEditor()">
+          Cancel
+        </button>
+      </div>
+    </div>
+  </div>
 
-      const STORAGE_KEYS = {
-        channels: "allChannelsData",
-        live: "liveChannelsData",
-        feeds: "rssFeedsData",
-      };
+  <script>
+    let channelsData = [];
+    let categoriesData = [];
+    let originalChannelData = null;
+    let liveChannelsData = [];
+    let rssFeedsData = [];
+    let hasUnsavedChanges = false;
 
-      const els = {
-        fileInput: null,
-        jsonOutput: null,
-        categoryListPreview: null,
-        channelListPreview: null,
-        channelForm: null,
-        imagePreview: null,
-        channelImageInput: null,
-      };
+    const STORAGE_KEYS = {
+      channels: "allChannelsData",
+      live: "liveChannelsData",
+      feeds: "rssFeedsData",
+    };
 
-      function initElements() {
-        els.fileInput = document.getElementById("fileInput");
-        els.jsonOutput = document.getElementById("jsonOutput");
-        els.categoryListPreview = document.getElementById(
-          "categoryListPreview"
-        );
-        els.channelListPreview = document.getElementById("channelListPreview");
-        els.channelForm = document
-          .getElementById("addChannelForm")
-          .querySelector("form");
-        els.imagePreview = document.getElementById("imagePreview");
-        els.channelImageInput = document.getElementById("channelImage");
+    const els = {
+      fileInput: null,
+      jsonOutput: null,
+      categoryListPreview: null,
+      channelListPreview: null,
+      channelForm: null,
+      imagePreview: null,
+      channelImageInput: null,
+    };
 
-        els.fileInput.addEventListener("change", loadDataFromFile);
-        els.channelImageInput.addEventListener("input", handleImagePreview);
+    function initElements() {
+      els.fileInput = document.getElementById("fileInput");
+      els.jsonOutput = document.getElementById("jsonOutput");
+      els.categoryListPreview = document.getElementById(
+        "categoryListPreview"
+      );
+      els.channelListPreview = document.getElementById("channelListPreview");
+      els.channelForm = document
+        .getElementById("addChannelForm")
+        .querySelector("form");
+      els.imagePreview = document.getElementById("imagePreview");
+      els.channelImageInput = document.getElementById("channelImage");
 
-        const formInputs = els.channelForm.querySelectorAll(
-          "input, select, textarea"
-        );
-        formInputs.forEach((input) => {
-          if (
-            input.id !== "channelIndex" &&
-            input.id !== "displayChannelIndex"
-          ) {
-            input.addEventListener("input", markFormAsChanged);
-          }
-        });
-      }
+      els.fileInput.addEventListener("change", loadDataFromFile);
+      els.channelImageInput.addEventListener("input", handleImagePreview);
 
-      function handleImagePreview() {
-        const url = els.channelImageInput.value.trim();
-        if (url) {
-          els.imagePreview.src = url;
-          els.imagePreview.style.display = "block";
-        } else {
-          els.imagePreview.style.display = "none";
-          els.imagePreview.src = "";
+      const formInputs = els.channelForm.querySelectorAll(
+        "input, select, textarea"
+      );
+      formInputs.forEach((input) => {
+        if (
+          input.id !== "channelIndex" &&
+          input.id !== "displayChannelIndex"
+        ) {
+          input.addEventListener("input", markFormAsChanged);
         }
-      }
-
-      function markFormAsChanged() {
-        if (isFormDirty()) {
-          els.channelForm.classList.add("form-changed");
-        } else {
-          els.channelForm.classList.remove("form-changed");
-        }
-      }
-
-      document.addEventListener("DOMContentLoaded", () => {
-        initElements();
-        loadAllFromStorage();
-        renderUI();
-        updateNavigationButtons(-1);
       });
+    }
 
-      function loadAllFromStorage() {
-        const storedChannels = localStorage.getItem(STORAGE_KEYS.channels);
-        if (storedChannels) {
-          try {
-            channelsData = JSON.parse(storedChannels);
-            channelsData.forEach((ch) => delete ch.number);
-          } catch (e) {
-            console.error("Error loading channels:", e);
-          }
+    function handleImagePreview() {
+      const url = els.channelImageInput.value.trim();
+      if (url) {
+        els.imagePreview.src = url;
+        els.imagePreview.style.display = "block";
+      } else {
+        els.imagePreview.style.display = "none";
+        els.imagePreview.src = "";
+      }
+    }
+
+    function markFormAsChanged() {
+      if (isFormDirty()) {
+        els.channelForm.classList.add("form-changed");
+      } else {
+        els.channelForm.classList.remove("form-changed");
+      }
+    }
+
+    document.addEventListener("DOMContentLoaded", () => {
+      initElements();
+      loadAllFromStorage();
+      renderUI();
+      updateNavigationButtons(-1);
+    });
+
+    function loadAllFromStorage() {
+      const storedChannels = localStorage.getItem(STORAGE_KEYS.channels);
+      if (storedChannels) {
+        try {
+          channelsData = JSON.parse(storedChannels);
+          channelsData.forEach((ch) => delete ch.number);
+        } catch (e) {
+          console.error("Error loading channels:", e);
         }
+      }
 
-        const storedLive = localStorage.getItem(STORAGE_KEYS.live);
-        if (storedLive) {
-          try {
-            liveChannelsData = JSON.parse(storedLive);
-          } catch (e) {
-            console.error("Error loading live channels:", e);
-          }
+      const storedLive = localStorage.getItem(STORAGE_KEYS.live);
+      if (storedLive) {
+        try {
+          liveChannelsData = JSON.parse(storedLive);
+        } catch (e) {
+          console.error("Error loading live channels:", e);
         }
+      }
 
-        const storedFeeds = localStorage.getItem(STORAGE_KEYS.feeds);
-        if (storedFeeds) {
-          try {
-            rssFeedsData = JSON.parse(storedFeeds);
-          } catch (e) {
-            console.error("Error loading RSS feeds:", e);
-          }
+      const storedFeeds = localStorage.getItem(STORAGE_KEYS.feeds);
+      if (storedFeeds) {
+        try {
+          rssFeedsData = JSON.parse(storedFeeds);
+        } catch (e) {
+          console.error("Error loading RSS feeds:", e);
         }
+      }
 
+      categoriesData = [...new Set(channelsData.map((c) => c.category))];
+
+      hasUnsavedChanges = false;
+      updateSaveButtonState();
+    }
+
+    function checkForUnsavedChanges() {
+      const storedChannels = localStorage.getItem(STORAGE_KEYS.channels);
+
+      // Create normalized versions for comparison
+      const currentDataCopy = JSON.parse(JSON.stringify(channelsData));
+      currentDataCopy.forEach((ch) => delete ch.number);
+
+      const storedDataCopy = storedChannels ? JSON.parse(storedChannels) : [];
+      storedDataCopy.forEach((ch) => delete ch.number);
+
+      const currentData = JSON.stringify(currentDataCopy);
+      const storedData = JSON.stringify(storedDataCopy);
+
+      hasUnsavedChanges = currentData !== storedData;
+      updateSaveButtonState();
+    }
+
+    function updateSaveButtonState() {
+      const saveBtn = document.querySelector(
+        '.btn-soft-blue[onclick="saveAllChannels()"]'
+      );
+      if (hasUnsavedChanges) {
+        saveBtn.classList.add("btn-pulse");
+        saveBtn.innerHTML = "💾 Save Channels *";
+      } else {
+        saveBtn.classList.remove("btn-pulse");
+        saveBtn.innerHTML = "💾 Save Channels";
+      }
+    }
+
+    function saveAllChannels() {
+      if (channelsData.length === 0) {
+        showNotification("No channels to save!", "warning");
+        return;
+      }
+
+      sortChannelsByCategories();
+      assignChannelNumbers();
+
+      localStorage.setItem(
+        STORAGE_KEYS.channels,
+        JSON.stringify(channelsData)
+      );
+      hasUnsavedChanges = false;
+      updateSaveButtonState();
+      showNotification(
+        `✅ ${channelsData.length} channels saved to localStorage!`,
+        "success"
+      );
+    }
+
+    function saveLiveToStorage() {
+      if (liveChannelsData.length === 0) {
+        showNotification("No live channels to save!", "warning");
+        return;
+      }
+      localStorage.setItem(
+        STORAGE_KEYS.live,
+        JSON.stringify(liveChannelsData)
+      );
+      updateStats();
+      showNotification(
+        `✅ ${liveChannelsData.length} live channels saved!`,
+        "success"
+      );
+    }
+
+    function saveFeedsToStorage() {
+      if (rssFeedsData.length === 0) {
+        showNotification("No RSS feeds to save!", "warning");
+        return;
+      }
+      localStorage.setItem(STORAGE_KEYS.feeds, JSON.stringify(rssFeedsData));
+      updateStats();
+      showNotification(
+        `✅ ${rssFeedsData.length} RSS feeds saved!`,
+        "success"
+      );
+    }
+
+    function loadChannelsFromStorage() {
+      const storedData = localStorage.getItem(STORAGE_KEYS.channels);
+      if (!storedData) {
+        showNotification("No channels found in localStorage.", "warning");
+        return;
+      }
+      try {
+        let parsedData = JSON.parse(storedData);
+        if (Array.isArray(parsedData)) {
+          parsedData.forEach((channel) => delete channel.number);
+        }
+        channelsData = parsedData;
         categoriesData = [...new Set(channelsData.map((c) => c.category))];
-
-        hasUnsavedChanges = false;
-        updateSaveButtonState();
-      }
-
-      function checkForUnsavedChanges() {
-        const storedChannels = localStorage.getItem(STORAGE_KEYS.channels);
-
-        // Create normalized versions for comparison
-        const currentDataCopy = JSON.parse(JSON.stringify(channelsData));
-        currentDataCopy.forEach((ch) => delete ch.number);
-
-        const storedDataCopy = storedChannels ? JSON.parse(storedChannels) : [];
-        storedDataCopy.forEach((ch) => delete ch.number);
-
-        const currentData = JSON.stringify(currentDataCopy);
-        const storedData = JSON.stringify(storedDataCopy);
-
-        hasUnsavedChanges = currentData !== storedData;
-        updateSaveButtonState();
-      }
-
-      function updateSaveButtonState() {
-        const saveBtn = document.querySelector(
-          '.btn-soft-blue[onclick="saveAllChannels()"]'
-        );
-        if (hasUnsavedChanges) {
-          saveBtn.classList.add("btn-pulse");
-          saveBtn.innerHTML = "💾 Save Channels *";
-        } else {
-          saveBtn.classList.remove("btn-pulse");
-          saveBtn.innerHTML = "💾 Save Channels";
-        }
-      }
-
-      function saveAllChannels() {
-        if (channelsData.length === 0) {
-          showNotification("No channels to save!", "warning");
-          return;
-        }
-
         sortChannelsByCategories();
-        assignChannelNumbers();
-
-        localStorage.setItem(
-          STORAGE_KEYS.channels,
-          JSON.stringify(channelsData)
-        );
-        hasUnsavedChanges = false;
-        updateSaveButtonState();
+        renderUI();
         showNotification(
-          `✅ ${channelsData.length} channels saved to localStorage!`,
+          "✅ Channels loaded from localStorage successfully!",
           "success"
         );
+        showTab("tab-channel");
+      } catch (e) {
+        console.error(e);
+        showNotification(
+          "Failed to parse channels data from localStorage.",
+          "error"
+        );
+      }
+    }
+
+    function clearAllData() {
+      if (
+        !confirm(
+          "⚠️ This will delete ALL data (channels, categories, live channels, RSS feeds). Are you sure?"
+        )
+      ) {
+        return;
       }
 
-      function saveLiveToStorage() {
-        if (liveChannelsData.length === 0) {
-          showNotification("No live channels to save!", "warning");
+      channelsData = [];
+      categoriesData = [];
+      liveChannelsData = [];
+      rssFeedsData = [];
+
+      localStorage.removeItem(STORAGE_KEYS.channels);
+      localStorage.removeItem(STORAGE_KEYS.live);
+      localStorage.removeItem(STORAGE_KEYS.feeds);
+
+      renderUI();
+      showNotification("🗑️ All data cleared!", "success");
+    }
+
+    function loadDataFromFile() {
+      const file = els.fileInput.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        try {
+          const parsedData = JSON.parse(e.target.result);
+          if (Array.isArray(parsedData)) {
+            channelsData = parsedData;
+            channelsData.forEach((ch) => delete ch.number);
+          } else if (parsedData.channels) {
+            channelsData = parsedData.channels;
+            channelsData.forEach((ch) => delete ch.number);
+          }
+          categoriesData = [...new Set(channelsData.map((c) => c.category))];
+          renderUI();
+          showNotification(
+            "✅ Data loaded successfully from file!",
+            "success"
+          );
+        } catch (e) {
+          showNotification(
+            "Invalid JSON format. Please check your file.",
+            "error"
+          );
+        }
+      };
+      reader.readAsText(file);
+    }
+
+    function loadDataFromTextarea() {
+      const jsonString = els.jsonOutput.value;
+      if (!jsonString) {
+        showNotification("JSON data is empty.", "warning");
+        return;
+      }
+      try {
+        let parsedData = JSON.parse(jsonString);
+        if (Array.isArray(parsedData)) {
+          parsedData.forEach((channel) => delete channel.number);
+        }
+        channelsData = parsedData;
+        categoriesData = [...new Set(channelsData.map((c) => c.category))];
+        renderUI();
+        showNotification("✅ Data loaded from JSON successfully!", "success");
+      } catch (e) {
+        showNotification(
+          "Invalid JSON format. Please check your data.",
+          "error"
+        );
+        console.error(e);
+      }
+    }
+
+    function saveData() {
+      if (channelsData.length === 0) {
+        showNotification("No channels to export!", "warning");
+        return;
+      }
+
+      sortChannelsByCategories();
+      assignChannelNumbers();
+
+      const exportData = {
+        channels: channelsData,
+        live: liveChannelsData,
+        feeds: rssFeedsData,
+        exportDate: new Date().toISOString(),
+        version: "1.0",
+      };
+
+      downloadJSON(exportData, "all-channels.json");
+      showNotification("💾 All channels exported!", "success");
+    }
+
+    function exportChannels() {
+      if (channelsData.length === 0) {
+        showNotification("No channels to export!", "warning");
+        return;
+      }
+
+      sortChannelsByCategories();
+      assignChannelNumbers();
+
+      downloadJSON(channelsData, "channels.json");
+      showNotification("💾 channels.json exported!", "success");
+    }
+
+    function importAllChannels() {
+      const input = document.createElement("input");
+      input.type = "file";
+      input.accept = ".json";
+
+      input.onchange = (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          try {
+            const importedData = JSON.parse(event.target.result);
+
+            if (importedData.channels && importedData.version) {
+              channelsData = importedData.channels || [];
+              liveChannelsData = importedData.live || [];
+              rssFeedsData = importedData.feeds || [];
+            } else if (Array.isArray(importedData)) {
+              channelsData = importedData;
+            } else {
+              showNotification("Invalid file format!", "error");
+              return;
+            }
+
+            localStorage.setItem(
+              STORAGE_KEYS.channels,
+              JSON.stringify(channelsData)
+            );
+            localStorage.setItem(
+              STORAGE_KEYS.live,
+              JSON.stringify(liveChannelsData)
+            );
+            localStorage.setItem(
+              STORAGE_KEYS.feeds,
+              JSON.stringify(rssFeedsData)
+            );
+
+            renderUI();
+            updateStats();
+            showNotification(
+              "✅ All channels imported successfully!",
+              "success"
+            );
+          } catch (error) {
+            console.error("Import error:", error);
+            showNotification("Failed to import channels!", "error");
+          }
+        };
+
+        reader.readAsText(file);
+      };
+
+      input.click();
+    }
+
+    function importLive() {
+      importJSONFile((data) => {
+        if (!Array.isArray(data)) {
+          showNotification("Invalid live.json format!", "error");
           return;
         }
+        liveChannelsData = data;
         localStorage.setItem(
           STORAGE_KEYS.live,
           JSON.stringify(liveChannelsData)
         );
-        updateStats();
-        showNotification(
-          `✅ ${liveChannelsData.length} live channels saved!`,
-          "success"
-        );
-      }
-
-      function saveFeedsToStorage() {
-        if (rssFeedsData.length === 0) {
-          showNotification("No RSS feeds to save!", "warning");
-          return;
-        }
-        localStorage.setItem(STORAGE_KEYS.feeds, JSON.stringify(rssFeedsData));
-        updateStats();
-        showNotification(
-          `✅ ${rssFeedsData.length} RSS feeds saved!`,
-          "success"
-        );
-      }
-
-      function loadChannelsFromStorage() {
-        const storedData = localStorage.getItem(STORAGE_KEYS.channels);
-        if (!storedData) {
-          showNotification("No channels found in localStorage.", "warning");
-          return;
-        }
-        try {
-          let parsedData = JSON.parse(storedData);
-          if (Array.isArray(parsedData)) {
-            parsedData.forEach((channel) => delete channel.number);
-          }
-          channelsData = parsedData;
-          categoriesData = [...new Set(channelsData.map((c) => c.category))];
-          sortChannelsByCategories();
-          renderUI();
-          showNotification(
-            "✅ Channels loaded from localStorage successfully!",
-            "success"
-          );
-          showTab("tab-channel");
-        } catch (e) {
-          console.error(e);
-          showNotification(
-            "Failed to parse channels data from localStorage.",
-            "error"
-          );
-        }
-      }
-
-      function clearAllData() {
-        if (
-          !confirm(
-            "⚠️ This will delete ALL data (channels, categories, live channels, RSS feeds). Are you sure?"
-          )
-        ) {
-          return;
-        }
-
-        channelsData = [];
-        categoriesData = [];
-        liveChannelsData = [];
-        rssFeedsData = [];
-
-        localStorage.removeItem(STORAGE_KEYS.channels);
-        localStorage.removeItem(STORAGE_KEYS.live);
-        localStorage.removeItem(STORAGE_KEYS.feeds);
-
         renderUI();
-        showNotification("🗑️ All data cleared!", "success");
-      }
+        updateStats();
+        showNotification("✅ live.json imported successfully!", "success");
+      });
+    }
 
-      function loadDataFromFile() {
-        const file = els.fileInput.files[0];
+    function importFeeds() {
+      importJSONFile((data) => {
+        if (!Array.isArray(data)) {
+          showNotification("Invalid feeds.json format!", "error");
+          return;
+        }
+        rssFeedsData = data;
+        localStorage.setItem(
+          STORAGE_KEYS.feeds,
+          JSON.stringify(rssFeedsData)
+        );
+        renderUI();
+        updateStats();
+        showNotification("✅ feeds.json imported successfully!", "success");
+      });
+    }
+
+    function exportLive() {
+      if (liveChannelsData.length === 0) {
+        showNotification("No live channels to export!", "warning");
+        return;
+      }
+      downloadJSON(liveChannelsData, "live.json");
+      showNotification("💾 live.json exported!", "success");
+    }
+
+    function exportFeeds() {
+      if (rssFeedsData.length === 0) {
+        showNotification("No RSS feeds to export!", "warning");
+        return;
+      }
+      downloadJSON(rssFeedsData, "feeds.json");
+      showNotification("💾 feeds.json exported!", "success");
+    }
+
+    function downloadJSON(data, filename) {
+      const jsonString = JSON.stringify(data, null, 2);
+      const blob = new Blob([jsonString], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }
+
+    function importJSONFile(callback) {
+      const input = document.createElement("input");
+      input.type = "file";
+      input.accept = ".json";
+
+      input.onchange = (e) => {
+        const file = e.target.files[0];
         if (!file) return;
+
         const reader = new FileReader();
-        reader.onload = (e) => {
+        reader.onload = (event) => {
           try {
-            const parsedData = JSON.parse(e.target.result);
-            if (Array.isArray(parsedData)) {
-              channelsData = parsedData;
-              channelsData.forEach((ch) => delete ch.number);
-            } else if (parsedData.channels) {
-              channelsData = parsedData.channels;
-              channelsData.forEach((ch) => delete ch.number);
-            }
-            categoriesData = [...new Set(channelsData.map((c) => c.category))];
-            renderUI();
-            showNotification(
-              "✅ Data loaded successfully from file!",
-              "success"
-            );
-          } catch (e) {
-            showNotification(
-              "Invalid JSON format. Please check your file.",
-              "error"
-            );
+            const importedData = JSON.parse(event.target.result);
+            callback(importedData);
+          } catch (error) {
+            console.error("Import error:", error);
+            showNotification("Failed to import file!", "error");
           }
         };
+
         reader.readAsText(file);
-      }
+      };
 
-      function loadDataFromTextarea() {
-        const jsonString = els.jsonOutput.value;
-        if (!jsonString) {
-          showNotification("JSON data is empty.", "warning");
-          return;
+      input.click();
+    }
+
+    function assignChannelNumbers() {
+      channelsData.forEach((channel, index) => {
+        channel.number = index + 1;
+      });
+    }
+
+    function showLiveEditor() {
+      const modal = document.getElementById("liveEditorModal");
+      const editor = document.getElementById("liveJsonEditor");
+      editor.value = JSON.stringify(liveChannelsData, null, 2);
+      modal.classList.add("active");
+    }
+
+    function closeLiveEditor() {
+      document.getElementById("liveEditorModal").classList.remove("active");
+    }
+
+    function formatLiveJSON() {
+      formatJSONInEditor("liveJsonEditor");
+    }
+
+    function formatJSON() {
+      formatJSONInEditor("jsonOutput");
+    }
+
+    function formatJSONInEditor(editorId) {
+      const editor = document.getElementById(editorId);
+      try {
+        const parsed = JSON.parse(editor.value);
+        editor.value = JSON.stringify(parsed, null, 2);
+        showNotification("✨ JSON formatted!", "success");
+      } catch (e) {
+        showNotification("Invalid JSON - cannot format", "error");
+      }
+    }
+
+    function validateAndSaveLive() {
+      const editor = document.getElementById("liveJsonEditor");
+      try {
+        const parsed = JSON.parse(editor.value);
+        if (!Array.isArray(parsed)) {
+          throw new Error("Data must be an array");
         }
-        try {
-          let parsedData = JSON.parse(jsonString);
-          if (Array.isArray(parsedData)) {
-            parsedData.forEach((channel) => delete channel.number);
-          }
-          channelsData = parsedData;
-          categoriesData = [...new Set(channelsData.map((c) => c.category))];
-          renderUI();
-          showNotification("✅ Data loaded from JSON successfully!", "success");
-        } catch (e) {
-          showNotification(
-            "Invalid JSON format. Please check your data.",
-            "error"
-          );
-          console.error(e);
+        liveChannelsData = parsed;
+        saveLiveToStorage();
+        closeLiveEditor();
+        showNotification("✅ Live channels saved successfully!", "success");
+      } catch (e) {
+        showNotification(`❌ Invalid JSON: ${e.message}`, "error");
+      }
+    }
+
+    function showFeedsEditor() {
+      const modal = document.getElementById("feedsEditorModal");
+      const editor = document.getElementById("feedsJsonEditor");
+      editor.value = JSON.stringify(rssFeedsData, null, 2);
+      modal.classList.add("active");
+    }
+
+    function closeFeedsEditor() {
+      document.getElementById("feedsEditorModal").classList.remove("active");
+    }
+
+    function formatFeedsJSON() {
+      formatJSONInEditor("feedsJsonEditor");
+    }
+
+    function validateAndSaveFeeds() {
+      const editor = document.getElementById("feedsJsonEditor");
+      try {
+        const parsed = JSON.parse(editor.value);
+        if (!Array.isArray(parsed)) {
+          throw new Error("Data must be an array");
         }
+        rssFeedsData = parsed;
+        saveFeedsToStorage();
+        closeFeedsEditor();
+        showNotification("✅ RSS feeds saved successfully!", "success");
+      } catch (e) {
+        showNotification(`❌ Invalid JSON: ${e.message}`, "error");
       }
+    }
 
-      function saveData() {
-        if (channelsData.length === 0) {
-          showNotification("No channels to export!", "warning");
-          return;
-        }
+    function renderChannelFormCategories() {
+      const categorySelect = document.getElementById("channelCategory");
+      categorySelect.innerHTML = "";
+      categoriesData.forEach((cat) => {
+        const option = document.createElement("option");
+        option.value = cat;
+        option.textContent = cat;
+        categorySelect.appendChild(option);
+      });
+    }
 
-        sortChannelsByCategories();
-        assignChannelNumbers();
-
-        const exportData = {
-          channels: channelsData,
-          live: liveChannelsData,
-          feeds: rssFeedsData,
-          exportDate: new Date().toISOString(),
-          version: "1.0",
-        };
-
-        downloadJSON(exportData, "all-channels.json");
-        showNotification("💾 All channels exported!", "success");
-      }
-
-      function exportChannels() {
-        if (channelsData.length === 0) {
-          showNotification("No channels to export!", "warning");
-          return;
-        }
-
-        sortChannelsByCategories();
-        assignChannelNumbers();
-
-        downloadJSON(channelsData, "channels.json");
-        showNotification("💾 channels.json exported!", "success");
-      }
-
-      function importAllChannels() {
-        const input = document.createElement("input");
-        input.type = "file";
-        input.accept = ".json";
-
-        input.onchange = (e) => {
-          const file = e.target.files[0];
-          if (!file) return;
-
-          const reader = new FileReader();
-          reader.onload = (event) => {
-            try {
-              const importedData = JSON.parse(event.target.result);
-
-              if (importedData.channels && importedData.version) {
-                channelsData = importedData.channels || [];
-                liveChannelsData = importedData.live || [];
-                rssFeedsData = importedData.feeds || [];
-              } else if (Array.isArray(importedData)) {
-                channelsData = importedData;
-              } else {
-                showNotification("Invalid file format!", "error");
-                return;
-              }
-
-              localStorage.setItem(
-                STORAGE_KEYS.channels,
-                JSON.stringify(channelsData)
-              );
-              localStorage.setItem(
-                STORAGE_KEYS.live,
-                JSON.stringify(liveChannelsData)
-              );
-              localStorage.setItem(
-                STORAGE_KEYS.feeds,
-                JSON.stringify(rssFeedsData)
-              );
-
-              renderUI();
-              updateStats();
-              showNotification(
-                "✅ All channels imported successfully!",
-                "success"
-              );
-            } catch (error) {
-              console.error("Import error:", error);
-              showNotification("Failed to import channels!", "error");
-            }
-          };
-
-          reader.readAsText(file);
-        };
-
-        input.click();
-      }
-
-      function importLive() {
-        importJSONFile((data) => {
-          if (!Array.isArray(data)) {
-            showNotification("Invalid live.json format!", "error");
-            return;
-          }
-          liveChannelsData = data;
-          localStorage.setItem(
-            STORAGE_KEYS.live,
-            JSON.stringify(liveChannelsData)
-          );
-          renderUI();
-          updateStats();
-          showNotification("✅ live.json imported successfully!", "success");
-        });
-      }
-
-      function importFeeds() {
-        importJSONFile((data) => {
-          if (!Array.isArray(data)) {
-            showNotification("Invalid feeds.json format!", "error");
-            return;
-          }
-          rssFeedsData = data;
-          localStorage.setItem(
-            STORAGE_KEYS.feeds,
-            JSON.stringify(rssFeedsData)
-          );
-          renderUI();
-          updateStats();
-          showNotification("✅ feeds.json imported successfully!", "success");
-        });
-      }
-
-      function exportLive() {
-        if (liveChannelsData.length === 0) {
-          showNotification("No live channels to export!", "warning");
-          return;
-        }
-        downloadJSON(liveChannelsData, "live.json");
-        showNotification("💾 live.json exported!", "success");
-      }
-
-      function exportFeeds() {
-        if (rssFeedsData.length === 0) {
-          showNotification("No RSS feeds to export!", "warning");
-          return;
-        }
-        downloadJSON(rssFeedsData, "feeds.json");
-        showNotification("💾 feeds.json exported!", "success");
-      }
-
-      function downloadJSON(data, filename) {
-        const jsonString = JSON.stringify(data, null, 2);
-        const blob = new Blob([jsonString], { type: "application/json" });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = filename;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-      }
-
-      function importJSONFile(callback) {
-        const input = document.createElement("input");
-        input.type = "file";
-        input.accept = ".json";
-
-        input.onchange = (e) => {
-          const file = e.target.files[0];
-          if (!file) return;
-
-          const reader = new FileReader();
-          reader.onload = (event) => {
-            try {
-              const importedData = JSON.parse(event.target.result);
-              callback(importedData);
-            } catch (error) {
-              console.error("Import error:", error);
-              showNotification("Failed to import file!", "error");
-            }
-          };
-
-          reader.readAsText(file);
-        };
-
-        input.click();
-      }
-
-      function assignChannelNumbers() {
-        channelsData.forEach((channel, index) => {
-          channel.number = index + 1;
-        });
-      }
-
-      function showLiveEditor() {
-        const modal = document.getElementById("liveEditorModal");
-        const editor = document.getElementById("liveJsonEditor");
-        editor.value = JSON.stringify(liveChannelsData, null, 2);
-        modal.classList.add("active");
-      }
-
-      function closeLiveEditor() {
-        document.getElementById("liveEditorModal").classList.remove("active");
-      }
-
-      function formatLiveJSON() {
-        formatJSONInEditor("liveJsonEditor");
-      }
-
-      function formatJSON() {
-        formatJSONInEditor("jsonOutput");
-      }
-
-      function formatJSONInEditor(editorId) {
-        const editor = document.getElementById(editorId);
-        try {
-          const parsed = JSON.parse(editor.value);
-          editor.value = JSON.stringify(parsed, null, 2);
-          showNotification("✨ JSON formatted!", "success");
-        } catch (e) {
-          showNotification("Invalid JSON - cannot format", "error");
-        }
-      }
-
-      function validateAndSaveLive() {
-        const editor = document.getElementById("liveJsonEditor");
-        try {
-          const parsed = JSON.parse(editor.value);
-          if (!Array.isArray(parsed)) {
-            throw new Error("Data must be an array");
-          }
-          liveChannelsData = parsed;
-          saveLiveToStorage();
-          closeLiveEditor();
-          showNotification("✅ Live channels saved successfully!", "success");
-        } catch (e) {
-          showNotification(`❌ Invalid JSON: ${e.message}`, "error");
-        }
-      }
-
-      function showFeedsEditor() {
-        const modal = document.getElementById("feedsEditorModal");
-        const editor = document.getElementById("feedsJsonEditor");
-        editor.value = JSON.stringify(rssFeedsData, null, 2);
-        modal.classList.add("active");
-      }
-
-      function closeFeedsEditor() {
-        document.getElementById("feedsEditorModal").classList.remove("active");
-      }
-
-      function formatFeedsJSON() {
-        formatJSONInEditor("feedsJsonEditor");
-      }
-
-      function validateAndSaveFeeds() {
-        const editor = document.getElementById("feedsJsonEditor");
-        try {
-          const parsed = JSON.parse(editor.value);
-          if (!Array.isArray(parsed)) {
-            throw new Error("Data must be an array");
-          }
-          rssFeedsData = parsed;
-          saveFeedsToStorage();
-          closeFeedsEditor();
-          showNotification("✅ RSS feeds saved successfully!", "success");
-        } catch (e) {
-          showNotification(`❌ Invalid JSON: ${e.message}`, "error");
-        }
-      }
-
-      function renderChannelFormCategories() {
-        const categorySelect = document.getElementById("channelCategory");
-        categorySelect.innerHTML = "";
-        categoriesData.forEach((cat) => {
-          const option = document.createElement("option");
-          option.value = cat;
-          option.textContent = cat;
-          categorySelect.appendChild(option);
-        });
-      }
-
-      function renderCategoryPreview() {
-        els.categoryListPreview.innerHTML = "";
-        categoriesData.forEach((cat, index) => {
-          const item = document.createElement("div");
-          item.className = "category-preview-item";
-          item.innerHTML = `
+    function renderCategoryPreview() {
+      els.categoryListPreview.innerHTML = "";
+      categoriesData.forEach((cat, index) => {
+        const item = document.createElement("div");
+        item.className = "category-preview-item";
+        item.innerHTML = `
       <span>${cat}</span>
       <div class="actions">
         <button class="btn-secondary channel-item-button" onclick="moveCategoryUp(${index})" title="Move Up">
@@ -1604,210 +1565,209 @@
         </button>
       </div>
     `;
-          els.categoryListPreview.appendChild(item);
-        });
+        els.categoryListPreview.appendChild(item);
+      });
+    }
+
+    function addCategory() {
+      const newCategoryName = document
+        .getElementById("newCategoryName")
+        .value.trim();
+      if (!newCategoryName) return;
+      if (categoriesData.includes(newCategoryName)) {
+        showNotification("Category already exists!", "warning");
+        return;
+      }
+      categoriesData.push(newCategoryName);
+      renderUI();
+      document.getElementById("newCategoryName").value = "";
+      showNotification("✅ Category added!", "success");
+    }
+
+    function editCategoryPrompt(oldCategoryName) {
+      const newCategoryName = prompt(
+        `Enter a new name for the category "${oldCategoryName}":`,
+        oldCategoryName
+      );
+      if (newCategoryName === null || newCategoryName.trim() === "") return;
+
+      const trimmedNewName = newCategoryName.trim();
+      if (
+        categoriesData.includes(trimmedNewName) &&
+        trimmedNewName !== oldCategoryName
+      ) {
+        showNotification("This category name already exists!", "warning");
+        return;
       }
 
-      function addCategory() {
-        const newCategoryName = document
-          .getElementById("newCategoryName")
-          .value.trim();
-        if (!newCategoryName) return;
-        if (categoriesData.includes(newCategoryName)) {
-          showNotification("Category already exists!", "warning");
-          return;
+      channelsData.forEach((channel) => {
+        if (channel.category === oldCategoryName) {
+          channel.category = trimmedNewName;
         }
-        categoriesData.push(newCategoryName);
-        renderUI();
-        document.getElementById("newCategoryName").value = "";
-        showNotification("✅ Category added!", "success");
+      });
+
+      const categoryIndex = categoriesData.indexOf(oldCategoryName);
+      if (categoryIndex !== -1) {
+        categoriesData[categoryIndex] = trimmedNewName;
       }
 
-      function editCategoryPrompt(oldCategoryName) {
-        const newCategoryName = prompt(
-          `Enter a new name for the category "${oldCategoryName}":`,
-          oldCategoryName
+      renderUI();
+      showNotification("✅ Category renamed!", "success");
+    }
+
+    function deleteCategory(categoryName) {
+      if (
+        confirm(
+          `Are you sure you want to delete the category "${categoryName}" and all its channels?`
+        )
+      ) {
+        categoriesData = categoriesData.filter((cat) => cat !== categoryName);
+        channelsData = channelsData.filter(
+          (c) => c.category !== categoryName
         );
-        if (newCategoryName === null || newCategoryName.trim() === "") return;
-
-        const trimmedNewName = newCategoryName.trim();
-        if (
-          categoriesData.includes(trimmedNewName) &&
-          trimmedNewName !== oldCategoryName
-        ) {
-          showNotification("This category name already exists!", "warning");
-          return;
-        }
-
-        channelsData.forEach((channel) => {
-          if (channel.category === oldCategoryName) {
-            channel.category = trimmedNewName;
-          }
-        });
-
-        const categoryIndex = categoriesData.indexOf(oldCategoryName);
-        if (categoryIndex !== -1) {
-          categoriesData[categoryIndex] = trimmedNewName;
-        }
-
         renderUI();
-        showNotification("✅ Category renamed!", "success");
+        showNotification("🗑️ Category deleted!", "success");
       }
+    }
 
-      function deleteCategory(categoryName) {
+    function moveCategoryUp(index) {
+      if (index > 0) {
+        [categoriesData[index - 1], categoriesData[index]] = [
+          categoriesData[index],
+          categoriesData[index - 1],
+        ];
+        sortChannelsByCategories();
+        renderUI();
+      }
+    }
+
+    function moveCategoryDown(index) {
+      if (index < categoriesData.length - 1) {
+        [categoriesData[index + 1], categoriesData[index]] = [
+          categoriesData[index],
+          categoriesData[index + 1],
+        ];
+        sortChannelsByCategories();
+        renderUI();
+      }
+    }
+
+    function sortChannelsByCategories() {
+      const categoryOrderMap = new Map();
+      categoriesData.forEach((cat, index) => {
+        categoryOrderMap.set(cat, index);
+      });
+
+      channelsData.sort((a, b) => {
+        const orderA = categoryOrderMap.get(a.category);
+        const orderB = categoryOrderMap.get(b.category);
+
+        if (orderA === undefined && orderB === undefined) return 0;
+        if (orderA === undefined) return 1;
+        if (orderB === undefined) return -1;
+
+        return orderA - orderB;
+      });
+    }
+
+    function moveChannelUp(index) {
+      if (index > 0) {
         if (
-          confirm(
-            `Are you sure you want to delete the category "${categoryName}" and all its channels?`
-          )
+          channelsData[index].category === channelsData[index - 1].category
         ) {
-          categoriesData = categoriesData.filter((cat) => cat !== categoryName);
-          channelsData = channelsData.filter(
-            (c) => c.category !== categoryName
+          [channelsData[index - 1], channelsData[index]] = [
+            channelsData[index],
+            channelsData[index - 1],
+          ];
+          renderUI();
+        } else {
+          showNotification(
+            "Cannot move channel above its category boundary.",
+            "warning"
           );
-          renderUI();
-          showNotification("🗑️ Category deleted!", "success");
         }
       }
+    }
 
-      function moveCategoryUp(index) {
-        if (index > 0) {
-          [categoriesData[index - 1], categoriesData[index]] = [
-            categoriesData[index],
-            categoriesData[index - 1],
+    function moveChannelDown(index) {
+      if (index < channelsData.length - 1) {
+        if (
+          channelsData[index].category === channelsData[index + 1].category
+        ) {
+          [channelsData[index + 1], channelsData[index]] = [
+            channelsData[index],
+            channelsData[index + 1],
           ];
-          sortChannelsByCategories();
           renderUI();
+        } else {
+          showNotification(
+            "Cannot move channel below its category boundary.",
+            "warning"
+          );
         }
       }
+    }
 
-      function moveCategoryDown(index) {
-        if (index < categoriesData.length - 1) {
-          [categoriesData[index + 1], categoriesData[index]] = [
-            categoriesData[index],
-            categoriesData[index + 1],
-          ];
-          sortChannelsByCategories();
-          renderUI();
+    function sortChannelsByName(category) {
+      const channelsInCategory = channelsData.filter(
+        (c) => c.category === category
+      );
+      const otherChannels = channelsData.filter(
+        (c) => c.category !== category
+      );
+
+      channelsInCategory.sort((a, b) => a.name.localeCompare(b.name));
+
+      const newChannelsData = [];
+      categoriesData.forEach((cat) => {
+        if (cat === category) {
+          newChannelsData.push(...channelsInCategory);
+        } else {
+          newChannelsData.push(
+            ...channelsData.filter((c) => c.category === cat)
+          );
         }
-      }
+      });
 
-      function sortChannelsByCategories() {
-        const categoryOrderMap = new Map();
-        categoriesData.forEach((cat, index) => {
-          categoryOrderMap.set(cat, index);
-        });
+      channelsData = newChannelsData;
+      renderUI();
+      showNotification(`✅ Sorted "${category}" alphabetically!`, "success");
+    }
 
-        channelsData.sort((a, b) => {
-          const orderA = categoryOrderMap.get(a.category);
-          const orderB = categoryOrderMap.get(b.category);
-
-          if (orderA === undefined && orderB === undefined) return 0;
-          if (orderA === undefined) return 1;
-          if (orderB === undefined) return -1;
-
-          return orderA - orderB;
-        });
-      }
-
-      function moveChannelUp(index) {
-        if (index > 0) {
-          if (
-            channelsData[index].category === channelsData[index - 1].category
-          ) {
-            [channelsData[index - 1], channelsData[index]] = [
-              channelsData[index],
-              channelsData[index - 1],
-            ];
-            renderUI();
-          } else {
-            showNotification(
-              "Cannot move channel above its category boundary.",
-              "warning"
-            );
-          }
-        }
-      }
-
-      function moveChannelDown(index) {
-        if (index < channelsData.length - 1) {
-          if (
-            channelsData[index].category === channelsData[index + 1].category
-          ) {
-            [channelsData[index + 1], channelsData[index]] = [
-              channelsData[index],
-              channelsData[index + 1],
-            ];
-            renderUI();
-          } else {
-            showNotification(
-              "Cannot move channel below its category boundary.",
-              "warning"
-            );
-          }
-        }
-      }
-
-      function sortChannelsByName(category) {
-        const channelsInCategory = channelsData.filter(
-          (c) => c.category === category
-        );
-        const otherChannels = channelsData.filter(
-          (c) => c.category !== category
-        );
-
-        channelsInCategory.sort((a, b) => a.name.localeCompare(b.name));
-
-        const newChannelsData = [];
-        categoriesData.forEach((cat) => {
-          if (cat === category) {
-            newChannelsData.push(...channelsInCategory);
-          } else {
-            newChannelsData.push(
-              ...channelsData.filter((c) => c.category === cat)
-            );
-          }
-        });
-
-        channelsData = newChannelsData;
-        renderUI();
-        showNotification(`✅ Sorted "${category}" alphabetically!`, "success");
-      }
-
-      function renderChannelPreview() {
-        els.channelListPreview.innerHTML = "";
-        categoriesData.forEach((category) => {
-          const categorySection = document.createElement("div");
-          categorySection.innerHTML = `
+    function renderChannelPreview() {
+      els.channelListPreview.innerHTML = "";
+      categoriesData.forEach((category) => {
+        const categorySection = document.createElement("div");
+        categorySection.innerHTML = `
   <div style="display: flex; justify-content: space-between; align-items: center;">
     <h3>${category}</h3>
     <button class="btn-secondary" onclick="sortChannelsByName('${category.replace(
-      /'/g,
-      "\\'"
-    )}')" title="Sort A-Z">
+          /'/g,
+          "\\'"
+        )}')" title="Sort A-Z">
       <i class="fas fa-sort-alpha-down"></i>
     </button>
   </div>
   <div class="channel-list-category"></div>
 `;
 
-          els.channelListPreview.appendChild(categorySection);
+        els.channelListPreview.appendChild(categorySection);
 
-          const channelsInCategory = channelsData.filter(
-            (c) => c.category === category
-          );
-          const categoryChannelContainer = categorySection.querySelector(
-            ".channel-list-category"
-          );
+        const channelsInCategory = channelsData.filter(
+          (c) => c.category === category
+        );
+        const categoryChannelContainer = categorySection.querySelector(
+          ".channel-list-category"
+        );
 
-          channelsInCategory.forEach((channel) => {
-            const index = channelsData.indexOf(channel);
-            const item = document.createElement("div");
-            item.className = "channel-preview-item";
-            const liveIndicator =
-              channel.isLive === true || channel.isLive === "true" ? " 🔴" : "";
-            item.innerHTML = `
-              <img src="${channel.image || "placeholder.png"}" alt="${
-              channel.name
+        channelsInCategory.forEach((channel) => {
+          const index = channelsData.indexOf(channel);
+          const item = document.createElement("div");
+          item.className = "channel-preview-item";
+          const liveIndicator =
+            channel.isLive === true || channel.isLive === "true" ? " 🔴" : "";
+          item.innerHTML = `
+              <img src="${channel.image || "placeholder.png"}" alt="${channel.name
             } logo">
               <div>
                 <strong>${channel.name}${liveIndicator}</strong><br>
@@ -1829,390 +1789,389 @@
 
               </div>
             `;
-            categoryChannelContainer.appendChild(item);
-          });
+          categoryChannelContainer.appendChild(item);
         });
+      });
+    }
+
+    function saveChannel() {
+      const index = document.getElementById("channelIndex").value;
+      const name = document.getElementById("channelName").value.trim();
+      const image = document.getElementById("channelImage").value.trim();
+      const url = document.getElementById("channelUrl").value.trim();
+      const description = document
+        .getElementById("channelDescription")
+        .value.trim();
+      const isLiveString = document
+        .getElementById("channelStatus")
+        .value.trim();
+      const isLive = isLiveString === "true";
+      const category = document.getElementById("channelCategory").value;
+
+      if (!name || !url || !image || !description || !category) {
+        showNotification("All fields are required!", "warning");
+        return;
       }
 
-      function saveChannel() {
-        const index = document.getElementById("channelIndex").value;
-        const name = document.getElementById("channelName").value.trim();
-        const image = document.getElementById("channelImage").value.trim();
-        const url = document.getElementById("channelUrl").value.trim();
-        const description = document
-          .getElementById("channelDescription")
-          .value.trim();
-        const isLiveString = document
-          .getElementById("channelStatus")
-          .value.trim();
-        const isLive = isLiveString === "true";
-        const category = document.getElementById("channelCategory").value;
+      const newChannel = { name, image, url, description, isLive, category };
 
-        if (!name || !url || !image || !description || !category) {
-          showNotification("All fields are required!", "warning");
-          return;
-        }
-
-        const newChannel = { name, image, url, description, isLive, category };
-
-        if (index === "") {
-          channelsData.push(newChannel);
-          showNotification("✅ New channel added successfully!", "success");
-          sortChannelsByCategories();
-          renderUI();
-          clearChannelForm();
-        } else {
-          channelsData[index] = newChannel;
-          showNotification("✅ Channel updated successfully!", "success");
-          sortChannelsByCategories();
-          renderUI();
-          editChannel(parseInt(index));
-        }
-
-        checkForUnsavedChanges();
-      }
-
-      function clearChannelForm() {
-        document.getElementById("channelIndex").value = "";
-        document.getElementById("displayChannelIndex").value = "";
-        els.channelForm.reset();
-        els.imagePreview.style.display = "none";
-        els.imagePreview.src = "";
-        originalChannelData = null;
-        els.channelForm.classList.remove("form-changed");
-        updateNavigationButtons(-1);
-      }
-
-      function editChannel(index) {
-        if (index < 0 || index >= channelsData.length) return;
-
-        const channel = channelsData[index];
-
-        document.getElementById("channelIndex").value = index;
-        document.getElementById("displayChannelIndex").value =
-          parseInt(index) + 1;
-        document.getElementById("channelName").value = channel.name;
-        document.getElementById("channelUrl").value = channel.url;
-        document.getElementById("channelImage").value = channel.image;
-        document.getElementById("channelDescription").value =
-          channel.description;
-        document.getElementById("channelStatus").value = channel.isLive
-          ? "true"
-          : "false";
-
-        trackOriginalChannelData(channel);
-
-        els.imagePreview.src = channel.image;
-        els.imagePreview.style.display = "block";
-
-        document.getElementById("channelCategory").value = channel.category;
-
-        showTab("tab-channel");
-
-        document
-          .getElementById("tab-channel")
-          .scrollIntoView({ behavior: "smooth", block: "center" });
-
-        updateNavigationButtons(index);
-        els.channelForm.classList.remove("form-changed");
-      }
-
-      function navigateChannel(direction) {
-        if (isFormDirty()) {
-          const confirmSave = confirm(
-            "You have unsaved changes. Do you want to save the current channel before moving?"
-          );
-
-          if (confirmSave) {
-            saveChannel();
-            setTimeout(() => {
-              const currentIndex = parseInt(
-                document.getElementById("channelIndex").value
-              );
-              const newIndex = currentIndex + direction;
-              if (newIndex >= 0 && newIndex < channelsData.length) {
-                editChannel(newIndex);
-              }
-            }, 50);
-            return;
-          }
-        }
-
-        const currentIndexValue = document.getElementById("channelIndex").value;
-        let currentIndex = parseInt(currentIndexValue);
-
-        if (currentIndexValue === "" || isNaN(currentIndex)) {
-          currentIndex = -1;
-        }
-
-        const newIndex = currentIndex + direction;
-
-        if (newIndex >= 0 && newIndex < channelsData.length) {
-          editChannel(newIndex);
-        }
-      }
-
-      function trackOriginalChannelData(channel) {
-        originalChannelData = {
-          name: channel.name,
-          url: channel.url,
-          image: channel.image,
-          description: channel.description,
-          category: channel.category,
-          isLive: channel.isLive === true || channel.isLive === "true",
-        };
-      }
-
-      function isFormDirty() {
-        if (!originalChannelData) return false;
-
-        const currentData = {
-          name: document.getElementById("channelName").value.trim(),
-          url: document.getElementById("channelUrl").value.trim(),
-          image: document.getElementById("channelImage").value.trim(),
-          description: document
-            .getElementById("channelDescription")
-            .value.trim(),
-          category: document.getElementById("channelCategory").value,
-          isLive: document.getElementById("channelStatus").value === "true",
-        };
-
-        return (
-          currentData.name !== originalChannelData.name ||
-          currentData.url !== originalChannelData.url ||
-          currentData.image !== originalChannelData.image ||
-          currentData.description !== originalChannelData.description ||
-          currentData.category !== originalChannelData.category ||
-          currentData.isLive !== originalChannelData.isLive
-        );
-      }
-
-      function updateNavigationButtons(currentIndex) {
-        const prevBtn = document.getElementById("prevChannelBtn");
-        const nextBtn = document.getElementById("nextChannelBtn");
-        const totalChannels = channelsData.length;
-
-        if (prevBtn) {
-          prevBtn.disabled = currentIndex <= 0 || totalChannels === 0;
-        }
-
-        if (nextBtn) {
-          nextBtn.disabled =
-            currentIndex >= totalChannels - 1 || totalChannels === 0;
-        }
-      }
-
-      function deleteCurrentChannel() {
-        const indexValue = document.getElementById("channelIndex").value;
-
-        if (indexValue === "" || isNaN(parseInt(indexValue))) {
-          showNotification(
-            "No channel is currently loaded for deletion.",
-            "warning"
-          );
-          return;
-        }
-
-        const actualIndex = parseInt(indexValue);
-        const channelName = document.getElementById("channelName").value;
-
-        const confirmDeletion = confirm(
-          `Are you sure you want to permanently delete the channel: "${channelName}"?`
-        );
-
-        if (!confirmDeletion) return;
-
-        let nextIndexToLoad = -1;
-
-        if (actualIndex < channelsData.length - 1) {
-          nextIndexToLoad = actualIndex;
-        } else if (actualIndex > 0) {
-          nextIndexToLoad = actualIndex - 1;
-        }
-
-        if (actualIndex >= 0 && actualIndex < channelsData.length) {
-          channelsData.splice(actualIndex, 1);
-          showNotification(`🗑️ Channel "${channelName}" deleted!`, "success");
-        } else {
-          showNotification("Error: Invalid channel index found.", "error");
-          return;
-        }
-
+      if (index === "") {
+        channelsData.push(newChannel);
+        showNotification("✅ New channel added successfully!", "success");
         sortChannelsByCategories();
         renderUI();
-
-        if (nextIndexToLoad !== -1 && channelsData.length > 0) {
-          editChannel(nextIndexToLoad);
-        } else {
-          clearChannelForm();
-        }
+        clearChannelForm();
+      } else {
+        channelsData[index] = newChannel;
+        showNotification("✅ Channel updated successfully!", "success");
+        sortChannelsByCategories();
+        renderUI();
+        editChannel(parseInt(index));
       }
 
-      function renderUI() {
-        renderChannelFormCategories();
-        renderCategoryPreview();
-        renderChannelPreview();
-        updateJsonOutput();
-        updateStats();
-        updateNavigationButtons(
-          parseInt(document.getElementById("channelIndex").value)
+      checkForUnsavedChanges();
+    }
+
+    function clearChannelForm() {
+      document.getElementById("channelIndex").value = "";
+      document.getElementById("displayChannelIndex").value = "";
+      els.channelForm.reset();
+      els.imagePreview.style.display = "none";
+      els.imagePreview.src = "";
+      originalChannelData = null;
+      els.channelForm.classList.remove("form-changed");
+      updateNavigationButtons(-1);
+    }
+
+    function editChannel(index) {
+      if (index < 0 || index >= channelsData.length) return;
+
+      const channel = channelsData[index];
+
+      document.getElementById("channelIndex").value = index;
+      document.getElementById("displayChannelIndex").value =
+        parseInt(index) + 1;
+      document.getElementById("channelName").value = channel.name;
+      document.getElementById("channelUrl").value = channel.url;
+      document.getElementById("channelImage").value = channel.image;
+      document.getElementById("channelDescription").value =
+        channel.description;
+      document.getElementById("channelStatus").value = channel.isLive
+        ? "true"
+        : "false";
+
+      trackOriginalChannelData(channel);
+
+      els.imagePreview.src = channel.image;
+      els.imagePreview.style.display = "block";
+
+      document.getElementById("channelCategory").value = channel.category;
+
+      showTab("tab-channel");
+
+      document
+        .getElementById("tab-channel")
+        .scrollIntoView({ behavior: "smooth", block: "center" });
+
+      updateNavigationButtons(index);
+      els.channelForm.classList.remove("form-changed");
+    }
+
+    function navigateChannel(direction) {
+      if (isFormDirty()) {
+        const confirmSave = confirm(
+          "You have unsaved changes. Do you want to save the current channel before moving?"
         );
-        checkForUnsavedChanges();
+
+        if (confirmSave) {
+          saveChannel();
+          setTimeout(() => {
+            const currentIndex = parseInt(
+              document.getElementById("channelIndex").value
+            );
+            const newIndex = currentIndex + direction;
+            if (newIndex >= 0 && newIndex < channelsData.length) {
+              editChannel(newIndex);
+            }
+          }, 50);
+          return;
+        }
       }
 
-      function updateJsonOutput() {
-        if (channelsData.length > 0) {
+      const currentIndexValue = document.getElementById("channelIndex").value;
+      let currentIndex = parseInt(currentIndexValue);
+
+      if (currentIndexValue === "" || isNaN(currentIndex)) {
+        currentIndex = -1;
+      }
+
+      const newIndex = currentIndex + direction;
+
+      if (newIndex >= 0 && newIndex < channelsData.length) {
+        editChannel(newIndex);
+      }
+    }
+
+    function trackOriginalChannelData(channel) {
+      originalChannelData = {
+        name: channel.name,
+        url: channel.url,
+        image: channel.image,
+        description: channel.description,
+        category: channel.category,
+        isLive: channel.isLive === true || channel.isLive === "true",
+      };
+    }
+
+    function isFormDirty() {
+      if (!originalChannelData) return false;
+
+      const currentData = {
+        name: document.getElementById("channelName").value.trim(),
+        url: document.getElementById("channelUrl").value.trim(),
+        image: document.getElementById("channelImage").value.trim(),
+        description: document
+          .getElementById("channelDescription")
+          .value.trim(),
+        category: document.getElementById("channelCategory").value,
+        isLive: document.getElementById("channelStatus").value === "true",
+      };
+
+      return (
+        currentData.name !== originalChannelData.name ||
+        currentData.url !== originalChannelData.url ||
+        currentData.image !== originalChannelData.image ||
+        currentData.description !== originalChannelData.description ||
+        currentData.category !== originalChannelData.category ||
+        currentData.isLive !== originalChannelData.isLive
+      );
+    }
+
+    function updateNavigationButtons(currentIndex) {
+      const prevBtn = document.getElementById("prevChannelBtn");
+      const nextBtn = document.getElementById("nextChannelBtn");
+      const totalChannels = channelsData.length;
+
+      if (prevBtn) {
+        prevBtn.disabled = currentIndex <= 0 || totalChannels === 0;
+      }
+
+      if (nextBtn) {
+        nextBtn.disabled =
+          currentIndex >= totalChannels - 1 || totalChannels === 0;
+      }
+    }
+
+    function deleteCurrentChannel() {
+      const indexValue = document.getElementById("channelIndex").value;
+
+      if (indexValue === "" || isNaN(parseInt(indexValue))) {
+        showNotification(
+          "No channel is currently loaded for deletion.",
+          "warning"
+        );
+        return;
+      }
+
+      const actualIndex = parseInt(indexValue);
+      const channelName = document.getElementById("channelName").value;
+
+      const confirmDeletion = confirm(
+        `Are you sure you want to permanently delete the channel: "${channelName}"?`
+      );
+
+      if (!confirmDeletion) return;
+
+      let nextIndexToLoad = -1;
+
+      if (actualIndex < channelsData.length - 1) {
+        nextIndexToLoad = actualIndex;
+      } else if (actualIndex > 0) {
+        nextIndexToLoad = actualIndex - 1;
+      }
+
+      if (actualIndex >= 0 && actualIndex < channelsData.length) {
+        channelsData.splice(actualIndex, 1);
+        showNotification(`🗑️ Channel "${channelName}" deleted!`, "success");
+      } else {
+        showNotification("Error: Invalid channel index found.", "error");
+        return;
+      }
+
+      sortChannelsByCategories();
+      renderUI();
+
+      if (nextIndexToLoad !== -1 && channelsData.length > 0) {
+        editChannel(nextIndexToLoad);
+      } else {
+        clearChannelForm();
+      }
+    }
+
+    function renderUI() {
+      renderChannelFormCategories();
+      renderCategoryPreview();
+      renderChannelPreview();
+      updateJsonOutput();
+      updateStats();
+      updateNavigationButtons(
+        parseInt(document.getElementById("channelIndex").value)
+      );
+      checkForUnsavedChanges();
+    }
+
+    function updateJsonOutput() {
+      if (channelsData.length > 0) {
+        els.jsonOutput.value = JSON.stringify(channelsData, null, 2);
+      } else {
+        els.jsonOutput.value = "No data loaded.";
+      }
+    }
+
+    function updateStats() {
+      document.getElementById("totalChannelsCount").textContent =
+        channelsData.length;
+      document.getElementById("totalCategoriesCount").textContent =
+        categoriesData.length;
+      document.getElementById("liveChannelsCount").textContent =
+        liveChannelsData.length;
+      document.getElementById("rssFeedsCount").textContent =
+        rssFeedsData.length;
+    }
+
+    function sortJson() {
+      const jsonString = els.jsonOutput.value;
+      if (!jsonString) {
+        showNotification("JSON data is empty.", "warning");
+        return;
+      }
+
+      try {
+        const data = JSON.parse(jsonString);
+        if (Array.isArray(data)) {
+          sortChannelsByCategories();
           els.jsonOutput.value = JSON.stringify(channelsData, null, 2);
+          showNotification("✅ JSON sorted by category!", "success");
         } else {
-          els.jsonOutput.value = "No data loaded.";
+          showNotification("The JSON data is not a valid array.", "warning");
         }
+      } catch (e) {
+        showNotification("Invalid JSON format.", "error");
+        console.error("JSON sorting error:", e);
       }
+    }
 
-      function updateStats() {
-        document.getElementById("totalChannelsCount").textContent =
-          channelsData.length;
-        document.getElementById("totalCategoriesCount").textContent =
-          categoriesData.length;
-        document.getElementById("liveChannelsCount").textContent =
-          liveChannelsData.length;
-        document.getElementById("rssFeedsCount").textContent =
-          rssFeedsData.length;
-      }
-
-      function sortJson() {
-        const jsonString = els.jsonOutput.value;
-        if (!jsonString) {
-          showNotification("JSON data is empty.", "warning");
-          return;
-        }
-
-        try {
-          const data = JSON.parse(jsonString);
-          if (Array.isArray(data)) {
-            sortChannelsByCategories();
-            els.jsonOutput.value = JSON.stringify(channelsData, null, 2);
-            showNotification("✅ JSON sorted by category!", "success");
-          } else {
-            showNotification("The JSON data is not a valid array.", "warning");
-          }
-        } catch (e) {
-          showNotification("Invalid JSON format.", "error");
-          console.error("JSON sorting error:", e);
-        }
-      }
-
-      function showTab(tabId) {
-        const tabs = document.querySelectorAll(".tab-content");
-        const buttons = document.querySelectorAll(".tab-button");
-        tabs.forEach((tab) => tab.classList.remove("active"));
-        buttons.forEach((button) => button.classList.remove("active"));
-        document.getElementById(tabId).classList.add("active");
-        document
-          .querySelector(`[onclick="showTab('${tabId}')"]`)
-          .classList.add("active");
-      }
-
-      function showNotification(message, type = "success") {
-        const notification = document.createElement("div");
-        notification.className = `notification ${type}`;
-        notification.textContent = message;
-
-        document.body.appendChild(notification);
-
-        setTimeout(() => {
-          notification.style.animation = "slideOutRight 0.3s ease";
-          setTimeout(() => notification.remove(), 300);
-        }, 4000);
-      }
-
+    function showTab(tabId) {
+      const tabs = document.querySelectorAll(".tab-content");
+      const buttons = document.querySelectorAll(".tab-button");
+      tabs.forEach((tab) => tab.classList.remove("active"));
+      buttons.forEach((button) => button.classList.remove("active"));
+      document.getElementById(tabId).classList.add("active");
       document
-        .getElementById("liveEditorModal")
-        .addEventListener("click", function (e) {
-          if (e.target === this) closeLiveEditor();
-        });
+        .querySelector(`[onclick="showTab('${tabId}')"]`)
+        .classList.add("active");
+    }
 
-      document
-        .getElementById("feedsEditorModal")
-        .addEventListener("click", function (e) {
-          if (e.target === this) closeFeedsEditor();
-        });
+    function showNotification(message, type = "success") {
+      const notification = document.createElement("div");
+      notification.className = `notification ${type}`;
+      notification.textContent = message;
 
-      function searchChannels() {
-        const searchTerm = document
-          .getElementById("searchInput")
-          .value.toLowerCase()
-          .trim();
+      document.body.appendChild(notification);
 
-        if (searchTerm === "") {
-          renderUI();
-          return;
-        }
+      setTimeout(() => {
+        notification.style.animation = "slideOutRight 0.3s ease";
+        setTimeout(() => notification.remove(), 300);
+      }, 4000);
+    }
 
-        const filteredChannels = channelsData.filter((channel) => {
-          const name = (channel.name || "").toLowerCase();
-          const category = (channel.category || "").toLowerCase();
-          const url = (channel.url || "").toLowerCase();
+    document
+      .getElementById("liveEditorModal")
+      .addEventListener("click", function (e) {
+        if (e.target === this) closeLiveEditor();
+      });
 
-          return (
-            name.includes(searchTerm) ||
-            category.includes(searchTerm) ||
-            url.includes(searchTerm)
-          );
-        });
+    document
+      .getElementById("feedsEditorModal")
+      .addEventListener("click", function (e) {
+        if (e.target === this) closeFeedsEditor();
+      });
 
-        renderChannelsFiltered(filteredChannels, searchTerm);
+    function searchChannels() {
+      const searchTerm = document
+        .getElementById("searchInput")
+        .value.toLowerCase()
+        .trim();
+
+      if (searchTerm === "") {
+        renderUI();
+        return;
       }
 
-      function renderChannelsFiltered(filteredChannels, searchTerm) {
-        const previewDiv = els.channelListPreview;
-        previewDiv.innerHTML = "";
+      const filteredChannels = channelsData.filter((channel) => {
+        const name = (channel.name || "").toLowerCase();
+        const category = (channel.category || "").toLowerCase();
+        const url = (channel.url || "").toLowerCase();
 
-        if (filteredChannels.length === 0) {
-          previewDiv.innerHTML = `
+        return (
+          name.includes(searchTerm) ||
+          category.includes(searchTerm) ||
+          url.includes(searchTerm)
+        );
+      });
+
+      renderChannelsFiltered(filteredChannels, searchTerm);
+    }
+
+    function renderChannelsFiltered(filteredChannels, searchTerm) {
+      const previewDiv = els.channelListPreview;
+      previewDiv.innerHTML = "";
+
+      if (filteredChannels.length === 0) {
+        previewDiv.innerHTML = `
             <div style="text-align: center; padding: 40px; color: var(--text-color-secondary);">
               <div style="font-size: 48px; margin-bottom: 10px;">🔍</div>
               <div style="font-size: 18px;">No channels found for "${searchTerm}"</div>
             </div>
           `;
-          return;
-        }
+        return;
+      }
 
-        const resultInfo = document.createElement("div");
-        resultInfo.className = "info-box";
-        resultInfo.innerHTML = `<p>Found ${filteredChannels.length} channel(s) matching "${searchTerm}"</p>`;
-        previewDiv.appendChild(resultInfo);
+      const resultInfo = document.createElement("div");
+      resultInfo.className = "info-box";
+      resultInfo.innerHTML = `<p>Found ${filteredChannels.length} channel(s) matching "${searchTerm}"</p>`;
+      previewDiv.appendChild(resultInfo);
 
-        const grouped = {};
-        filteredChannels.forEach((channel) => {
-          const cat = channel.category || "Uncategorized";
-          if (!grouped[cat]) grouped[cat] = [];
-          grouped[cat].push(channel);
-        });
+      const grouped = {};
+      filteredChannels.forEach((channel) => {
+        const cat = channel.category || "Uncategorized";
+        if (!grouped[cat]) grouped[cat] = [];
+        grouped[cat].push(channel);
+      });
 
-        Object.keys(grouped)
-          .sort()
-          .forEach((category) => {
-            const categorySection = document.createElement("div");
-            categorySection.className = "category-list-preview";
-            categorySection.style.marginBottom = "20px";
+      Object.keys(grouped)
+        .sort()
+        .forEach((category) => {
+          const categorySection = document.createElement("div");
+          categorySection.className = "category-list-preview";
+          categorySection.style.marginBottom = "20px";
 
-            const categoryTitle = document.createElement("h3");
-            categoryTitle.textContent = `${category} (${grouped[category].length})`;
-            categoryTitle.style.width = "100%";
-            categorySection.appendChild(categoryTitle);
+          const categoryTitle = document.createElement("h3");
+          categoryTitle.textContent = `${category} (${grouped[category].length})`;
+          categoryTitle.style.width = "100%";
+          categorySection.appendChild(categoryTitle);
 
-            grouped[category].forEach((channel) => {
-              const channelItem = document.createElement("div");
-              const index = channelsData.indexOf(channel);
-              channelItem.className = "channel-preview-item";
-              const liveIndicator =
-                channel.isLive === true || channel.isLive === "true"
-                  ? " 🔴"
-                  : "";
+          grouped[category].forEach((channel) => {
+            const channelItem = document.createElement("div");
+            const index = channelsData.indexOf(channel);
+            channelItem.className = "channel-preview-item";
+            const liveIndicator =
+              channel.isLive === true || channel.isLive === "true"
+                ? " 🔴"
+                : "";
 
-              channelItem.innerHTML = `
-              <img src="${channel.image || "placeholder.png"}" alt="${
-                channel.name
+            channelItem.innerHTML = `
+              <img src="${channel.image || "placeholder.png"}" alt="${channel.name
               } logo">
               <div>
                 <strong>${channel.name}${liveIndicator}</strong><br>
@@ -2224,26 +2183,27 @@
               </div>
             `;
 
-              categorySection.appendChild(channelItem);
-            });
-
-            previewDiv.appendChild(categorySection);
+            categorySection.appendChild(channelItem);
           });
-      }
 
-      function toggleClearButton() {
-        const input = document.getElementById("searchInput");
-        const clearBtn = document.getElementById("clearBtn");
-        clearBtn.style.display = input.value ? "block" : "none";
-      }
+          previewDiv.appendChild(categorySection);
+        });
+    }
 
-      function clearSearch() {
-        const input = document.getElementById("searchInput");
-        input.value = "";
-        toggleClearButton();
-        searchChannels();
-        input.focus();
-      }
-    </script>
-  </body>
+    function toggleClearButton() {
+      const input = document.getElementById("searchInput");
+      const clearBtn = document.getElementById("clearBtn");
+      clearBtn.style.display = input.value ? "block" : "none";
+    }
+
+    function clearSearch() {
+      const input = document.getElementById("searchInput");
+      input.value = "";
+      toggleClearButton();
+      searchChannels();
+      input.focus();
+    }
+  </script>
+</body>
+
 </html>

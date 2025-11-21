@@ -19,5 +19,19 @@
       "sizes": "512x512",
       "type": "image/svg+xml"
     }
+  ],
+  "shortcuts": [
+    {
+      "name": "Search Channels",
+      "short_name": "Search",
+      "description": "Search for channels",
+      "url": "/LiveTV/index.html?search",
+      "icons": [
+        {
+          "src": "/LiveTV/logo.svg",
+          "sizes": "192x192"
+        }
+      ]
+    }
   ]
 }
