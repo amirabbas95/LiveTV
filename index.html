@@ -8,41 +8,56 @@
   <title>Live TV Player</title>
   <link rel="manifest" href="/LiveTV/manifest.json">
   <link href="https://unpkg.com/video.js@8.23.4/dist/video-js.min.css" rel="stylesheet" />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
   <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
   <link rel="stylesheet" href="styles.css">
 </head>
 
 <body>
-  <header class="bg-[#121212] text-gray-100 py-4 px-6 flex justify-between items-center shadow-lg sticky top-0 z-10"
-    style="background-color: #121212;">
-        <div class="flex items-center space-x-4">
-            <img src="logo.svg" alt="logo" class="h-10 w-10">
-            <h1 class="text-2xl font-bold">LiveTV Player</h1>
-            </div>
-    <nav class="flex items-center space-x-4">
-      <!-- Admin link with icon -->
-      <a href="admin.html" class="settings-btn" title="Admin Panel">
-        <i class="fas fa-user-shield"></i>
-      </a>
-      <!-- Settings button with icon -->
-      <button id="settingsBtn" class="settings-btn" title="Settings">
-        <i class="fas fa-cog"></i>
-      </button>
+  <header class="shadow-lg sticky top-0 z-20" style="background-color: #121212;">
+    <nav class="">
+      <!-- The 'container' ensures content is centered and responsive -->
+      <div class="container mx-auto py-3 px-4 sm:px-6 flex justify-between items-center h-16">
+        <!-- Left Section: Logo and Title -->
+        <div class="flex items-center space-x-3 sm:space-x-4">
+          <img src="logo.svg" alt="logo" class="h-10 w-10">
+          <h1 class="text-xl sm:text-2xl font-bold text-gray-50 whitespace-nowrap">LiveTV Player</h1>
+        </div>
+        <!-- Center Section: Integrated Search Input (Visible on large screens) -->
+        <!-- We adapt your custom search input to the navbar's design -->
+        <div class="hidden lg:flex flex-1 items-center justify-center mx-10 max-w-lg">
+          <div class="search-wrapper w-full">
+            <input type="text" id="channelSearch" placeholder="Search channels..." autocomplete="off"
+              class="channel-search-navbar" />
+            <button id="clearSearch" title="Clear search" class="clear-search-navbar">✕</button>
+          </div>
+        </div>
+        <!-- Right Section: Admin and Settings Buttons -->
+        <div class="flex items-center space-x-4 sm:space-x-6">
+          <!-- Admin link -->
+          <a href="admin.html" title="Admin Panel" class="text-gray-300 hover:text-blue-500 transition duration-150">
+            <i class="fas fa-user-shield text-xl"></i>
+          </a>
+          <!-- Settings button -->
+          <button id="settingsBtn" title="Settings" class="text-gray-300 hover:text-blue-500 transition duration-150">
+            <i class="fas fa-cog text-xl"></i>
+          </button>
+        </div>
+      </div>
+      <!-- Mobile Search Bar (Hidden on large screens) -->
+      <!-- This is outside the main header row for better mobile spacing -->
+      <div class="lg:hidden py-2 px-4 sm:px-6">
+        <div class="search-wrapper w-full">
+          <input type="text" id="channelSearchMobile" placeholder="Search channels..." autocomplete="off"
+            class="channel-search-mobile" />
+          <button id="clearSearchMobile" title="Clear search" class="clear-search-navbar">✕</button>
+        </div>
+        <div id="search-results-message" class="mt-2" style="display: none;"></div>
+      </div>
     </nav>
   </header>
   <main>
-    
     <div class="container">
-      <!-- search Area -->
-      <div class="search-container">
-        <div class="search-wrapper">
-          <input type="text" id="channelSearch" placeholder="Search channels..." autocomplete="off" />
-          <button id="clearSearch" title="Clear search">✕</button>
-        </div>
-        <div id="search-results-message" style="display: none;"></div>
-      </div>
       <div id="channel-number-overlay">
       </div>
       <div id="recentlyWatched" class="section">
@@ -172,19 +187,18 @@
         <div id="player"></div>
       </div>
       <div id="channel-info-overlay" class="channel-info-overlay">
-        <div id="video-info-container" class="flex items-center space-x-4">
-          <img id="content-image" alt="Content Image" class="w-16 h-16 rounded-full shadow-md">
-          <div class="text-white">
-            <h2 class="text-xl font-bold mt-6 mb-4 col-span-full">
-              <span id="channel-number"></span>
-              <span id="video-title"></span>
-              <span id="video-quality"></span>
-            </h2>
-            <p id="channel-description" class="text-gray-300 text-sm"></p>
-          </div>
+        <img id="content-image">
+        <div class="text-white">
+          <h2>
+            <span id="channel-number"></span>
+            <span id="video-title"></span>
+            <span id="video-quality"></span>
+          </h2>
+          <p id="channel-description"></p>
         </div>
       </div>
     </div>
+  </div>
   </div>
   </div>
   <footer class="bg-[#121212] text-gray-400 text-center py-4 px-6 mt-auto shadow-inner"

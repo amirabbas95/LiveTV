@@ -2,7 +2,6 @@
 // IPTV CHANNEL MANAGER - COMPLETE OPTIMIZED VERSION
 // Full replacement with all improvements integrated
 // ============================================
-
 // ============================================
 // CONSTANTS & CONFIGURATION
 // ============================================
@@ -14,13 +13,11 @@ const recentlyWatchedKey = "recentlyWatched";
 const API_KEY_STORAGE_KEY = "youtube_api_key";
 const CACHE_KEY = "lastChannelsUpdate";
 const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
-
 const STORAGE_KEYS = {
   channels: "allChannelsData",
   live: "liveChannelsData",
   feeds: "rssFeedsData",
 };
-
 const PLAYBACK_CONSTANTS = {
   MAX_ELEMENT_WAIT_TIME: 2000,
   PLAYER_READY_TIMEOUT: 5000,
@@ -28,7 +25,6 @@ const PLAYBACK_CONSTANTS = {
   YOUTUBE_READY_CHECK_INTERVAL: 100,
   TRANSITION_DELAY: 0,
 };
-
 // ============================================
 // GLOBAL STATE VARIABLES
 // ============================================
@@ -47,15 +43,12 @@ let touchStartX = 0;
 let touchEndX = 0;
 let touchStartY = 0;
 let touchEndY = 0;
-
 // Search state
 let searchQuery = "";
 let filteredChannels = [];
-
 // Caches
 const rssCache = new Map();
 const liveCache = new Map();
-
 // Intervals & Timeouts
 let watchInterval = null;
 let autoUpdateInterval = null;
@@ -64,7 +57,6 @@ let overlayTimeoutHide = null;
 let numberTimeout = null;
 let navigationDebounce = null;
 let numberBuffer = "";
-
 // ============================================
 // CANCELLATION TOKEN SYSTEM
 // ============================================
@@ -73,23 +65,19 @@ class CancellationToken {
     this.cancelled = false;
     this.reason = null;
   }
-
   cancel(reason = 'Operation cancelled') {
     this.cancelled = true;
     this.reason = reason;
   }
-
   throwIfCancelled() {
     if (this.cancelled) {
       throw new Error(this.reason || 'Operation cancelled');
     }
   }
-
   isCancelled() {
     return this.cancelled;
   }
 }
-
 // ============================================
 // CHANNEL LOADER CLASS
 // ============================================
@@ -99,32 +87,24 @@ class ChannelLoader {
     this.playerInstance = null;
     this.eventCleanupCallbacks = [];
   }
-
   async loadChannel(url, name, image, description, number, isLive) {
     if (this.currentOperation) {
       this.currentOperation.cancel('New channel selected');
     }
-
     const token = new CancellationToken();
     this.currentOperation = token;
-
     console.log(`🚀 Loading channel: ${name}`, {
       url,
       timestamp: new Date().toISOString(),
     });
-
     try {
       this.updateChannelUI(name, image, description, number);
       token.throwIfCancelled();
-
       await this.cleanupPlayer();
       token.throwIfCancelled();
-
       await this.initializePlayer(url, name, isLive, token);
       token.throwIfCancelled();
-
       //console.log(`✅ Channel loaded successfully: ${name}`);
-
     } catch (error) {
       if (!token.isCancelled()) {
         console.error(`❌ Failed to load channel ${name}:`, error);
@@ -138,55 +118,44 @@ class ChannelLoader {
       }
     }
   }
-
-updateChannelUI(name, image, description, number) {
-  const updates = {
-    'content-image': (el) => el.src = fixImageUrl(image) || 'placeholder.png',
-    'video-title': (el) => el.textContent = name || 'Unknown Channel',
-    'channel-description': (el) => el.textContent = description || '',
-    'channel-number': (el) => el.textContent = number ? `${number}.` : '',
-    'video-quality': (el) => el.textContent = ''
-  };
-
-  Object.entries(updates).forEach(([id, updateFn]) => {
-    const element = document.getElementById(id);
-    if (element) updateFn(element);
-  });
-
-  lastFocusedElement = document.activeElement;
-  showChannelInfoOverlay();
-}
-
+  updateChannelUI(name, image, description, number) {
+    const updates = {
+      'content-image': (el) => el.src = fixImageUrl(image) || 'placeholder.png',
+      'video-title': (el) => el.textContent = name || 'Unknown Channel',
+      'channel-description': (el) => el.textContent = description || '',
+      'channel-number': (el) => el.textContent = number ? `${number}.` : '',
+      'video-quality': (el) => el.textContent = ''
+    };
+    Object.entries(updates).forEach(([id, updateFn]) => {
+      const element = document.getElementById(id);
+      if (element) updateFn(element);
+    });
+    lastFocusedElement = document.activeElement;
+    showChannelInfoOverlay();
+  }
   async cleanupPlayer() {
     stopWatching();
     this.cleanupEventListeners();
-
     if (this.playerInstance) {
       try {
         console.log('🧹 Cleaning up existing player...');
-
         this.playerInstance.off();
-
         if (!this.playerInstance.paused()) {
           this.playerInstance.pause();
         }
-
         const playerId = this.playerInstance.id();
         this.playerInstance.dispose();
         this.playerInstance = null;
-
         const oldElement = document.getElementById(playerId);
         if (oldElement && oldElement.parentNode) {
           oldElement.parentNode.removeChild(oldElement);
         }
-
         //console.log('✅ Player cleaned up successfully');
       } catch (error) {
         console.warn('⚠️ Error during player cleanup:', error);
         this.playerInstance = null;
       }
     }
-
     const container = document.getElementById('player-container');
     if (container) {
       const orphans = container.querySelectorAll('video, .video-js');
@@ -200,34 +169,27 @@ updateChannelUI(name, image, description, number) {
         }
       });
     }
-
     document.querySelectorAll('.play-fallback-overlay').forEach(el => {
       if (el.parentNode) {
         el.parentNode.removeChild(el);
       }
     });
   }
-
   async initializePlayer(url, name, isLive, token) {
     const container = await this.waitForElement('player-container');
     token.throwIfCancelled();
-
     const streamConfig = createStreamConfig(url);
-    const metadata = { isLive: isLive || false };
-
+    const metadata = {
+      isLive: isLive || false
+    };
     const videoId = `player-${Date.now()}`;
     const videoElement = this.createVideoElement(videoId);
-
     container.innerHTML = '';
     container.appendChild(videoElement);
-
     await this.waitForElement(videoId);
     token.throwIfCancelled();
-
     const playerConfig = buildPlayerOptions(streamConfig, metadata);
-
     console.log('🎬 Initializing Video.js player...');
-
     // Wrap player initialization in try-catch for HLS errors
     try {
       this.playerInstance = videojs(videoElement, playerConfig);
@@ -235,38 +197,32 @@ updateChannelUI(name, image, description, number) {
       console.error('❌ Player initialization failed:', error);
       throw new Error(`Failed to initialize player: ${error.message}`);
     }
-
     // Set up HLS error recovery
-    if (streamConfig.type === 'hls' && this.playerInstance.tech({ IWillNotUseThisInPlugins: true })) {
+    if (streamConfig.type === 'hls' && this.playerInstance.tech({
+      IWillNotUseThisInPlugins: true
+    })) {
       this.setupHLSErrorRecovery();
     }
-
     this.setupPlayerEvents(name, isLive, streamConfig.type === 'youtube', token);
     token.throwIfCancelled();
-
     if (streamConfig.type === 'youtube') {
       this.setupYouTubeQualityMonitoring(token);
     }
-
     await this.waitForPlayerReady(token);
     token.throwIfCancelled();
-
     await this.attemptAutoplay();
   }
-
   setupHLSErrorRecovery() {
     if (!this.playerInstance) return;
-
-    const tech = this.playerInstance.tech({ IWillNotUseThisInPlugins: true });
+    const tech = this.playerInstance.tech({
+      IWillNotUseThisInPlugins: true
+    });
     if (!tech || !tech.vhs) return;
-
     let errorCount = 0;
     const maxErrors = 3;
-
     const vhsErrorHandler = () => {
       errorCount++;
       console.warn(`⚠️ HLS error detected (${errorCount}/${maxErrors})`);
-
       if (errorCount < maxErrors) {
         // Try to recover
         setTimeout(() => {
@@ -283,10 +239,8 @@ updateChannelUI(name, image, description, number) {
         console.error('❌ Max HLS errors reached, stopping recovery attempts');
       }
     };
-
     if (tech.vhs) {
       tech.vhs.on('error', vhsErrorHandler);
-
       this.eventCleanupCallbacks.push(() => {
         try {
           if (tech && tech.vhs) {
@@ -298,7 +252,6 @@ updateChannelUI(name, image, description, number) {
       });
     }
   }
-
   createVideoElement(id) {
     const video = document.createElement('video');
     video.id = id;
@@ -310,7 +263,6 @@ updateChannelUI(name, image, description, number) {
     video.setAttribute('crossorigin', 'anonymous');
     return video;
   }
-
   waitForElement(id) {
     return new Promise((resolve, reject) => {
       const existing = document.getElementById(id);
@@ -318,7 +270,6 @@ updateChannelUI(name, image, description, number) {
         resolve(existing);
         return;
       }
-
       const observer = new MutationObserver(() => {
         const element = document.getElementById(id);
         if (element) {
@@ -327,69 +278,54 @@ updateChannelUI(name, image, description, number) {
           resolve(element);
         }
       });
-
       observer.observe(document.body, {
         childList: true,
         subtree: true
       });
-
       const timeoutId = setTimeout(() => {
         observer.disconnect();
         reject(new Error(`Element ${id} not found within ${PLAYBACK_CONSTANTS.MAX_ELEMENT_WAIT_TIME}ms`));
       }, PLAYBACK_CONSTANTS.MAX_ELEMENT_WAIT_TIME);
     });
   }
-
   waitForPlayerReady(token) {
     return new Promise((resolve, reject) => {
       if (!this.playerInstance) {
         reject(new Error('Player instance not available'));
         return;
       }
-
       let resolved = false;
-
       const timeoutId = setTimeout(() => {
         if (!resolved) {
           resolved = true;
           reject(new Error(`Player ready timeout after ${PLAYBACK_CONSTANTS.PLAYER_READY_TIMEOUT}ms`));
         }
       }, PLAYBACK_CONSTANTS.PLAYER_READY_TIMEOUT);
-
       this.playerInstance.ready(() => {
         if (resolved) return;
-
         clearTimeout(timeoutId);
-
         if (token.isCancelled()) {
           resolved = true;
           reject(new Error('Cancelled during player initialization'));
           return;
         }
-
         resolved = true;
         //console.log('✅ Player ready');
         resolve();
       });
-
       this.playerInstance.one('error', () => {
         if (resolved) return;
-
         clearTimeout(timeoutId);
         resolved = true;
-
         const error = this.playerInstance.error();
         reject(new Error(`Player error during initialization: ${error ? error.code : 'unknown'}`));
       });
     });
   }
-
   async attemptAutoplay() {
     if (!this.playerInstance) return;
-
     try {
       const playPromise = this.playerInstance.play();
-
       if (playPromise !== undefined) {
         await playPromise;
         //console.log('✅ Autoplay successful');
@@ -399,91 +335,73 @@ updateChannelUI(name, image, description, number) {
       this.showPlayButton();
     }
   }
-
   setupPlayerEvents(name, isLive, isYouTube, token) {
     if (!this.playerInstance) return;
-
     this.playerInstance.off();
-
     const errorHandler = () => {
-  if (token.isCancelled()) return;
-
-  const error = this.playerInstance.error();
-  
-  console.error('🚨 Player error details:', {
-    code: error?.code,
-    message: error?.message,
-    type: error?.type,
-    metadata: error?.metadata
-  });
-
-  // Handle specific error codes
-  if (error) {
-    switch(error.code) {
-      case 1: // MEDIA_ERR_ABORTED
-        console.warn('⚠️ Media loading aborted');
-        break;
-        
-      case 2: // MEDIA_ERR_NETWORK
-        console.warn('⚠️ Network error - attempting recovery...');
-        // Try to reload the source
-        setTimeout(() => {
-          if (this.playerInstance && !token.isCancelled()) {
-            console.log('🔄 Attempting to reload stream...');
-            const currentSrc = this.playerInstance.currentSrc();
-            this.playerInstance.src(currentSrc);
-            this.playerInstance.play().catch(e => {
-              console.error('❌ Reload failed:', e);
-              showErrorToUser('Stream failed to load. Please try again.');
-            });
-          }
-        }, 2000);
-        return; // Don't stop watching yet
-        
-      case 3: // MEDIA_ERR_DECODE
-        console.error('❌ Decoding error - stream format issue');
-        showErrorToUser('Stream format not supported');
-        break;
-        
-      case 4: // MEDIA_ERR_SRC_NOT_SUPPORTED
-        console.error('❌ Source not supported');
-        showErrorToUser('Stream format not supported');
-        break;
-        
-      default:
-        console.error('❌ Unknown player error:', error.code);
-    }
-  }
-
-  stopWatching();
-};
-
+      if (token.isCancelled()) return;
+      const error = this.playerInstance.error();
+      console.error('🚨 Player error details:', {
+        code: error?.code,
+        message: error?.message,
+        type: error?.type,
+        metadata: error?.metadata
+      });
+      // Handle specific error codes
+      if (error) {
+        switch (error.code) {
+          case 1: // MEDIA_ERR_ABORTED
+            console.warn('⚠️ Media loading aborted');
+            break;
+          case 2: // MEDIA_ERR_NETWORK
+            console.warn('⚠️ Network error - attempting recovery...');
+            // Try to reload the source
+            setTimeout(() => {
+              if (this.playerInstance && !token.isCancelled()) {
+                console.log('🔄 Attempting to reload stream...');
+                const currentSrc = this.playerInstance.currentSrc();
+                this.playerInstance.src(currentSrc);
+                this.playerInstance.play().catch(e => {
+                  console.error('❌ Reload failed:', e);
+                  showErrorToUser('Stream failed to load. Please try again.');
+                });
+              }
+            }, 2000);
+            return; // Don't stop watching yet
+          case 3: // MEDIA_ERR_DECODE
+            console.error('❌ Decoding error - stream format issue');
+            showErrorToUser('Stream format not supported');
+            break;
+          case 4: // MEDIA_ERR_SRC_NOT_SUPPORTED
+            console.error('❌ Source not supported');
+            showErrorToUser('Stream format not supported');
+            break;
+          default:
+            console.error('❌ Unknown player error:', error.code);
+        }
+      }
+      stopWatching();
+    };
     const waitingHandler = () => {
       if (token.isCancelled()) return;
       console.log('⏱ Buffering...');
     };
-
     const playingHandler = () => {
       if (token.isCancelled()) return;
       startWatching(name);
     };
-
     const pauseHandler = () => {
       if (token.isCancelled()) return;
       stopWatching();
     };
-
     const endedHandler = () => {
       if (token.isCancelled()) return;
       console.log('⏹️ Playback ended');
       stopWatching();
     };
-
     const metadataHandler = () => {
       if (token.isCancelled()) return;
-
       this.updateQualityDisplay();
-
       const isChannelLive = isLive === true || isLive === 'true';
       if (!isChannelLive && !isYouTube) {
         this.playerInstance.controls(true);
@@ -491,13 +409,11 @@ updateChannelUI(name, image, description, number) {
         this.playerInstance.controls(false);
       }
     };
-
     // HLS-specific error recovery
     const retryHandler = () => {
       if (token.isCancelled()) return;
       console.log('🔄 Attempting HLS recovery...');
     };
-
     this.playerInstance.on('error', errorHandler);
     this.playerInstance.on('waiting', waitingHandler);
     this.playerInstance.on('playing', playingHandler);
@@ -505,7 +421,6 @@ updateChannelUI(name, image, description, number) {
     this.playerInstance.on('ended', endedHandler);
     this.playerInstance.on('loadedmetadata', metadataHandler);
     this.playerInstance.on('retryplaylist', retryHandler);
-
     this.eventCleanupCallbacks.push(() => {
       if (this.playerInstance) {
         this.playerInstance.off('error', errorHandler);
@@ -518,41 +433,33 @@ updateChannelUI(name, image, description, number) {
       }
     });
   }
-
   setupYouTubeQualityMonitoring(token) {
     const checkInterval = PLAYBACK_CONSTANTS.YOUTUBE_READY_CHECK_INTERVAL;
     let attempts = 0;
     const maxAttempts = 30;
-
     const checkYouTubeReady = () => {
       if (token.isCancelled()) return;
-
       attempts++;
-
       if (attempts > maxAttempts) {
         console.warn('⚠️ YouTube quality monitoring setup timed out');
         return;
       }
-
       try {
         if (!this.playerInstance) return;
-
-        const tech = this.playerInstance.tech({ IWillNotUseThisInPlugins: true });
-
+        const tech = this.playerInstance.tech({
+          IWillNotUseThisInPlugins: true
+        });
         if (!tech || !tech.ytPlayer) {
           setTimeout(checkYouTubeReady, checkInterval);
           return;
         }
-
         const qualityChangeHandler = (event) => {
           const qualityEl = document.getElementById('video-quality');
           if (qualityEl) {
             qualityEl.textContent = event.data || 'auto';
           }
         };
-
         tech.ytPlayer.addEventListener('onPlaybackQualityChange', qualityChangeHandler);
-
         this.eventCleanupCallbacks.push(() => {
           try {
             if (tech && tech.ytPlayer) {
@@ -562,73 +469,60 @@ updateChannelUI(name, image, description, number) {
             console.warn('Could not remove YouTube quality listener:', e);
           }
         });
-
         console.log('✅ YouTube quality monitoring setup complete');
-
       } catch (error) {
         console.warn('⚠️ YouTube quality monitoring setup failed:', error);
       }
     };
-
     checkYouTubeReady();
   }
-
   updateQualityDisplay() {
     if (!this.playerInstance) return;
-
     const qualityEl = document.getElementById('video-quality');
     if (!qualityEl) return;
-
     const height = this.playerInstance.videoHeight();
     qualityEl.textContent = height ? `${height}p` : 'Auto';
   }
-
   showPlayButton() {
     const existing = document.querySelector('.play-fallback-overlay');
     if (existing && existing.parentNode) {
       existing.parentNode.removeChild(existing);
     }
-
     const overlay = document.createElement('div');
     overlay.className = 'play-fallback-overlay';
     overlay.style.cssText = `
-      position: absolute;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      background: rgba(0,0,0,0.7);
-      z-index: 100;
-      cursor: pointer;
-    `;
-
+position: absolute;
+top: 0;
+left: 0;
+width: 100%;
+height: 100%;
+display: flex;
+align-items: center;
+justify-content: center;
+background: rgba(0,0,0,0.7);
+z-index: 100;
+cursor: pointer;
+`;
     const button = document.createElement('button');
     button.className = 'play-button';
     button.textContent = '▶️ Click to Play';
     button.style.cssText = `
-      padding: 15px 30px;
-      background: #ff0000;
-      color: white;
-      border: none;
-      border-radius: 8px;
-      cursor: pointer;
-      font-size: 18px;
-      font-weight: bold;
-      box-shadow: 0 4px 6px rgba(0,0,0,0.3);
-      transition: transform 0.2s;
-    `;
-
+padding: 15px 30px;
+background: #ff0000;
+color: white;
+border: none;
+border-radius: 8px;
+cursor: pointer;
+font-size: 18px;
+font-weight: bold;
+box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+transition: transform 0.2s;
+`;
     button.onmouseenter = () => button.style.transform = 'scale(1.05)';
     button.onmouseleave = () => button.style.transform = 'scale(1)';
-
     overlay.appendChild(button);
-
     const clickHandler = async () => {
       if (!this.playerInstance) return;
-
       try {
         await this.playerInstance.play();
         if (overlay.parentNode) {
@@ -639,14 +533,11 @@ updateChannelUI(name, image, description, number) {
         showErrorToUser('Could not start playback');
       }
     };
-
     overlay.addEventListener('click', clickHandler);
-
     const container = document.getElementById('player-container');
     if (container) {
       container.appendChild(overlay);
     }
-
     this.eventCleanupCallbacks.push(() => {
       overlay.removeEventListener('click', clickHandler);
       if (overlay.parentNode) {
@@ -654,7 +545,6 @@ updateChannelUI(name, image, description, number) {
       }
     });
   }
-
   cleanupEventListeners() {
     this.eventCleanupCallbacks.forEach(cleanup => {
       try {
@@ -665,26 +555,21 @@ updateChannelUI(name, image, description, number) {
     });
     this.eventCleanupCallbacks = [];
   }
-
   getPlayer() {
     return this.playerInstance;
   }
 }
-
 // ============================================
 // GLOBAL INSTANCE
 // ============================================
 const channelLoader = new ChannelLoader();
-
 // ============================================
 // UTILITY FUNCTIONS
 // ============================================
-
 // CORS proxy fallback
 function attemptCorsProxy(url) {
   const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(url)}`;
   log(`Trying CORS proxy: ${proxyUrl}`, 'info');
-
   if (playerInstance) {
     playerInstance.src({
       src: proxyUrl,
@@ -706,59 +591,51 @@ function extractYouTubeID(url) {
 function log(message, isError = false) {
   const logArea = document.getElementById("logArea");
   if (!logArea) return;
-
   const prefix = isError ? "Error: " : "Info: ";
   const colorClass = isError ? "text-red-400" : "";
   const timestamp = new Date().toLocaleTimeString();
-
-  logArea.innerHTML += `<div class="${colorClass}">${prefix}[${timestamp}] ${message}</div>`;
+  logArea.innerHTML += `
+<div class="${colorClass}">${prefix}[${timestamp}] ${message}</div>
+`;
   logArea.scrollTop = logArea.scrollHeight;
 }
-
 // ONLY SHOWING THE FIXED showNotification FUNCTION
 // Replace this function in your existing script.js
-
 function showNotification(message, type = "info") {
   console.log(`🔔 ${type.toUpperCase()}: ${message}`);
-
   const colors = {
     info: '#2196F3',
     success: '#4CAF50',
     warning: '#FF9800',
     error: '#F44336'
   };
-
   const notification = document.createElement("div");
   notification.className = "notification";
   notification.style.cssText = `
-    position: fixed;
-    top: 20px;
-    left: -350px;
-    background: ${colors[type] || colors.info};
-    color: white;
-    padding: 12px 24px;
-    border-radius: 8px;
-    z-index: 10001;
-    font-weight: 500;
-    box-shadow: 0 4px 6px rgba(0,0,0,0.3);
-    min-width: 250px;
-    transition: left 0.4s ease, opacity 0.4s ease;
-  `;
+position: fixed;
+top: 20px;
+left: -350px;
+background: ${colors[type] || colors.info};
+color: white;
+padding: 12px 24px;
+border-radius: 8px;
+z-index: 10001;
+font-weight: 500;
+box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+min-width: 250px;
+transition: left 0.4s ease, opacity 0.4s ease;
+`;
   notification.textContent = message;
-
   document.body.appendChild(notification);
-
   // Trigger slide-in animation
   requestAnimationFrame(() => {
     notification.style.left = '20px';
     notification.style.opacity = '1';
   });
-
   // Auto-hide after 3 seconds
   setTimeout(() => {
     notification.style.left = '-350px';
     notification.style.opacity = '0';
-    
     setTimeout(() => {
       if (notification.parentNode) {
         notification.remove();
@@ -771,20 +648,18 @@ function showErrorToUser(message) {
   const errorDiv = document.createElement("div");
   errorDiv.className = "fixed top-4 right-4 bg-red-600 text-white p-4 rounded-lg shadow-lg z-50 max-w-sm animate-slide-in";
   errorDiv.innerHTML = `
-    <div class="flex items-start gap-3">
-      <i class="fas fa-exclamation-circle text-2xl"></i>
-      <div>
-        <p class="font-semibold">Error</p>
-        <p class="text-sm">${message}</p>
-      </div>
-      <button onclick="this.parentElement.parentElement.remove()" class="ml-auto">
-        <i class="fas fa-times"></i>
-      </button>
-    </div>
-  `;
-  
+<div class="flex items-start gap-3">
+   <i class="fas fa-exclamation-circle text-2xl"></i>
+   <div>
+      <p class="font-semibold">Error</p>
+      <p class="text-sm">${message}</p>
+   </div>
+   <button onclick="this.parentElement.parentElement.remove()" class="ml-auto">
+   <i class="fas fa-times"></i>
+   </button>
+</div>
+`;
   document.body.appendChild(errorDiv);
-  
   setTimeout(() => {
     errorDiv.style.opacity = '0';
     setTimeout(() => errorDiv.remove(), 300);
@@ -794,21 +669,16 @@ function showErrorToUser(message) {
 function getTimeAgo(timestamp) {
   const seconds = Math.floor((Date.now() - timestamp) / 1000);
   if (seconds < 60) return "just now";
-
   const minutes = Math.floor(seconds / 60);
   if (minutes < 60) return `${minutes} minute${minutes > 1 ? "s" : ""} ago`;
-
   const hours = Math.floor(minutes / 60);
   if (hours < 24) return `${hours} hour${hours > 1 ? "s" : ""} ago`;
-
   const days = Math.floor(hours / 24);
   return `${days} day${days > 1 ? "s" : ""} ago`;
 }
-
 // ============================================
 // API KEY MANAGEMENT
 // ============================================
-
 function saveAPIKey(apiKey) {
   if (apiKey && apiKey.trim()) {
     const encrypted = btoa(btoa(apiKey.trim())); // Double encoding
@@ -842,82 +712,91 @@ function clearAPIKey() {
   localStorage.removeItem(API_KEY_STORAGE_KEY);
   API_KEY = "";
 }
-
 // ============================================
 // VIDEO PLAYER FUNCTIONS
 // ============================================
-
 function createStreamConfig(url) {
   const youtubeID = extractYouTubeID(url);
-
   // 1. Check for YouTube ID
   if (youtubeID) {
     return {
       type: 'youtube',
       techOrder: ['youtube'],
-      source: { src: url, type: "video/youtube" }
+      source: {
+        src: url,
+        type: "video/youtube"
+      }
     };
   }
-
-    // 2. Fix mixed content: Show error for HTTP URLs on HTTPS sites
+  // 2. Fix mixed content: Show error for HTTP URLs on HTTPS sites
   if (window.location.protocol === 'https:' && url.startsWith('http://')) {
     console.error(`❌ Mixed Content Error: Cannot load HTTP stream on HTTPS page`);
     console.log(`Stream URL: ${url}`);
-    
     // Show user-friendly error
     setTimeout(() => {
       showErrorToUser('⚠️ This stream uses HTTP and cannot be played on this HTTPS site. Please contact the stream provider for an HTTPS URL.');
     }, 500);
-    
     // Return a dummy config that will fail gracefully
     return {
       type: 'hls',
       techOrder: ['html5'],
-      source: { src: '', type: "application/x-mpegURL" }
+      source: {
+        src: '',
+        type: "application/x-mpegURL"
+      }
     };
   }
-
   // 3. Check for 'imarkaz' link and force MP4 type
   if (url.includes('imarkaz')) {
     return {
       type: 'mp4',
       techOrder: ['html5'],
-      source: { src: url, type: "video/mp4" }
+      source: {
+        src: url,
+        type: "video/mp4"
+      }
     };
   }
-
   // 3. Fallback to file extension check
   const ext = url.split('?')[0].split('.').pop().toLowerCase();
-
   switch (ext) {
     case 'mp4':
     case 'webm':
       return {
         type: 'mp4',
         techOrder: ['html5'],
-        source: { src: url, type: `video/${ext}` }
+        source: {
+          src: url,
+          type: `video/${ext}`
+        }
       };
-
     case 'm3u8':
       return {
         type: 'hls',
         techOrder: ['html5'],
-        source: { src: url, type: "application/x-mpegURL" }
+        source: {
+          src: url,
+          type: "application/x-mpegURL"
+        }
       };
-
     case 'mpd':
       return {
         type: 'dash',
         techOrder: ['html5'],
-        source: { src: url, type: "application/dash+xml" }
+        source: {
+          src: url,
+          type: "application/dash+xml"
+        }
       };
-
     default:
       console.warn('Unknown stream type, defaulting to HLS:', url);
       return {
         type: 'hls',
         techOrder: ['html5'],
-        source: { src: url, type: "application/x-mpegURL" }
+        source: {
+          src: url,
+          type: "application/x-mpegURL"
+        }
       };
   }
 }
@@ -941,7 +820,6 @@ function buildPlayerOptions(streamConfig, metadata) {
       preloadTextTracks: false
     }
   };
-
   // YouTube-specific configuration
   if (streamConfig.type === 'youtube') {
     baseOptions.youtube = {
@@ -959,7 +837,6 @@ function buildPlayerOptions(streamConfig, metadata) {
       }
     };
   }
-
   // HLS-specific configuration
   if (streamConfig.type === 'hls') {
     baseOptions.html5 = {
@@ -989,7 +866,6 @@ function buildPlayerOptions(streamConfig, metadata) {
       nativeVideoTracks: false
     };
   }
-
   // Add DASH support if needed
   if (streamConfig.type === 'dash') {
     baseOptions.html5 = baseOptions.html5 || {};
@@ -999,35 +875,27 @@ function buildPlayerOptions(streamConfig, metadata) {
       withCredentials: false
     };
   }
-
   return baseOptions;
 }
-
 async function selectChannel(url, name, image, description, number, isLive) {
   if (!url) {
     console.warn('⚠️ No URL provided for channel selection');
     return;
   }
-
   await channelLoader.loadChannel(url, name, image, description, number, isLive);
 }
 
 function showChannelInfoOverlay() {
   const channelInfoOverlay = document.getElementById("channel-info-overlay");
   if (!channelInfoOverlay) return;
-
   if (overlayTimeoutShow) clearTimeout(overlayTimeoutShow);
   if (overlayTimeoutHide) clearTimeout(overlayTimeoutHide);
-
   const modal = document.getElementById("videoModal");
   if (modal) modal.style.display = "flex";
-
   channelInfoOverlay.classList.remove("show");
-
   overlayTimeoutShow = setTimeout(() => {
     channelInfoOverlay.classList.add("show");
   }, 300);
-
   overlayTimeoutHide = setTimeout(() => {
     channelInfoOverlay.classList.remove("show");
   }, 6000);
@@ -1036,42 +904,38 @@ function showChannelInfoOverlay() {
 function closeModal() {
   const modal = document.getElementById("videoModal");
   if (modal) modal.style.display = "none";
-
   channelLoader.cleanupPlayer().then(() => {
     //console.log('✅ Modal closed and player cleaned up');
   }).catch(error => {
     console.error('❌ Error during modal close cleanup:', error);
   });
-
-
   // --- FIX: Restore focus to the last channel card on the main grid ---
-
   if (lastFocusedElement && allChannelItems.length > 0) {
     // Find the index of the stored lastFocusedElement in the current channel list
     const restoredIndex = allChannelItems.findIndex(item => item === lastFocusedElement);
-
     if (restoredIndex !== -1) {
       // 1. Focus the element
       allChannelItems[restoredIndex].focus();
-
       // 2. Scroll it into view (smoothly)
-      allChannelItems[restoredIndex].scrollIntoView({ behavior: "smooth", block: "center" });
-
+      allChannelItems[restoredIndex].scrollIntoView({
+        behavior: "smooth",
+        block: "center"
+      });
       // 3. Update the global focusedIndex state for consistent arrow key navigation
       focusedIndex = restoredIndex;
-
       //console.log(`✅ Focus restored to last played channel index: ${focusedIndex}`);
       return;
     }
   }
-
   // Fallback if lastFocusedElement is null or no longer in the DOM (e.g., due to filtering/sorting)
   if (allChannelItems.length > 0) {
     allChannelItems[0].focus();
-    allChannelItems[0].scrollIntoView({ behavior: "smooth", block: "center" });
+    allChannelItems[0].scrollIntoView({
+      behavior: "smooth",
+      block: "center"
+    });
     focusedIndex = 0;
   }
-
   updateAllChannelItems();
 }
 
@@ -1085,34 +949,26 @@ function toggleFullscreen() {
     }
   }
 }
-
 // ============================================
 // WATCH TIME MANAGEMENT
 // ============================================
-
 function startWatching(channelId) {
   stopWatching();
-
   currentChannelId = channelId;
   watchStartTime = Date.now();
-
   watchInterval = setInterval(() => {
     saveCurrentWatchTime();
   }, 10000);
-
   console.log(`▶️ Started watching: ${channelId}`);
 }
 
 function stopWatching() {
   if (!currentChannelId) return;
-
   if (watchInterval) {
     clearInterval(watchInterval);
     watchInterval = null;
   }
-
   saveCurrentWatchTime();
-
   //console.log(`⏸️ Stopped watching: ${currentChannelId}`);
   currentChannelId = "";
   watchStartTime = 0;
@@ -1120,17 +976,12 @@ function stopWatching() {
 
 function saveCurrentWatchTime() {
   if (!currentChannelId || !watchStartTime) return;
-
   const watchedMs = Date.now() - watchStartTime;
   const watchedSeconds = Math.floor(watchedMs / 1000);
-
   if (watchedSeconds < 5) return;
-
   const watchData = loadWatchTime();
   watchData[currentChannelId] = (watchData[currentChannelId] || 0) + watchedSeconds;
-
   localStorage.setItem("watchTimePerChannel", JSON.stringify(watchData));
-
   watchStartTime = Date.now();
 }
 
@@ -1151,11 +1002,9 @@ function sortChannelsByWatchTime(channels) {
     return bTime - aTime;
   });
 }
-
 // ============================================
 // CHANNEL UI FUNCTIONS
 // ============================================
-
 function saveRecentlyWatched(channel) {
   const {
     name,
@@ -1166,11 +1015,8 @@ function saveRecentlyWatched(channel) {
     isLive = "true",
     category = "Unknown",
   } = channel;
-
   let recent = JSON.parse(localStorage.getItem(recentlyWatchedKey) || "[]");
-
   recent = recent.filter((item) => item.url !== url);
-
   recent.unshift({
     name,
     url,
@@ -1180,21 +1026,17 @@ function saveRecentlyWatched(channel) {
     isLive,
     category,
   });
-
   if (recent.length > MAX_RECENT) {
     recent.pop();
   }
-
   localStorage.setItem(recentlyWatchedKey, JSON.stringify(recent));
   renderRecentlyWatched();
 }
 
 function toggleFavorite(url, name, image, description, number, isLive, category, event) {
   if (event) event.stopPropagation();
-
   let favorites = JSON.parse(localStorage.getItem(favoritesKey) || "[]");
   const index = favorites.findIndex((item) => item.url === url);
-
   if (index > -1) {
     favorites.splice(index, 1);
   } else {
@@ -1208,7 +1050,6 @@ function toggleFavorite(url, name, image, description, number, isLive, category,
       category,
     });
   }
-
   localStorage.setItem(favoritesKey, JSON.stringify(favorites));
   renderFavorites();
   updateFavoriteIcons();
@@ -1218,16 +1059,13 @@ function toggleFavorite(url, name, image, description, number, isLive, category,
 function createChannelItem(channel) {
   const item = document.createElement("div");
   const numberText = channel.number || "";
-
   item.className = "content-card channel-item";
   item.setAttribute("role", "button");
   item.setAttribute("aria-label", `Select channel ${channel.name}`);
   item.setAttribute("tabindex", "0");
-
   if (channel.isLive) {
     item.setAttribute("aria-live", "polite");
   }
-
   item.dataset.url = channel.url;
   item.dataset.name = channel.name;
   item.dataset.image = channel.image;
@@ -1235,7 +1073,6 @@ function createChannelItem(channel) {
   item.dataset.number = numberText;
   item.dataset.isLive = channel.isLive;
   item.dataset.category = channel.category || "Unknown";
-
   const clickHandler = (e) => {
     e.stopPropagation();
     if (e.target.classList.contains("favorite-icon") ||
@@ -1252,13 +1089,10 @@ function createChannelItem(channel) {
     );
     saveRecentlyWatched(channel);
   };
-
   item.addEventListener("click", clickHandler);
   item._clickHandler = clickHandler;
-
   const wrapper = document.createElement("div");
   wrapper.className = "thumb-wrapper";
-
   const img = document.createElement("img");
   // FIX: Use the proxy function for images
   img.src = fixImageUrl(channel.image);
@@ -1269,11 +1103,9 @@ function createChannelItem(channel) {
     this.src = "placeholder.png";
     this.alt = "Image not available";
   };
-
   const numberBadge = document.createElement("span");
   numberBadge.className = "channel-number";
   numberBadge.textContent = channel.number;
-
   if (channel.isLive === true || channel.isLive === "true") {
     const liveIndicator = document.createElement("img");
     liveIndicator.src = "live.webp";
@@ -1281,14 +1113,11 @@ function createChannelItem(channel) {
     liveIndicator.className = "live-indicator";
     wrapper.appendChild(liveIndicator);
   }
-
   wrapper.appendChild(img);
   wrapper.appendChild(numberBadge);
-
   const favoriteIcon = document.createElement("span");
   favoriteIcon.className = "favorite-icon";
   favoriteIcon.innerHTML = '<i class="fas fa-star"></i>';
-
   const favoriteHandler = (e) => {
     e.stopPropagation();
     toggleFavorite(
@@ -1302,13 +1131,10 @@ function createChannelItem(channel) {
       e
     );
   };
-
   favoriteIcon.addEventListener("click", favoriteHandler);
   item._favoriteHandler = favoriteHandler;
-
   item.appendChild(wrapper);
   item.appendChild(favoriteIcon);
-
   return item;
 }
 
@@ -1318,7 +1144,6 @@ function cleanupChannelItems() {
       item.removeEventListener("click", item._clickHandler);
       delete item._clickHandler;
     }
-
     const favoriteIcon = item.querySelector(".favorite-icon");
     if (favoriteIcon && item._favoriteHandler) {
       favoriteIcon.removeEventListener("click", item._favoriteHandler);
@@ -1329,25 +1154,18 @@ function cleanupChannelItems() {
       item.remove();
     }
   });
-
   allChannelItems.length = 0; // Clear the array
 }
 
-
 function renderChannels(channels) {
   cleanupChannelItems();
-
   const mainContainer = document.getElementById("channels");
   if (!mainContainer) return;
-
   const existingGrids = mainContainer.querySelectorAll(".content-grid");
   const existingHeadings = mainContainer.querySelectorAll("h2:not(.sort-container h2)");
-
   existingGrids.forEach((grid) => grid.remove());
   existingHeadings.forEach((heading) => heading.remove());
-
   const fragment = document.createDocumentFragment();
-
   if (currentSortMethod === "none") {
     const categorizedChannels = channels.reduce((acc, channel) => {
       const category = channel.category || "Unknown";
@@ -1355,22 +1173,17 @@ function renderChannels(channels) {
       acc[category].push(channel);
       return acc;
     }, {});
-
     for (const category in categorizedChannels) {
       const channelCount = categorizedChannels[category].length;
-
       const categoryHeading = document.createElement("h2");
       categoryHeading.textContent = `${category} (${channelCount})`;
       categoryHeading.className = "text-xl font-bold mt-6 mb-4 col-span-full";
-
       const categoryGrid = document.createElement("div");
       categoryGrid.className = "content-grid";
-
       categorizedChannels[category].forEach((channel) => {
         const item = createChannelItem(channel);
         categoryGrid.appendChild(item);
       });
-
       fragment.appendChild(categoryHeading);
       fragment.appendChild(categoryGrid);
     }
@@ -1379,32 +1192,25 @@ function renderChannels(channels) {
     const mainHeading = document.createElement("h2");
     mainHeading.textContent = `> Channels < (${totalChannelCount})`;
     mainHeading.className = "text-xl font-bold mt-6 mb-4 col-span-full";
-
     const categoryGrid = document.createElement("div");
     categoryGrid.className = "content-grid";
-
     channels.forEach((channel) => {
       const item = createChannelItem(channel);
       categoryGrid.appendChild(item);
     });
-
     fragment.appendChild(mainHeading);
     fragment.appendChild(categoryGrid);
   }
-
   mainContainer.appendChild(fragment);
   updateAllChannelItems();
-
   console.log(`✅ Rendered ${channels.length} channels in ${currentSortMethod} view`);
 }
 
 function renderFavorites() {
   const container = document.getElementById("favoritesGrid");
   if (!container) return;
-
   const favorites = JSON.parse(localStorage.getItem(favoritesKey) || "[]");
   container.innerHTML = "";
-
   const favSection = document.getElementById("favorites");
   if (favorites.length === 0) {
     if (favSection) favSection.style.display = "none";
@@ -1420,10 +1226,8 @@ function renderFavorites() {
 function renderRecentlyWatched() {
   const container = document.getElementById("recentlyWatchedGrid");
   if (!container) return;
-
   const recent = JSON.parse(localStorage.getItem(recentlyWatchedKey) || "[]");
   container.innerHTML = "";
-
   const recentSection = document.getElementById("recentlyWatched");
   if (recent.length === 0) {
     if (recentSection) recentSection.style.display = "none";
@@ -1439,7 +1243,6 @@ function renderRecentlyWatched() {
 function updateFavoriteIcons() {
   const favorites = JSON.parse(localStorage.getItem(favoritesKey) || "[]");
   const favoriteUrls = new Set(favorites.map((fav) => fav.url));
-
   document.querySelectorAll(".channel-item").forEach((item) => {
     const url = item.dataset.url;
     const icon = item.querySelector(".favorite-icon");
@@ -1456,35 +1259,27 @@ function updateFavoriteIcons() {
 function updateAllChannelItems() {
   allChannelItems = Array.from(document.querySelectorAll(".channel-item"));
 }
-
 // ============================================
 // SEARCH FUNCTIONALITY
 // ============================================
-
 function searchChannels(query) {
   searchQuery = query.toLowerCase().trim();
-
   if (!searchQuery) {
     filteredChannels = [];
     sortChannelsAndRender(currentSortMethod);
     showFavoritesAndRecent();
     return;
   }
-
   filteredChannels = allChannels.filter(channel => {
     return channel.name.toLowerCase().includes(searchQuery) ||
       (channel.description && channel.description.toLowerCase().includes(searchQuery)) ||
       (channel.category && channel.category.toLowerCase().includes(searchQuery));
   });
-
   console.log(`🔍 Search: "${query}" - Found ${filteredChannels.length} channels`);
-
   hideFavoritesAndRecent();
-
   renderChannels(filteredChannels);
   updateFavoriteIcons();
   updateAllChannelItems();
-
   const searchResultsMsg = document.getElementById("search-results-message");
   if (searchResultsMsg) {
     if (filteredChannels.length === 0) {
@@ -1500,17 +1295,14 @@ function searchChannels(query) {
 function clearSearch() {
   searchQuery = "";
   filteredChannels = [];
-
   const searchInput = document.getElementById("channelSearch");
   if (searchInput) {
     searchInput.value = "";
   }
-
   const searchResultsMsg = document.getElementById("search-results-message");
   if (searchResultsMsg) {
     searchResultsMsg.style.display = "none";
   }
-
   showFavoritesAndRecent();
   sortChannelsAndRender(currentSortMethod);
 }
@@ -1518,11 +1310,9 @@ function clearSearch() {
 function hideFavoritesAndRecent() {
   const favSection = document.getElementById("favorites");
   const recentSection = document.getElementById("recentlyWatched");
-
   if (favSection) {
     favSection.style.display = "none";
   }
-
   if (recentSection) {
     recentSection.style.display = "none";
   }
@@ -1531,14 +1321,11 @@ function hideFavoritesAndRecent() {
 function showFavoritesAndRecent() {
   const favorites = JSON.parse(localStorage.getItem(favoritesKey) || "[]");
   const favSection = document.getElementById("favorites");
-
   if (favSection && favorites.length > 0) {
     favSection.style.display = "grid";
   }
-
   const recent = JSON.parse(localStorage.getItem(recentlyWatchedKey) || "[]");
   const recentSection = document.getElementById("recentlyWatched");
-
   if (recentSection && recent.length > 0) {
     recentSection.style.display = "grid";
   }
@@ -1547,18 +1334,14 @@ function showFavoritesAndRecent() {
 function setupSearchBar() {
   const searchInput = document.getElementById("channelSearch");
   const clearSearchBtn = document.getElementById("clearSearch");
-
   if (searchInput) {
     let searchTimeout;
-
     searchInput.addEventListener("input", (e) => {
       clearTimeout(searchTimeout);
-
       searchTimeout = setTimeout(() => {
         searchChannels(e.target.value);
       }, 300);
     });
-
     searchInput.addEventListener("keydown", (e) => {
       if (e.key === "Escape") {
         clearSearch();
@@ -1566,7 +1349,6 @@ function setupSearchBar() {
       }
     });
   }
-
   if (clearSearchBtn) {
     clearSearchBtn.addEventListener("click", () => {
       clearSearch();
@@ -1574,28 +1356,22 @@ function setupSearchBar() {
     });
   }
 }
-
 // ============================================
 // SORTING & FILTERING
 // ============================================
-
 function sortChannelsAndRender(sortMethod = "none") {
   const channelsToSort = searchQuery ? filteredChannels : allChannels;
   let sortedChannels = [...channelsToSort];
-
   switch (sortMethod) {
     case "asc":
       sortedChannels.sort((a, b) => a.name.localeCompare(b.name));
       break;
-
     case "desc":
       sortedChannels.sort((a, b) => b.name.localeCompare(a.name));
       break;
-
     case "watchTime":
       sortedChannels = sortChannelsByWatchTime(channelsToSort);
       break;
-
     case "none":
     default:
       currentSortMethod = "none";
@@ -1604,7 +1380,6 @@ function sortChannelsAndRender(sortMethod = "none") {
       updateAllChannelItems();
       return;
   }
-
   currentSortMethod = sortMethod;
   renderChannels(sortedChannels);
   updateFavoriteIcons();
@@ -1620,7 +1395,6 @@ function handleSortChange(sortMethod) {
 function updateSortButtons(method) {
   const buttons = document.querySelectorAll(".sort-controls button");
   buttons.forEach((btn) => btn.classList.remove("active"));
-
   const activeBtn = [...buttons].find((btn) =>
     btn.getAttribute("onclick")?.includes(method)
   );
@@ -1628,56 +1402,42 @@ function updateSortButtons(method) {
     activeBtn.classList.add("active");
   }
 }
-
 // ============================================
 // KEYBOARD NAVIGATION
 // ============================================
-
 function getGridColumns() {
   const grid = document.querySelector(".content-grid");
   if (!grid) return 1;
-
   const gridComputedStyle = window.getComputedStyle(grid);
   const gridTemplateColumns = gridComputedStyle.getPropertyValue("grid-template-columns");
-
   if (!gridTemplateColumns) return 1;
-
   const columnArray = gridTemplateColumns.split(" ");
   return columnArray.length;
 }
-
 document.addEventListener("keydown", (e) => {
   const searchInput = document.getElementById('channelSearch');
-
   // 🎯 NEW CONDITION: Check if the currently focused element is the search bar
   // If the user is focused on the search bar, do nothing and return.
   if (searchInput && document.activeElement === searchInput) {
     return;
   }
-
   // Also check if any other input or textarea is focused to prevent accidental triggers
   const focusedTag = document.activeElement.tagName.toLowerCase();
   if (focusedTag === 'input' || focusedTag === 'textarea') {
     return;
   }
-
   if (e.key >= "0" && e.key <= "9") {
     numberBuffer += e.key;
-
     const overlay = document.getElementById("channel-number-overlay");
     if (overlay) {
       overlay.textContent = numberBuffer;
       overlay.style.display = "block";
     }
-
     if (numberTimeout) clearTimeout(numberTimeout);
-
     numberTimeout = setTimeout(() => {
       if (overlay) overlay.style.display = "none";
-
       const channelNumber = parseInt(numberBuffer, 10);
       const channel = allChannels.find((c) => c.number === channelNumber);
-
       if (channel) {
         const index = allChannelItems.findIndex(
           (item) => parseInt(item.dataset.number, 10) === channelNumber
@@ -1690,7 +1450,6 @@ document.addEventListener("keydown", (e) => {
             block: "center",
           });
         }
-
         selectChannel(
           channel.url,
           channel.name,
@@ -1701,15 +1460,12 @@ document.addEventListener("keydown", (e) => {
         );
         saveRecentlyWatched(channel);
       }
-
       numberBuffer = "";
     }, 1000);
   }
 });
-
 document.addEventListener("keydown", (event) => {
   if (navigationDebounce) clearTimeout(navigationDebounce);
-
   navigationDebounce = setTimeout(() => {
     const GRID_COLUMNS = getGridColumns();
     const modal = document.getElementById("videoModal");
@@ -1718,14 +1474,12 @@ document.addEventListener("keydown", (event) => {
     let currentFocusedIndex = allChannelItems.findIndex(
       (item) => item === focusedElement
     );
-
     if (isModalOpen) {
       if (event.key === "Enter") {
         event.preventDefault();
         toggleFullscreen();
         return;
       }
-
       if (event.key === "Escape" || event.key === "ArrowLeft") {
         event.preventDefault();
         closeModal();
@@ -1735,41 +1489,55 @@ document.addEventListener("keydown", (event) => {
       } else if (["ArrowUp", "ArrowDown", "PageUp", "PageDown"].includes(event.key)) {
         event.preventDefault();
         if (!lastFocusedElement || allChannelItems.length === 0) return;
-
         const currentChannelIndex = allChannelItems.findIndex(
           (item) => item === lastFocusedElement
         );
         if (currentChannelIndex === -1) return;
-
         let newIndex = currentChannelIndex;
         if (event.key === "ArrowDown" || event.key === "PageDown") {
           newIndex = (currentChannelIndex + 1) % allChannelItems.length;
         } else if (event.key === "ArrowUp" || event.key === "PageUp") {
           newIndex = (currentChannelIndex - 1 + allChannelItems.length) % allChannelItems.length;
         }
-
         const newChannelCard = allChannelItems[newIndex];
-        const { url, name, image, description, number, isLive = "false", category = "Unknown" } = newChannelCard.dataset;
-
-        newChannelCard.scrollIntoView({ behavior: "smooth", block: "center" });
+        const {
+          url,
+          name,
+          image,
+          description,
+          number,
+          isLive = "false",
+          category = "Unknown"
+        } = newChannelCard.dataset;
+        newChannelCard.scrollIntoView({
+          behavior: "smooth",
+          block: "center"
+        });
         selectChannel(url, name, image, description, number, isLive);
-        saveRecentlyWatched({ name, url, image, description, number, isLive, category });
-
+        saveRecentlyWatched({
+          name,
+          url,
+          image,
+          description,
+          number,
+          isLive,
+          category
+        });
         lastFocusedElement = newChannelCard;
       }
       return;
     }
-
     if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)) {
       if (allChannelItems.length === 0) return;
-
       if (currentFocusedIndex === -1) {
         allChannelItems[0].focus();
-        allChannelItems[0].scrollIntoView({ behavior: "smooth", block: "center" });
+        allChannelItems[0].scrollIntoView({
+          behavior: "smooth",
+          block: "center"
+        });
         focusedIndex = 0;
         return;
       }
-
       let newIndex = currentFocusedIndex;
       if (event.key === "ArrowRight") {
         newIndex = (currentFocusedIndex + 1) % allChannelItems.length;
@@ -1780,22 +1548,24 @@ document.addEventListener("keydown", (event) => {
       } else if (event.key === "ArrowUp") {
         newIndex = Math.max(currentFocusedIndex - GRID_COLUMNS, 0);
       }
-
       const newCard = allChannelItems[newIndex];
       newCard.focus();
-      newCard.scrollIntoView({ behavior: "smooth", block: "center" });
-
+      newCard.scrollIntoView({
+        behavior: "smooth",
+        block: "center"
+      });
       focusedIndex = newIndex;
       event.preventDefault();
     } else if (["PageUp", "PageDown", "Home", "End"].includes(event.key)) {
       event.preventDefault();
-
       if (currentFocusedIndex === -1 && allChannelItems.length > 0) {
         allChannelItems[0].focus();
-        allChannelItems[0].scrollIntoView({ behavior: "smooth", block: "center" });
+        allChannelItems[0].scrollIntoView({
+          behavior: "smooth",
+          block: "center"
+        });
       } else {
         let newIndex = currentFocusedIndex;
-
         if (event.key === "PageUp") {
           newIndex = Math.max(currentFocusedIndex - GRID_COLUMNS * 3, 0);
         } else if (event.key === "PageDown") {
@@ -1805,29 +1575,46 @@ document.addEventListener("keydown", (event) => {
         } else if (event.key === "End") {
           newIndex = allChannelItems.length - 1;
         }
-
         const newCard = allChannelItems[newIndex];
         newCard.focus();
-        newCard.scrollIntoView({ behavior: "smooth", block: "center" });
-
+        newCard.scrollIntoView({
+          behavior: "smooth",
+          block: "center"
+        });
         focusedIndex = newIndex;
       }
     } else if (event.key === "Enter" && currentFocusedIndex !== -1) {
       event.preventDefault();
       const card = allChannelItems[currentFocusedIndex];
-      const { url, name, image, description, number, isLive = "false", category = "Unknown" } = card.dataset;
-
-      card.scrollIntoView({ behavior: "smooth", block: "center" });
+      const {
+        url,
+        name,
+        image,
+        description,
+        number,
+        isLive = "false",
+        category = "Unknown"
+      } = card.dataset;
+      card.scrollIntoView({
+        behavior: "smooth",
+        block: "center"
+      });
       selectChannel(url, name, image, description, number, isLive);
-      saveRecentlyWatched({ name, url, image, description, number, isLive, category });
+      saveRecentlyWatched({
+        name,
+        url,
+        image,
+        description,
+        number,
+        isLive,
+        category
+      });
     }
   }, 50);
 });
-
 // ============================================
 // YOUTUBE API & RSS FEEDS
 // ============================================
-
 function extractChannelId(feedUrl) {
   const match = feedUrl.match(/channel_id=([^&]+)/);
   return match ? match[1] : null;
@@ -1845,7 +1632,6 @@ function youtubeItemToChannel(videoId, title, feed) {
 
 function updateOrAddChannel(channelObj) {
   const existingIndex = allChannels.findIndex((ch) => ch.name === channelObj.name);
-
   if (existingIndex !== -1) {
     allChannels[existingIndex] = {
       ...allChannels[existingIndex],
@@ -1858,26 +1644,20 @@ function updateOrAddChannel(channelObj) {
 
 function processRSSData(data, feed) {
   if (!data.items || data.items.length === 0) return;
-
   let latestValid = data.items.find((item) => !item.link.includes("/shorts/"));
   if (!latestValid) return;
-
   const videoId = extractYouTubeID(latestValid.link);
   if (!videoId) return;
-
   const channelObj = youtubeItemToChannel(videoId, latestValid.title, feed);
   updateOrAddChannel(channelObj);
-
   console.log(`✅ ${feed.name} Successfully updated`);
 }
-
 async function loadYouTubeLatestFeeds() {
   const storedFeeds = localStorage.getItem(STORAGE_KEYS.feeds);
   if (!storedFeeds) {
     showNotification("No RSS feeds found in localStorage.", "warning");
     return;
   }
-
   let feeds = [];
   try {
     feeds = JSON.parse(storedFeeds);
@@ -1886,62 +1666,49 @@ async function loadYouTubeLatestFeeds() {
     showNotification("Error loading RSS feeds data.", "error");
     return;
   }
-
   if (!feeds || feeds.length === 0) return;
-
   for (const [index, feed] of feeds.entries()) {
     try {
       if (index > 0) {
         await new Promise((resolve) => setTimeout(resolve, 200));
       }
-
       const cacheKey = `rss_${feed.url}`;
       const cached = rssCache.get(cacheKey);
-
       if (cached && Date.now() - cached.timestamp < CACHE_DURATION) {
         console.log(`📦 Using cached data for ${feed.name}`);
         processRSSData(cached.data, feed);
         continue;
       }
-
       const feedUrl = "https://api.rss2json.com/v1/api.json?rss_url=" + encodeURIComponent(feed.url);
       const res = await fetch(feedUrl);
-
       if (!res.ok) {
         throw new Error(`HTTP ${res.status}`);
       }
-
       const data = await res.json();
-
       rssCache.set(cacheKey, {
         data: data,
         timestamp: Date.now(),
       });
-
       processRSSData(data, feed);
     } catch (e) {
       console.log(`❌ Error loading RSS feed for ${feed.name}: ${e.message}`, true);
     }
   }
 }
-
 async function loadYouTubeLiveFeeds() {
   if (!API_KEY) {
     API_KEY = getStoredAPIKey();
   }
-
   if (!API_KEY || !hasValidAPIKey()) {
     console.log("🔑 No valid API key found, prompting user...");
     showAPIKeyModal();
     return;
   }
-
   const storedLive = localStorage.getItem(STORAGE_KEYS.live);
   if (!storedLive) {
     showNotification("No live channels found in localStorage.", "warning");
     return;
   }
-
   let live = [];
   try {
     live = JSON.parse(storedLive);
@@ -1950,39 +1717,31 @@ async function loadYouTubeLiveFeeds() {
     showNotification("Error loading live channels data.", "error");
     return;
   }
-
   if (!live || live.length === 0) return;
-
   let apiQuotaExceeded = false;
   let successfulUpdates = 0;
   let failedUpdates = 0;
   let cacheHits = 0;
-
   for (const [index, feed] of live.entries()) {
     try {
       if (index > 0) {
         await new Promise((resolve) => setTimeout(resolve, 200));
       }
-
       if (apiQuotaExceeded) {
         console.log(`⏸️ Skipping ${feed.name} - API quota exceeded`);
         failedUpdates++;
         continue;
       }
-
       const channelId = extractChannelId(feed.url);
       if (!channelId) {
         console.warn("No channelId found in feed:", feed.url);
         continue;
       }
-
       const cacheKey = `live_${channelId}`;
       const cached = liveCache.get(cacheKey);
-
       if (cached && Date.now() - cached.timestamp < CACHE_DURATION) {
         console.log(`📦 Using cached live data for ${feed.name}`);
         cacheHits++;
-
         if (cached.data && cached.data.videoId) {
           const channelObj = youtubeItemToChannel(cached.data.videoId, cached.data.title, feed);
           updateOrAddChannel(channelObj);
@@ -1990,10 +1749,8 @@ async function loadYouTubeLiveFeeds() {
         }
         continue;
       }
-
       const apiUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&channelId=${channelId}&eventType=live&type=video&order=date&maxResults=1&key=${API_KEY}`;
       const res = await fetch(apiUrl);
-
       if (!res.ok) {
         if (res.status === 403) {
           apiQuotaExceeded = true;
@@ -2007,9 +1764,7 @@ async function loadYouTubeLiveFeeds() {
         }
         throw new Error(`API returned status ${res.status}: ${res.statusText}`);
       }
-
       const data = await res.json();
-
       if (data.error) {
         if (data.error.code === 403) {
           apiQuotaExceeded = true;
@@ -2019,26 +1774,23 @@ async function loadYouTubeLiveFeeds() {
         }
         throw new Error(`YouTube API Error for ${feed.name}: ${data.error.message}`);
       }
-
       let cacheData = null;
-
       if (data.items && data.items.length > 0) {
         const item = data.items[0];
         const videoId = item.id.videoId;
         const title = item.snippet.title;
-
-        cacheData = { videoId: videoId, title: title };
-
+        cacheData = {
+          videoId: videoId,
+          title: title
+        };
         const channelObj = youtubeItemToChannel(videoId, title, feed);
         updateOrAddChannel(channelObj);
         successfulUpdates++;
-
         console.log(`✅ ${feed.name} Successfully updated`);
       } else {
         console.log(`ℹ️ No live stream found for ${feed.name}`);
         cacheData = null;
       }
-
       liveCache.set(cacheKey, {
         data: cacheData,
         timestamp: Date.now(),
@@ -2053,91 +1805,69 @@ async function loadYouTubeLiveFeeds() {
       }
     }
   }
-
   console.log(`Live streams update completed: ${successfulUpdates} successful, ${failedUpdates} failed, ${cacheHits} cache hits`);
-
   if (successfulUpdates === 0 && failedUpdates > 0 && apiQuotaExceeded) {
     throw new Error("YouTube API quota exceeded - no live streams updated");
   }
 }
-
 async function loadAllChannelFeeds() {
   console.log("Starting full channel update (RSS and Live API)...");
-
   try {
     console.log("1/2: Loading latest uploads from RSS...");
     await loadYouTubeLatestFeeds();
     console.log("1/2: Latest uploads loaded successfully.");
-
     console.log("2/2: Loading live streams (YouTube API)...");
     await loadYouTubeLiveFeeds();
     console.log("2/2: Live streams loaded successfully.");
-
     console.log("Saving updated channel data to localStorage...");
     localStorage.setItem(STORAGE_KEYS.channels, JSON.stringify(allChannels));
-
     console.log("Rendering UI and updating components...");
     renderChannels(allChannels);
     updateFavoriteIcons();
     renderRecentlyWatched();
     updateAllChannelItems();
-
     console.log("✅ Full channels update COMPLETE.");
     return true;
   } catch (e) {
     console.log(`❌ Critical error during full channel update: ${e.message}`, true);
-
     console.log("Updating UI with available data...");
     localStorage.setItem(STORAGE_KEYS.channels, JSON.stringify(allChannels));
     renderChannels(allChannels);
     updateFavoriteIcons();
     renderRecentlyWatched();
     updateAllChannelItems();
-
     return false;
   }
 }
-
 // ============================================
 // AUTO-UPDATE SERVICE
 // ============================================
-
 function startChannelAutoUpdate() {
   const savedAutoUpdate = localStorage.getItem(AUTO_UPDATE_KEY);
   const savedInterval = localStorage.getItem(UPDATE_INTERVAL_KEY);
-
   isAutoUpdateEnabled = savedAutoUpdate === null ? true : savedAutoUpdate === "true";
   updateIntervalHours = savedInterval ? parseInt(savedInterval) : 8;
-
   const intervalMs = updateIntervalHours * 60 * 60 * 1000;
   const cacheExpiryMs = updateIntervalHours * 60 * 60 * 1000;
-
   console.log(`Auto-update service initializing. Enabled: ${isAutoUpdateEnabled}, Interval: ${updateIntervalHours}h`);
-
   const checkAndUpdate = async () => {
     if (!isAutoUpdateEnabled) {
       console.log("Auto-update is disabled. Skipping check.");
       return;
     }
-
     const lastUpdateTimestamp = parseInt(localStorage.getItem(CACHE_KEY) || "0");
     const currentTime = Date.now();
     const timeSinceLastUpdate = currentTime - lastUpdateTimestamp;
     const shouldUpdate = lastUpdateTimestamp === 0 || timeSinceLastUpdate >= cacheExpiryMs;
-
     if (shouldUpdate) {
       console.log("Cache has expired. Initiating full data update now.");
-
       try {
         const success = await loadAllChannelFeeds();
-
         if (success) {
           const newTimestamp = Date.now();
           localStorage.setItem(CACHE_KEY, newTimestamp.toString());
-
           const newLastUpdateDate = new Date(newTimestamp).toLocaleString();
           const newNextUpdateDate = new Date(newTimestamp + cacheExpiryMs).toLocaleString();
-
           console.log("✅ Channels updated successfully.");
           console.log(`New Last Update Time: ${newLastUpdateDate}`);
           console.log(`Next Scheduled Check (Expiry): ${newNextUpdateDate}`);
@@ -2153,7 +1883,6 @@ function startChannelAutoUpdate() {
       const minutesRemaining = Math.ceil(timeRemaining / (60 * 1000));
       const hoursRemaining = Math.floor(minutesRemaining / 60);
       const minsRemaining = minutesRemaining % 60;
-
       if (hoursRemaining > 0) {
         console.log(`Cache is valid. Expires in ${hoursRemaining}h ${minsRemaining}m`);
       } else {
@@ -2161,7 +1890,6 @@ function startChannelAutoUpdate() {
       }
     }
   };
-
   const initialLastUpdate = parseInt(localStorage.getItem(CACHE_KEY) || "0");
   if (initialLastUpdate === 0) {
     console.log("Last Update: Never. Starting initial data fetch now.");
@@ -2171,19 +1899,14 @@ function startChannelAutoUpdate() {
     const nextUpdateDate = new Date(nextExpiry).toLocaleString();
     const timeRemaining = nextExpiry - Date.now();
     const minutesRemaining = Math.ceil(timeRemaining / (60 * 1000));
-
-
     console.log(`Last Update: ${lastUpdateDate}`);
     console.log(`Next update available after: ${nextUpdateDate}`);
     console.log(`Time remaining: ${minutesRemaining} minutes`);
   }
-
   if (isAutoUpdateEnabled) {
     checkAndUpdate();
   }
-
   autoUpdateInterval = setInterval(checkAndUpdate, intervalMs);
-
   console.log(`Auto-update service started. Checking every ${updateIntervalHours} hours. Status: ${isAutoUpdateEnabled ? "Enabled" : "Disabled"}`);
 }
 
@@ -2194,28 +1917,21 @@ function stopAutoUpdateService() {
     console.log("Auto-update service stopped");
   }
 }
-
 // ============================================
 // SETTINGS MODAL
 // ============================================
-
 function showSettingsModal() {
   const settingsModal = document.getElementById("settingsModal");
   if (!settingsModal) return;
-
   settingsModal.style.display = "flex";
-
   const autoUpdateToggle = document.getElementById("autoUpdateToggle");
   const updateIntervalSelect = document.getElementById("updateInterval");
-
   if (autoUpdateToggle) {
     autoUpdateToggle.checked = isAutoUpdateEnabled;
   }
-
   if (updateIntervalSelect) {
     updateIntervalSelect.value = updateIntervalHours.toString();
   }
-
   updateIntervalDescriptionText(updateIntervalHours);
   updateLastUpdateDisplay();
 }
@@ -2230,7 +1946,6 @@ function hideSettingsModal() {
 function toggleAutoUpdate(enabled) {
   isAutoUpdateEnabled = enabled;
   localStorage.setItem(AUTO_UPDATE_KEY, enabled.toString());
-
   if (enabled) {
     console.log("✅ Auto-update enabled");
     showNotification("Auto-update enabled", "success");
@@ -2245,38 +1960,28 @@ function toggleAutoUpdate(enabled) {
 function changeUpdateInterval(hours) {
   updateIntervalHours = parseInt(hours);
   localStorage.setItem(UPDATE_INTERVAL_KEY, hours.toString());
-
   updateIntervalDescriptionText(hours);
-
   console.log(`⏱️ Update interval changed to ${hours} hours`);
   showNotification(`Update interval set to ${hours} hours`, "success");
-
   if (isAutoUpdateEnabled) {
     stopAutoUpdateService();
     startChannelAutoUpdate();
   }
 }
-
 async function manualUpdate() {
   const manualUpdateBtn = document.getElementById("manualUpdateBtn");
   if (!manualUpdateBtn) return;
-
   manualUpdateBtn.disabled = true;
   const originalText = manualUpdateBtn.textContent;
   manualUpdateBtn.textContent = "Updating...";
-
   try {
     console.log("🔄 Manual update initiated...");
-
     const success = await loadAllChannelFeeds();
-
     if (success) {
       const newTimestamp = Date.now();
       localStorage.setItem(CACHE_KEY, newTimestamp.toString());
-
       console.log("✅ Manual update completed successfully");
       showNotification("Channels updated successfully!", "success");
-
       updateLastUpdateDisplay();
     } else {
       console.log("❌ Manual update failed", true);
@@ -2294,9 +1999,7 @@ async function manualUpdate() {
 function updateLastUpdateDisplay() {
   const lastUpdate = parseInt(localStorage.getItem(CACHE_KEY) || "0");
   const lastUpdateEl = document.getElementById("lastUpdateDisplay");
-
   if (!lastUpdateEl) return;
-
   if (lastUpdate === 0) {
     lastUpdateEl.textContent = "Never updated";
     lastUpdateEl.style.color = "#ff9800";
@@ -2304,7 +2007,6 @@ function updateLastUpdateDisplay() {
     const timeAgo = getTimeAgo(lastUpdate);
     const date = new Date(lastUpdate);
     const formattedDate = date.toLocaleString();
-
     lastUpdateEl.textContent = `Last updated: ${timeAgo} (${formattedDate})`;
     lastUpdateEl.style.color = "#4caf50";
   }
@@ -2324,15 +2026,12 @@ function setupSettingsModal() {
   const autoUpdateToggle = document.getElementById("autoUpdateToggle");
   const updateIntervalSelect = document.getElementById("updateInterval");
   const manualUpdateBtn = document.getElementById("manualUpdateBtn");
-
   if (settingsBtn) {
     settingsBtn.addEventListener("click", showSettingsModal);
   }
-
   if (closeSettings) {
     closeSettings.addEventListener("click", hideSettingsModal);
   }
-
   if (settingsModal) {
     settingsModal.addEventListener("click", (e) => {
       if (e.target === settingsModal) {
@@ -2340,25 +2039,20 @@ function setupSettingsModal() {
       }
     });
   }
-
   if (autoUpdateToggle) {
     autoUpdateToggle.addEventListener("change", (e) => {
       toggleAutoUpdate(e.target.checked);
     });
   }
-
   if (updateIntervalSelect) {
     updateIntervalSelect.addEventListener("change", (e) => {
       changeUpdateInterval(e.target.value);
     });
   }
-
   if (manualUpdateBtn) {
     manualUpdateBtn.addEventListener("click", manualUpdate);
   }
-
   updateIntervalDescriptionText(updateIntervalHours);
-
   const manageApiKeyBtn = document.getElementById("manageApiKeyBtn");
   if (manageApiKeyBtn) {
     manageApiKeyBtn.addEventListener("click", () => {
@@ -2367,17 +2061,13 @@ function setupSettingsModal() {
     });
   }
 }
-
 // ============================================
 // API KEY MODAL
 // ============================================
-
 function showAPIKeyModal() {
   const apiModal = document.getElementById("apiKeyModal");
   if (!apiModal) return;
-
   apiModal.style.display = "flex";
-
   const apiKeyInput = document.getElementById("apiKeyInput");
   if (apiKeyInput) {
     const existingKey = getStoredAPIKey();
@@ -2387,10 +2077,8 @@ function showAPIKeyModal() {
     } else {
       apiKeyInput.value = "";
     }
-
     setTimeout(() => apiKeyInput.focus(), 100);
   }
-
   setupAPIKeyModalEvents();
 }
 
@@ -2407,60 +2095,49 @@ function setupAPIKeyModalEvents() {
   const apiKeyInput = document.getElementById("apiKeyInput");
   const toggleVisibilityBtn = document.getElementById("toggleApiKeyVisibility");
   const apiModal = document.getElementById("apiKeyModal");
-
   if (submitBtn) {
     const newSubmitBtn = submitBtn.cloneNode(true);
     submitBtn.parentNode.replaceChild(newSubmitBtn, submitBtn);
-
     newSubmitBtn.addEventListener("click", function () {
       const apiKey = apiKeyInput.value.trim();
       const remember = document.getElementById("rememberKey")?.checked;
-
       if (!apiKey) {
         apiKeyInput.classList.add("invalid");
         showNotification("Please enter a valid API key", "error");
         setTimeout(() => apiKeyInput.classList.remove("invalid"), 400);
         return;
       }
-
       if (apiKey.length < 30) {
         apiKeyInput.classList.add("invalid");
         showNotification("API key seems too short. Please check it.", "error");
         setTimeout(() => apiKeyInput.classList.remove("invalid"), 400);
         return;
       }
-
       if (remember) {
         saveAPIKey(apiKey);
       } else {
         API_KEY = apiKey;
       }
-
       hideAPIKeyModal();
       showNotification("✅ API Key saved successfully!", "success");
-
       setTimeout(() => {
         console.log("🔄 Starting live feeds update with new API key...");
         loadYouTubeLiveFeeds().catch(console.error);
       }, 1000);
     });
   }
-
   if (skipBtn) {
     const newSkipBtn = skipBtn.cloneNode(true);
     skipBtn.parentNode.replaceChild(newSkipBtn, skipBtn);
-
     newSkipBtn.addEventListener("click", function () {
       hideAPIKeyModal();
       showNotification("⏭️ Live channels update skipped", "info");
       console.log("ℹ️ User skipped API key configuration");
     });
   }
-
   if (toggleVisibilityBtn && apiKeyInput) {
     const newToggleBtn = toggleVisibilityBtn.cloneNode(true);
     toggleVisibilityBtn.parentNode.replaceChild(newToggleBtn, toggleVisibilityBtn);
-
     newToggleBtn.addEventListener("click", function () {
       if (apiKeyInput.type === "password") {
         apiKeyInput.type = "text";
@@ -2471,7 +2148,6 @@ function setupAPIKeyModalEvents() {
       }
     });
   }
-
   if (apiKeyInput) {
     apiKeyInput.addEventListener("keypress", function (e) {
       if (e.key === "Enter") {
@@ -2480,7 +2156,6 @@ function setupAPIKeyModalEvents() {
       }
     });
   }
-
   if (apiModal) {
     apiModal.addEventListener("click", (e) => {
       if (e.target === apiModal) {
@@ -2488,7 +2163,6 @@ function setupAPIKeyModalEvents() {
       }
     });
   }
-
   document.addEventListener("keydown", function escapeHandler(e) {
     if (e.key === "Escape" && apiModal && apiModal.style.display === "flex") {
       hideAPIKeyModal();
@@ -2496,11 +2170,9 @@ function setupAPIKeyModalEvents() {
     }
   });
 }
-
 // ============================================
 // NETWORK MONITORING
 // ============================================
-
 function setupNetworkMonitoring() {
   window.addEventListener("online", handleNetworkRestored);
   window.addEventListener("offline", handleNetworkLost);
@@ -2510,7 +2182,6 @@ function handleNetworkLost() {
   isOnline = false;
   //console.log("📡 Network connection lost");
   showNotification("📡 Network Connection lost", "error");
-
   const player = channelLoader.getPlayer();
   if (player && !player.paused()) {
     player.pause();
@@ -2521,9 +2192,7 @@ function handleNetworkLost() {
 function handleNetworkRestored() {
   isOnline = true;
   //console.log("📡 Network connection restored");
-
   showNotification("📡 Network Connection restored", "success");
-
   const player = channelLoader.getPlayer();
   if (player && player.paused()) {
     setTimeout(() => {
@@ -2538,17 +2207,13 @@ function handleNetworkRestored() {
     }, 1000);
   }
 }
-
 // ============================================
 // CLEANUP & INITIALIZATION
 // ============================================
-
 function cleanup() {
   console.log("🧹 Performing cleanup...");
-
   stopWatching();
   stopAutoUpdateService();
-
   if (overlayTimeoutShow) {
     clearTimeout(overlayTimeoutShow);
     overlayTimeoutShow = null;
@@ -2565,19 +2230,16 @@ function cleanup() {
     clearTimeout(navigationDebounce);
     navigationDebounce = null;
   }
-
   channelLoader.cleanupPlayer().then(() => {
     console.log("✅ Player cleanup complete");
   }).catch(error => {
     console.warn("Error during player cleanup:", error);
   });
-
   document.querySelectorAll(".network-status, .error-notification, .play-fallback-overlay, .notification").forEach((el) => {
     if (el.parentNode) {
       el.parentNode.removeChild(el);
     }
   });
-
   if (lastFocusedElement && lastFocusedElement.isConnected) {
     lastFocusedElement.focus();
   } else if (allChannelItems.length > 0) {
@@ -2585,34 +2247,26 @@ function cleanup() {
   }
   console.log("✅ Cleanup complete");
 }
-
 async function initialize() {
   console.log("🚀 Initializing IPTV Channel Manager...");
-
   const contentGrid = document.querySelector(".content-grid");
   const loadingElement = document.getElementById("loading-spinner");
-
   if (contentGrid) contentGrid.style.display = "none";
   if (loadingElement) loadingElement.style.display = "block";
-
   const closeBtn = document.querySelector(".closeModal");
   if (closeBtn) closeBtn.addEventListener("click", closeModal);
-
   const modal = document.getElementById("videoModal");
   if (modal) {
     modal.addEventListener("click", (event) => {
       if (event.target === modal) closeModal();
     });
   }
-
   setupNetworkMonitoring();
   setupSettingsModal();
   setupSearchBar();
   setupTouchGestures();
   setupPWA();
-
   let savedChannels = localStorage.getItem(STORAGE_KEYS.channels);
-
   if (savedChannels) {
     try {
       allChannels = JSON.parse(savedChannels);
@@ -2627,61 +2281,44 @@ async function initialize() {
     console.log("No previous 'allChannelsData' found in localStorage. Starting fresh.");
     allChannels = [];
   }
-
   API_KEY = getStoredAPIKey() || "";
-
   if (hasValidAPIKey()) {
     console.log("✅ Using stored API key");
   } else {
     console.log("ℹ️ No valid API key stored");
   }
-
   startChannelAutoUpdate();
-
   allChannels.forEach((ch, i) => {
     if (!ch.number) ch.number = i + 1;
   });
-
   loadWatchTime();
-
   const savedSort = localStorage.getItem("defaultSortMethod") || "none";
   handleSortChange(savedSort);
-
   renderFavorites();
   renderRecentlyWatched();
   updateFavoriteIcons();
   updateAllChannelItems();
-
   if (loadingElement) loadingElement.style.display = "none";
   if (contentGrid) contentGrid.style.display = "grid";
-
   if (lastFocusedElement && lastFocusedElement.isConnected) {
     lastFocusedElement.focus();
   } else if (allChannelItems.length > 0) {
     allChannelItems[0].focus();
   }
-
-  showNotification('Initialization complete', 'info')
 }
-
 // ============================================
 // EVENT LISTENERS
 // ============================================
-
 window.addEventListener("DOMContentLoaded", async () => {
   await initialize();
 });
-
 window.addEventListener("beforeunload", () => {
   cleanup();
 });
-
 document.addEventListener("visibilitychange", function () {
   const player = channelLoader.getPlayer();
-
   if (document.hidden) {
     saveCurrentWatchTime();
-
     if (player && !player.paused()) {
       player.pause();
       console.log("⏸️ Video paused due to tab switch");
@@ -2701,7 +2338,6 @@ document.addEventListener("visibilitychange", function () {
     }
   }
 });
-
 // Add to initialize()
 /**
  * Sets up Progressive Web App features (Service Worker registration and prompt).
@@ -2709,16 +2345,13 @@ document.addEventListener("visibilitychange", function () {
  */
 function setupPWA() {
   const isLocalHost = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
-
   // Skip Service Worker registration during local development 
   if (isLocalHost) {
     console.warn("⚠️ Service Worker skipped for local development.");
     return;
   } else {
-
     // 1. Determine the Base Path (Needed for GitHub Project Pages like /LiveTV/)
     let basePath = '/';
-
     if (location.hostname.endsWith('github.io')) {
       if (location.pathname !== '/') {
         const pathParts = location.pathname.split('/');
@@ -2727,16 +2360,13 @@ function setupPWA() {
         }
       }
     }
-
     // 2. Service Worker registration (Combined with Update Logic)
     if ('serviceWorker' in navigator) {
       const swPath = basePath + 'sw.js';
-
       // Register the Service Worker dynamically
       navigator.serviceWorker.register(swPath)
         .then(registration => {
           console.log(`✅ SW registered successfully with scope: ${registration.scope}`);
-          
           // --- BEGIN: Integrated Update Logic ---
           registration.addEventListener('updatefound', () => {
             const newWorker = registration.installing;
@@ -2748,13 +2378,11 @@ function setupPWA() {
             });
           });
           // --- END: Integrated Update Logic ---
-
         })
         .catch(error => {
           console.error('❌ SW registration failed:', error);
         });
     }
-
     // 3. Add to homescreen prompt logic
     let deferredPrompt;
     window.addEventListener('beforeinstallprompt', (e) => {
@@ -2765,29 +2393,21 @@ function setupPWA() {
   }
 }
 
-
-
-
 function fixImageUrl(imageUrl) {
   if (!imageUrl) return 'placeholder.png';
-  
   // If image is already HTTPS, return as-is
   if (imageUrl.startsWith('https://')) {
     return imageUrl;
   }
-  
   // If image is HTTP, use a CORS proxy
   if (imageUrl.startsWith('http://')) {
     // Option 1: Use corsproxy.io
     return `https://corsproxy.io/?${encodeURIComponent(imageUrl)}`;
-    
     // Option 2: Use images.weserv.nl (optimized for images)
     // return `https://images.weserv.nl/?url=${encodeURIComponent(imageUrl.replace('http://', ''))}`;
-    
     // Option 3: Use allorigins.win
     // return `https://api.allorigins.win/raw?url=${encodeURIComponent(imageUrl)}`;
   }
-  
   return imageUrl;
 }
 
@@ -2795,19 +2415,20 @@ function optimizeImageUrl(imageUrl, width = 200) {
   if (imageUrl.startsWith('https://images.weserv.nl/')) {
     return imageUrl;
   }
-  
   // Use weserv.nl for automatic image optimization
   const cleanUrl = imageUrl.replace('http://', '').replace('https://', '');
   return `https://images.weserv.nl/?url=${encodeURIComponent(cleanUrl)}&w=${width}&fit=cover&a=attention`;
 }
 
-
 function setupTouchGestures() {
   const modal = document.getElementById('videoModal');
   if (!modal) return;
-
-  modal.addEventListener('touchstart', handleTouchStart, { passive: true });
-  modal.addEventListener('touchend', handleTouchEnd, { passive: true });
+  modal.addEventListener('touchstart', handleTouchStart, {
+    passive: true
+  });
+  modal.addEventListener('touchend', handleTouchEnd, {
+    passive: true
+  });
 }
 
 function handleTouchStart(e) {
@@ -2824,11 +2445,9 @@ function handleTouchEnd(e) {
 function handleSwipe() {
   const modal = document.getElementById('videoModal');
   if (!modal || modal.style.display !== 'flex') return;
-
   const deltaX = touchEndX - touchStartX;
   const deltaY = touchEndY - touchStartY;
   const minSwipeDistance = 50;
-
   // Determine if swipe is more horizontal or vertical
   if (Math.abs(deltaX) > Math.abs(deltaY)) {
     // Horizontal swipe
@@ -2840,7 +2459,7 @@ function handleSwipe() {
       } else {
         // Swipe left - show channel info
         console.log('👈 Swipe left detected');
-                closeModal();
+        closeModal();
       }
     }
   } else {
@@ -2861,42 +2480,64 @@ function handleSwipe() {
 
 function navigateToNextChannel() {
   if (!lastFocusedElement || allChannelItems.length === 0) return;
-
   const currentIndex = allChannelItems.findIndex(item => item === lastFocusedElement);
   if (currentIndex === -1) return;
-
   const nextIndex = (currentIndex + 1) % allChannelItems.length;
   const nextChannel = allChannelItems[nextIndex];
-  const { url, name, image, description, number, isLive, category } = nextChannel.dataset;
-
+  const {
+    url,
+    name,
+    image,
+    description,
+    number,
+    isLive,
+    category
+  } = nextChannel.dataset;
   selectChannel(url, name, image, description, number, isLive);
-  saveRecentlyWatched({ name, url, image, description, number, isLive, category });
+  saveRecentlyWatched({
+    name,
+    url,
+    image,
+    description,
+    number,
+    isLive,
+    category
+  });
   lastFocusedElement = nextChannel;
-  
   showNotification(`▶️ ${name}`, 'info');
 }
 
 function navigateToPreviousChannel() {
   if (!lastFocusedElement || allChannelItems.length === 0) return;
-
   const currentIndex = allChannelItems.findIndex(item => item === lastFocusedElement);
   if (currentIndex === -1) return;
-
   const prevIndex = (currentIndex - 1 + allChannelItems.length) % allChannelItems.length;
   const prevChannel = allChannelItems[prevIndex];
-  const { url, name, image, description, number, isLive, category } = prevChannel.dataset;
-
+  const {
+    url,
+    name,
+    image,
+    description,
+    number,
+    isLive,
+    category
+  } = prevChannel.dataset;
   selectChannel(url, name, image, description, number, isLive);
-  saveRecentlyWatched({ name, url, image, description, number, isLive, category });
+  saveRecentlyWatched({
+    name,
+    url,
+    image,
+    description,
+    number,
+    isLive,
+    category
+  });
   lastFocusedElement = prevChannel;
-  
   showNotification(`⏮️ ${name}`, 'info');
 }
-
 // ============================================
 // EXPORT GLOBAL FUNCTIONS
 // ============================================
-
 window.selectChannel = selectChannel;
 window.handleSortChange = handleSortChange;
 window.showSettingsModal = showSettingsModal;
@@ -2910,5 +2551,4 @@ window.closeModal = closeModal;
 window.toggleFullscreen = toggleFullscreen;
 window.searchChannels = searchChannels;
 window.clearSearch = clearSearch;
-
 //console.log("✅ IPTV Channel Manager - Optimized Version Loaded Successfully");

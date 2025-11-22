@@ -5,7 +5,6 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
-
   <title>Live TV Player Admin</title>
   <style>
     :root {
@@ -633,19 +632,15 @@
 </head>
 
 <body>
-
   <div class="back-button-container">
     <a href="index.html" class="back-button">
       &larr; Back to Channels
     </a>
   </div>
-
   <h1>📺 Admin Panel</h1>
-
   <div class="container">
     <div class="controls-panel panel">
       <h2>Controls</h2>
-
       <div class="tab-container">
         <button class="tab-button active" onclick="showTab('tab-file')">
           📁 File
@@ -663,50 +658,39 @@
           📡 RSS Feeds
         </button>
       </div>
-
       <div id="tab-file" class="tab-content active">
         <div class="file-controls">
           <h3>File Management</h3>
-
           <div class="info-box">
             <p>
               💡 <strong>Tip:</strong> All data is stored in localStorage. Use
               Export/Import to backup your channels.
             </p>
           </div>
-
           <input type="file" id="fileInput" accept=".json" style="display: none" />
-
           <button class="btn-soft-green full-width" onclick="loadChannelsFromStorage()">
             ✎ Edit Channels
           </button>
-
           <button class="btn-soft-blue full-width" onclick="saveAllChannels()">
             💾 Save Channels
           </button>
-
           <button class="btn-soft-green full-width" onclick="document.getElementById('fileInput').click();">
             📂 Import Channels
           </button>
-
           <button class="btn-soft-blue full-width" onclick="exportChannels()">
             💾 Export Channels
           </button>
-
           <button class="btn-soft-green full-width" onclick="importAllChannels()">
             📂 Import All Data
           </button>
-
           <button class="btn-soft-blue full-width" onclick="saveData()">
             💾 Export All Data
           </button>
-
           <button class="btn-soft-red full-width" onclick="clearAllData()">
             🗑️ Clear All Data
           </button>
         </div>
       </div>
-
       <div id="tab-category" class="tab-content">
         <div id="addCategoryForm">
           <h3>Add/Edit Category</h3>
@@ -719,71 +703,57 @@
         <h3>Categories</h3>
         <div id="categoryListPreview" class="category-list-preview"></div>
       </div>
-
       <div id="tab-channel" class="tab-content">
         <div id="addChannelForm">
           <h3>Add/Edit Channel</h3>
           <form onsubmit="event.preventDefault(); saveChannel()">
             <input type="hidden" id="channelIndex" />
-
             <img id="imagePreview" src="" alt="Channel Image Preview" style="
-                  width: 100px;
-                  height: 100px;
-                  display: none;
-                  object-fit: cover;
-                  border-radius: 8px;
-                  border: 1px solid var(--border-color);
-                " />
-
+                        width: 100px;
+                        height: 100px;
+                        display: none;
+                        object-fit: cover;
+                        border-radius: 8px;
+                        border: 1px solid var(--border-color);
+                        " />
             <label for="displayChannelIndex">Channel Index:</label>
             <input type="text" id="displayChannelIndex" disabled />
-
             <label for="channelName">Channel Name:</label>
             <input type="text" id="channelName" required />
-
             <label for="channelUrl">Channel URL:</label>
             <input type="url" id="channelUrl" required />
-
             <label for="channelImage">Image URL:</label>
             <input type="url" id="channelImage" required />
-
             <label for="channelDescription">Description:</label>
             <input type="text" id="channelDescription" required />
-
             <label for="channelCategory">Category:</label>
             <select id="channelCategory" required></select>
-
             <label for="channelStatus">Live Status:</label>
             <select id="channelStatus" required>
               <option value="false">False</option>
               <option value="true">True</option>
             </select>
-
             <div style="
-                  display: flex;
-                  gap: 10px;
-                  margin-top: 10px;
-                  justify-content: space-between;
-                ">
+                        display: flex;
+                        gap: 10px;
+                        margin-top: 10px;
+                        justify-content: space-between;
+                        ">
               <button class="btn-secondary channel-item-button" type="button" id="prevChannelBtn"
                 onclick="navigateChannel(-1)" title="Previous">
                 <i class="fas fa-arrow-left"></i>
               </button>
-
               <button class="btn-primary channel-item-button" type="submit" title="Save">
                 <i class="fas fa-save"></i>
               </button>
-
               <button class="btn-danger channel-item-button" type="button" onclick="deleteCurrentChannel()"
                 title="Delete">
                 <i class="fas fa-trash"></i>
               </button>
-
               <button class="btn-secondary channel-item-button" type="button" onclick="clearChannelForm()"
                 title="Cancel">
                 <i class="fas fa-times"></i>
               </button>
-
               <button class="btn-secondary channel-item-button" type="button" id="nextChannelBtn"
                 onclick="navigateChannel(1)" title="Next">
                 <i class="fas fa-arrow-right"></i>
@@ -792,71 +762,57 @@
           </form>
         </div>
       </div>
-
       <div id="tab-live" class="tab-content">
         <h3>🔴 Live Channels Editor</h3>
-
         <div class="warning-box">
           <p>
             ⚠️ <strong>Important:</strong> Live channels require a channel_id
             parameter in the URL for YouTube API integration.
           </p>
         </div>
-
         <div class="stats-display">
           <div class="stat-card">
             <div class="stat-label">Total Live Channels</div>
             <div class="stat-value" id="liveChannelsCount">0</div>
           </div>
         </div>
-
         <button class="btn-soft-green full-width" onclick="showLiveEditor()">
           📝 Edit Live Channels
         </button>
-
         <button class="btn-soft-blue full-width" onclick="importLive()">
           📂 Import live.json
         </button>
-
         <button class="btn-soft-green full-width" onclick="exportLive()">
           💾 Export live.json
         </button>
       </div>
-
       <div id="tab-feeds" class="tab-content">
         <h3>📡 RSS Feeds Editor</h3>
-
         <div class="info-box">
           <p>
             💡 RSS feeds use YouTube's RSS feed URL format:<br />
             <code>https://www.youtube.com/feeds/videos.xml?channel_id=XXXXX</code>
           </p>
         </div>
-
         <div class="stats-display">
           <div class="stat-card">
             <div class="stat-label">Total RSS Feeds</div>
             <div class="stat-value" id="rssFeedsCount">0</div>
           </div>
         </div>
-
         <button class="btn-soft-blue full-width" onclick="showFeedsEditor()">
           📝 Edit Feeds
         </button>
-
         <button class="btn-soft-blue full-width" onclick="importFeeds()">
           📂 Import feeds.json
         </button>
-
         <button class="btn-soft-green full-width" onclick="exportFeeds()">
           💾 Export feeds.json
         </button>
       </div>
     </div>
-
     <div class="preview-panel panel">
       <h2>Live Preview</h2>
-
       <div class="stats-display">
         <div class="stat-card">
           <div class="stat-label">Total Channels</div>
@@ -867,49 +823,46 @@
           <div class="stat-value" id="totalCategoriesCount">0</div>
         </div>
       </div>
-
       <div class="search-container" style="position: relative; margin: 20px 0">
         <input type="text" id="searchInput" placeholder="🔍 Search channels by name, category, or URL..."
           oninput="toggleClearButton(); searchChannels();" style="
-              width: 96%;
-              padding: 12px 35px 12px 15px;
-              border-radius: 8px;
-              border: 1px solid var(--border-color);
-              background-color: var(--bg-color-light);
-              color: var(--text-color-primary);
-              font-size: 14px;
-            " />
+                  width: 96%;
+                  padding: 12px 35px 12px 15px;
+                  border-radius: 8px;
+                  border: 1px solid var(--border-color);
+                  background-color: var(--bg-color-light);
+                  color: var(--text-color-primary);
+                  font-size: 14px;
+                  " />
         <button id="clearBtn" onclick="clearSearch()" style="
-              position: absolute;
-              right: 15px;
-              top: 50%;
-              transform: translateY(-50%);
-              border: none;
-              background: none;
-              font-size: 16px;
-              color: var(--text-color-secondary);
-              cursor: pointer;
-              display: none;
-            ">
+                  position: absolute;
+                  right: 15px;
+                  top: 50%;
+                  transform: translateY(-50%);
+                  border: none;
+                  background: none;
+                  font-size: 16px;
+                  color: var(--text-color-secondary);
+                  cursor: pointer;
+                  display: none;
+                  ">
           ✕
         </button>
       </div>
-
       <div class="visual-preview">
         <div id="channelListPreview"></div>
       </div>
-
       <div class="json-preview">
         <h3>Live JSON Output</h3>
         <textarea id="jsonOutput" rows="20" style="
-              width: 96%;
-              height: 300px;
-              padding: 15px;
-              border-radius: 8px;
-              border: 1px solid var(--border-color);
-              background-color: var(--bg-color-light);
-              color: var(--text-color-primary);
-            "></textarea>
+                  width: 96%;
+                  height: 300px;
+                  padding: 15px;
+                  border-radius: 8px;
+                  border: 1px solid var(--border-color);
+                  background-color: var(--bg-color-light);
+                  color: var(--text-color-primary);
+                  "></textarea>
         <div style="margin-top: 10px; display: flex; gap: 10px; flex-wrap: wrap">
           <button class="btn-primary" onclick="loadDataFromTextarea()">
             📥 Load from Text
@@ -922,7 +875,6 @@
       </div>
     </div>
   </div>
-
   <div id="liveEditorModal" class="modal">
     <div class="modal-content">
       <h2>🔴 Edit Live Channels</h2>
@@ -942,7 +894,6 @@
       </div>
     </div>
   </div>
-
   <div id="feedsEditorModal" class="modal">
     <div class="modal-content">
       <h2>📡 Edit RSS Feeds JSON</h2>
@@ -962,7 +913,6 @@
       </div>
     </div>
   </div>
-
   <script>
     let channelsData = [];
     let categoriesData = [];
@@ -1543,28 +1493,28 @@
         const item = document.createElement("div");
         item.className = "category-preview-item";
         item.innerHTML = `
-      <span>${cat}</span>
-      <div class="actions">
-        <button class="btn-secondary channel-item-button" onclick="moveCategoryUp(${index})" title="Move Up">
-          <i class="fas fa-arrow-up"></i>
-        </button>
-        <button class="btn-secondary channel-item-button" onclick="moveCategoryDown(${index})" title="Move Down">
-          <i class="fas fa-arrow-down"></i>
-        </button>
-        <button class="btn-secondary channel-item-button" onclick="editCategoryPrompt('${cat.replace(
+           <span>${cat}</span>
+           <div class="actions">
+             <button class="btn-secondary channel-item-button" onclick="moveCategoryUp(${index})" title="Move Up">
+               <i class="fas fa-arrow-up"></i>
+             </button>
+             <button class="btn-secondary channel-item-button" onclick="moveCategoryDown(${index})" title="Move Down">
+               <i class="fas fa-arrow-down"></i>
+             </button>
+             <button class="btn-secondary channel-item-button" onclick="editCategoryPrompt('${cat.replace(
           /'/g,
           "\\'"
         )}')" title="Edit">
-          <i class="fas fa-edit"></i>
-        </button>
-        <button class="btn-danger channel-item-button" onclick="deleteCategory('${cat.replace(
+               <i class="fas fa-edit"></i>
+             </button>
+             <button class="btn-danger channel-item-button" onclick="deleteCategory('${cat.replace(
           /'/g,
           "\\'"
         )}')" title="Delete">
-          <i class="fas fa-trash"></i>
-        </button>
-      </div>
-    `;
+               <i class="fas fa-trash"></i>
+             </button>
+           </div>
+         `;
         els.categoryListPreview.appendChild(item);
       });
     }
@@ -1739,17 +1689,17 @@
       categoriesData.forEach((category) => {
         const categorySection = document.createElement("div");
         categorySection.innerHTML = `
-  <div style="display: flex; justify-content: space-between; align-items: center;">
-    <h3>${category}</h3>
-    <button class="btn-secondary" onclick="sortChannelsByName('${category.replace(
+         <div style="display: flex; justify-content: space-between; align-items: center;">
+         <h3>${category}</h3>
+         <button class="btn-secondary" onclick="sortChannelsByName('${category.replace(
           /'/g,
           "\\'"
         )}')" title="Sort A-Z">
-      <i class="fas fa-sort-alpha-down"></i>
-    </button>
-  </div>
-  <div class="channel-list-category"></div>
-`;
+           <i class="fas fa-sort-alpha-down"></i>
+         </button>
+         </div>
+         <div class="channel-list-category"></div>
+         `;
 
         els.channelListPreview.appendChild(categorySection);
 
@@ -1767,28 +1717,28 @@
           const liveIndicator =
             channel.isLive === true || channel.isLive === "true" ? " 🔴" : "";
           item.innerHTML = `
-              <img src="${channel.image || "placeholder.png"}" alt="${channel.name
+                   <img src="${channel.image || "placeholder.png"}" alt="${channel.name
             } logo">
-              <div>
-                <strong>${channel.name}${liveIndicator}</strong><br>
-                <small>${channel.category}</small>
-              </div>
-              <div class="actions">
-<button class="btn-secondary channel-item-button" onclick="moveChannelUp(${index})" title="Move Up">
-  <i class="fas fa-arrow-up"></i>
-</button>
-
-<button class="btn-secondary channel-item-button" onclick="moveChannelDown(${index})" title="Move Down">
-  <i class="fas fa-arrow-down"></i>
-</button>
-
-<button class="btn-secondary channel-item-button" onclick="editChannel(${index})" title="Edit">
-  <i class="fas fa-edit"></i>
-</button>
-
-
-              </div>
-            `;
+                   <div>
+                     <strong>${channel.name}${liveIndicator}</strong><br>
+                     <small>${channel.category}</small>
+                   </div>
+                   <div class="actions">
+         <button class="btn-secondary channel-item-button" onclick="moveChannelUp(${index})" title="Move Up">
+         <i class="fas fa-arrow-up"></i>
+         </button>
+         
+         <button class="btn-secondary channel-item-button" onclick="moveChannelDown(${index})" title="Move Down">
+         <i class="fas fa-arrow-down"></i>
+         </button>
+         
+         <button class="btn-secondary channel-item-button" onclick="editChannel(${index})" title="Edit">
+         <i class="fas fa-edit"></i>
+         </button>
+         
+         
+                   </div>
+                 `;
           categoryChannelContainer.appendChild(item);
         });
       });
@@ -2129,11 +2079,11 @@
 
       if (filteredChannels.length === 0) {
         previewDiv.innerHTML = `
-            <div style="text-align: center; padding: 40px; color: var(--text-color-secondary);">
-              <div style="font-size: 48px; margin-bottom: 10px;">🔍</div>
-              <div style="font-size: 18px;">No channels found for "${searchTerm}"</div>
-            </div>
-          `;
+                 <div style="text-align: center; padding: 40px; color: var(--text-color-secondary);">
+                   <div style="font-size: 48px; margin-bottom: 10px;">🔍</div>
+                   <div style="font-size: 18px;">No channels found for "${searchTerm}"</div>
+                 </div>
+               `;
         return;
       }
 
@@ -2171,17 +2121,17 @@
                 : "";
 
             channelItem.innerHTML = `
-              <img src="${channel.image || "placeholder.png"}" alt="${channel.name
+                   <img src="${channel.image || "placeholder.png"}" alt="${channel.name
               } logo">
-              <div>
-                <strong>${channel.name}${liveIndicator}</strong><br>
-                <small>${channel.category}</small>
-              </div>
-              <div class="actions">
-                <button class="btn-secondary channel-item-button" onclick="editChannel(${index})" title="Edit">
-  <i class="fas fa-edit"></i>
-              </div>
-            `;
+                   <div>
+                     <strong>${channel.name}${liveIndicator}</strong><br>
+                     <small>${channel.category}</small>
+                   </div>
+                   <div class="actions">
+                     <button class="btn-secondary channel-item-button" onclick="editChannel(${index})" title="Edit">
+         <i class="fas fa-edit"></i>
+                   </div>
+                 `;
 
             categorySection.appendChild(channelItem);
           });
