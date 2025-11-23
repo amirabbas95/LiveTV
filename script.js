@@ -12,7 +12,7 @@ const favoritesKey = "favorites";
 const recentlyWatchedKey = "recentlyWatched";
 const API_KEY_STORAGE_KEY = "youtube_api_key";
 const CACHE_KEY = "lastChannelsUpdate";
-const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
+const CACHE_DURATION = 60 * 60 * 1000; // 1 hour
 const STORAGE_KEYS = {
   channels: "allChannelsData",
   live: "liveChannelsData",
@@ -469,7 +469,7 @@ class ChannelLoader {
             console.warn('Could not remove YouTube quality listener:', e);
           }
         });
-        console.log('✅ YouTube quality monitoring setup complete');
+        //console.log('✅ YouTube quality monitoring setup complete');
       } catch (error) {
         console.warn('⚠️ YouTube quality monitoring setup failed:', error);
       }
@@ -613,8 +613,9 @@ function showNotification(message, type = "info") {
   notification.className = "notification";
   notification.style.cssText = `
 position: fixed;
-top: 20px;
-left: -350px;
+top: -100px;
+left: 50%;
+transform: translateX(-50%);
 background: ${colors[type] || colors.info};
 color: white;
 padding: 12px 24px;
@@ -627,21 +628,19 @@ transition: left 0.4s ease, opacity 0.4s ease;
 `;
   notification.textContent = message;
   document.body.appendChild(notification);
+
   // Trigger slide-in animation
   requestAnimationFrame(() => {
-    notification.style.left = '20px';
+    notification.style.top = '20px';
     notification.style.opacity = '1';
   });
   // Auto-hide after 3 seconds
   setTimeout(() => {
-    notification.style.left = '-350px';
+    notification.style.top = '-100px';
     notification.style.opacity = '0';
-    setTimeout(() => {
-      if (notification.parentNode) {
-        notification.remove();
-      }
-    }, 400);
+    setTimeout(() => notification.remove(), 400);
   }, 3000);
+
 }
 
 function showErrorToUser(message) {
@@ -890,8 +889,14 @@ function showChannelInfoOverlay() {
   if (!channelInfoOverlay) return;
   if (overlayTimeoutShow) clearTimeout(overlayTimeoutShow);
   if (overlayTimeoutHide) clearTimeout(overlayTimeoutHide);
-  const modal = document.getElementById("videoModal");
-  if (modal) modal.style.display = "flex";
+
+
+const modal = document.getElementById("videoModal");
+  if (modal) {
+    modal.style.display = "flex"; // Change from "flex" to ensure it works
+    modal.classList.remove("hidden"); // Remove Tailwind's hidden class
+  }
+
   channelInfoOverlay.classList.remove("show");
   overlayTimeoutShow = setTimeout(() => {
     channelInfoOverlay.classList.add("show");
@@ -976,13 +981,25 @@ function stopWatching() {
 
 function saveCurrentWatchTime() {
   if (!currentChannelId || !watchStartTime) return;
+  
   const watchedMs = Date.now() - watchStartTime;
   const watchedSeconds = Math.floor(watchedMs / 1000);
   if (watchedSeconds < 5) return;
+  
   const watchData = loadWatchTime();
   watchData[currentChannelId] = (watchData[currentChannelId] || 0) + watchedSeconds;
-  localStorage.setItem("watchTimePerChannel", JSON.stringify(watchData));
-  watchStartTime = Date.now();
+  
+  // Use safe storage instead of direct localStorage.setItem
+  const success = safeLocalStorageSet(
+    "watchTimePerChannel", 
+    JSON.stringify(watchData)
+  );
+  
+  if (success) {
+    watchStartTime = Date.now();
+  } else {
+    console.warn('Failed to save watch time');
+  }
 }
 
 function loadWatchTime() {
@@ -1002,55 +1019,78 @@ function sortChannelsByWatchTime(channels) {
     return bTime - aTime;
   });
 }
+
+function saveChannelsData(channels) {
+  const success = safeLocalStorageSet(
+    STORAGE_KEYS.channels, 
+    JSON.stringify(channels)
+  );
+  
+  if (!success) {
+    console.error('Failed to save channels data');
+    // Optionally show user a dialog to export data
+    promptDataExport();
+  }
+  
+  return success;
+}
 // ============================================
 // CHANNEL UI FUNCTIONS
 // ============================================
+// Example 4: Saving recently watched
 function saveRecentlyWatched(channel) {
   const {
-    name,
-    url,
-    image,
-    description,
-    number,
-    isLive = "true",
-    category = "Unknown",
+    name, url, image, description, number, 
+    isLive = "true", category = "Unknown",
   } = channel;
+  
   let recent = JSON.parse(localStorage.getItem(recentlyWatchedKey) || "[]");
   recent = recent.filter((item) => item.url !== url);
   recent.unshift({
-    name,
-    url,
-    image,
-    description,
-    number,
-    isLive,
-    category,
+    name, url, image, description, number, isLive, category,
   });
+  
   if (recent.length > MAX_RECENT) {
     recent.pop();
   }
-  localStorage.setItem(recentlyWatchedKey, JSON.stringify(recent));
-  renderRecentlyWatched();
+  
+  // Use safe storage
+  const success = safeLocalStorageSet(
+    recentlyWatchedKey, 
+    JSON.stringify(recent)
+  );
+  
+  if (success) {
+    renderRecentlyWatched();
+  }
 }
 
+// Example 3: Saving favorites
 function toggleFavorite(url, name, image, description, number, isLive, category, event) {
   if (event) event.stopPropagation();
+  
   let favorites = JSON.parse(localStorage.getItem(favoritesKey) || "[]");
   const index = favorites.findIndex((item) => item.url === url);
+  
   if (index > -1) {
     favorites.splice(index, 1);
   } else {
     favorites.unshift({
-      name,
-      url,
-      image,
-      description,
-      number,
-      isLive,
-      category,
+      name, url, image, description, number, isLive, category,
     });
   }
-  localStorage.setItem(favoritesKey, JSON.stringify(favorites));
+  
+  // Use safe storage
+  const success = safeLocalStorageSet(
+    favoritesKey, 
+    JSON.stringify(favorites)
+  );
+  
+  if (!success) {
+    showNotification('Failed to save favorite', 'error');
+    return; // Don't update UI if save failed
+  }
+  
   renderFavorites();
   updateFavoriteIcons();
   updateAllChannelItems();
@@ -1331,31 +1371,397 @@ function showFavoritesAndRecent() {
   }
 }
 
+// ============================================
+// SYNCHRONIZED SEARCH BAR IMPLEMENTATION
+// Handles both desktop and mobile search inputs
+// ============================================
+
+/**
+ * Sets up synchronized search functionality for desktop and mobile
+ */
 function setupSearchBar() {
-  const searchInput = document.getElementById("channelSearch");
-  const clearSearchBtn = document.getElementById("clearSearch");
-  if (searchInput) {
+  // Get both search inputs
+  const searchInputs = [
+    document.getElementById("channelSearch"),         // Desktop
+    document.getElementById("channelSearchMobile")    // Mobile
+  ].filter(Boolean); // Remove null/undefined
+  
+  // Get both clear buttons
+  const clearButtons = [
+    document.getElementById("clearSearch"),           // Desktop
+    document.getElementById("clearSearchMobile")      // Mobile
+  ].filter(Boolean);
+  
+  // Get both result message elements
+  const resultMessages = [
+    document.getElementById("search-results-message"),
+    document.getElementById("search-results-message-mobile")
+  ].filter(Boolean);
+  
+  console.log(`🔍 Setting up search with ${searchInputs.length} input(s)`);
+  
+  // Setup each search input
+  searchInputs.forEach((searchInput, index) => {
     let searchTimeout;
+    
+    // Input event - triggers search
     searchInput.addEventListener("input", (e) => {
+      const query = e.target.value;
+      
+      // Sync the value to the other search input
+      searchInputs.forEach(input => {
+        if (input !== e.target && input.value !== query) {
+          input.value = query;
+        }
+      });
+      
+      // Debounced search
       clearTimeout(searchTimeout);
       searchTimeout = setTimeout(() => {
-        searchChannels(e.target.value);
+        performSearch(query, resultMessages);
       }, 300);
     });
+    
+    // Escape key - clears search
     searchInput.addEventListener("keydown", (e) => {
       if (e.key === "Escape") {
-        clearSearch();
+        clearSearch(searchInputs, resultMessages);
         searchInput.blur();
       }
     });
-  }
-  if (clearSearchBtn) {
-    clearSearchBtn.addEventListener("click", () => {
-      clearSearch();
-      if (searchInput) searchInput.focus();
+    
+    // Focus event - highlight current input
+    searchInput.addEventListener("focus", () => {
+      searchInput.style.borderColor = "#007bff";
     });
+    
+    // Blur event - restore normal border
+    searchInput.addEventListener("blur", () => {
+      searchInput.style.borderColor = "#444";
+    });
+  });
+  
+  // Setup clear buttons
+  clearButtons.forEach((btn, index) => {
+    btn.addEventListener("click", () => {
+      clearSearch(searchInputs, resultMessages);
+      // Focus the corresponding search input
+      if (searchInputs[index]) {
+        searchInputs[index].focus();
+      }
+    });
+  });
+  
+  console.log("✅ Search bar setup complete");
+}
+
+/**
+ * Performs the actual search and updates all result messages
+ * @param {string} query - Search query
+ * @param {Array} resultMessages - Array of result message elements
+ */
+function performSearch(query, resultMessages) {
+  searchQuery = query.toLowerCase().trim();
+  
+  if (!searchQuery) {
+    // Empty search - show all channels
+    filteredChannels = [];
+    sortChannelsAndRender(currentSortMethod);
+    showFavoritesAndRecent();
+    hideAllResultMessages(resultMessages);
+    return;
+  }
+  
+  // Perform the search
+  filteredChannels = allChannels.filter(channel => {
+    const nameMatch = channel.name.toLowerCase().includes(searchQuery);
+    const descMatch = channel.description && 
+                      channel.description.toLowerCase().includes(searchQuery);
+    const catMatch = channel.category && 
+                     channel.category.toLowerCase().includes(searchQuery);
+    const numMatch = channel.number && 
+                     channel.number.toString().includes(searchQuery);
+    
+    return nameMatch || descMatch || catMatch || numMatch;
+  });
+  
+  console.log(`🔍 Search: "${query}" - Found ${filteredChannels.length} channels`);
+  
+  // Hide favorites and recent when searching
+  hideFavoritesAndRecent();
+  
+  // Render filtered results
+  renderChannels(filteredChannels);
+  updateFavoriteIcons();
+  updateAllChannelItems();
+  
+  // Update all result message elements
+  updateAllResultMessages(resultMessages, query, filteredChannels.length);
+}
+
+/**
+ * Updates all search result message elements
+ * @param {Array} resultMessages - Array of message elements
+ * @param {string} query - Search query
+ * @param {number} count - Number of results found
+ */
+function updateAllResultMessages(resultMessages, query, count) {
+  resultMessages.forEach(msg => {
+    if (!msg) return;
+    
+    if (count === 0) {
+      msg.innerHTML = `
+        <div style="color: #ff9800; padding: 8px;">
+          <i class="fas fa-exclamation-circle"></i>
+          No channels found for "<strong>${escapeHtml(query)}</strong>"
+        </div>
+      `;
+      msg.style.display = "block";
+    } else {
+      msg.innerHTML = `
+        <div style="color: #4caf50; padding: 8px;">
+          <i class="fas fa-check-circle"></i>
+          Found <strong>${count}</strong> channel${count > 1 ? 's' : ''} 
+          matching "<strong>${escapeHtml(query)}</strong>"
+        </div>
+      `;
+      msg.style.display = "block";
+    }
+  });
+}
+
+/**
+ * Hides all result message elements
+ * @param {Array} resultMessages - Array of message elements
+ */
+function hideAllResultMessages(resultMessages) {
+  resultMessages.forEach(msg => {
+    if (msg) {
+      msg.style.display = "none";
+    }
+  });
+}
+
+/**
+ * Clears search in all inputs and result messages
+ * @param {Array} searchInputs - Array of search input elements
+ * @param {Array} resultMessages - Array of result message elements
+ */
+function clearSearch(searchInputs, resultMessages) {
+  searchQuery = "";
+  filteredChannels = [];
+  
+  // Clear all search inputs
+  searchInputs.forEach(input => {
+    if (input) input.value = "";
+  });
+  
+  // Hide all result messages
+  hideAllResultMessages(resultMessages);
+  
+  // Show favorites and recent sections again
+  showFavoritesAndRecent();
+  
+  // Render all channels
+  sortChannelsAndRender(currentSortMethod);
+  
+  console.log("🔍 Search cleared");
+}
+
+/**
+ * Escape HTML to prevent XSS in search results
+ * @param {string} text - Text to escape
+ * @returns {string} Escaped text
+ */
+function escapeHtml(text) {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}
+
+// ============================================
+// ENHANCED SEARCH FUNCTIONALITY
+// ============================================
+
+/**
+ * Search with highlighting (optional enhancement)
+ * @param {string} query - Search query
+ */
+function searchChannelsWithHighlight(query) {
+  performSearch(query, [
+    document.getElementById("search-results-message"),
+    document.getElementById("search-results-message-mobile")
+  ].filter(Boolean));
+  
+  // Optional: Highlight matching text in channel cards
+  highlightSearchResults(query);
+}
+
+/**
+ * Highlights search terms in channel cards
+ * @param {string} query - Search query
+ */
+function highlightSearchResults(query) {
+  if (!query) return;
+  
+  const cards = document.querySelectorAll('.channel-item');
+  const regex = new RegExp(`(${escapeRegex(query)})`, 'gi');
+  
+  cards.forEach(card => {
+    const name = card.dataset.name;
+    if (name && name.toLowerCase().includes(query.toLowerCase())) {
+      // Add a subtle glow effect to matching cards
+      card.style.boxShadow = '0 0 15px rgba(0, 123, 255, 0.5)';
+    } else {
+      card.style.boxShadow = '';
+    }
+  });
+}
+
+/**
+ * Escape special regex characters
+ * @param {string} str - String to escape
+ * @returns {string} Escaped string
+ */
+function escapeRegex(str) {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+// ============================================
+// SEARCH STATISTICS (Optional Feature)
+// ============================================
+
+/**
+ * Track search statistics
+ */
+const searchStats = {
+  searches: [],
+  maxHistory: 10,
+  
+  addSearch(query, resultCount) {
+    this.searches.unshift({
+      query,
+      resultCount,
+      timestamp: Date.now()
+    });
+    
+    if (this.searches.length > this.maxHistory) {
+      this.searches.pop();
+    }
+  },
+  
+  getPopularSearches() {
+    const counts = {};
+    this.searches.forEach(s => {
+      counts[s.query] = (counts[s.query] || 0) + 1;
+    });
+    
+    return Object.entries(counts)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5)
+      .map(([query]) => query);
+  }
+};
+
+// Update performSearch to track stats
+function performSearchWithStats(query, resultMessages) {
+  performSearch(query, resultMessages);
+  
+  if (query) {
+    searchStats.addSearch(query, filteredChannels.length);
   }
 }
+
+// ============================================
+// EXAMPLE: Add search suggestions (Optional)
+// ============================================
+
+/**
+ * Show search suggestions based on channel names
+ * @param {HTMLElement} input - Search input element
+ */
+function setupSearchSuggestions(input) {
+  if (!input) return;
+  
+  const suggestionsList = document.createElement('div');
+  suggestionsList.className = 'search-suggestions';
+  suggestionsList.style.cssText = `
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    background: #2a2a2a;
+    border: 1px solid #444;
+    border-top: none;
+    border-radius: 0 0 8px 8px;
+    max-height: 200px;
+    overflow-y: auto;
+    display: none;
+    z-index: 1000;
+  `;
+  
+  input.parentElement.style.position = 'relative';
+  input.parentElement.appendChild(suggestionsList);
+  
+  input.addEventListener('input', (e) => {
+    const query = e.target.value.toLowerCase().trim();
+    
+    if (query.length < 2) {
+      suggestionsList.style.display = 'none';
+      return;
+    }
+    
+    const suggestions = allChannels
+      .filter(ch => ch.name.toLowerCase().includes(query))
+      .slice(0, 5)
+      .map(ch => ch.name);
+    
+    if (suggestions.length > 0) {
+      suggestionsList.innerHTML = suggestions
+        .map(name => `
+          <div class="suggestion-item" style="
+            padding: 10px;
+            cursor: pointer;
+            border-bottom: 1px solid #333;
+            transition: background 0.2s;
+          " onmouseover="this.style.background='#333'" 
+             onmouseout="this.style.background='transparent'">
+            ${escapeHtml(name)}
+          </div>
+        `).join('');
+      
+      suggestionsList.style.display = 'block';
+      
+      // Handle suggestion clicks
+      suggestionsList.querySelectorAll('.suggestion-item').forEach(item => {
+        item.addEventListener('click', () => {
+          input.value = item.textContent.trim();
+          suggestionsList.style.display = 'none';
+          performSearch(input.value, [
+            document.getElementById("search-results-message"),
+            document.getElementById("search-results-message-mobile")
+          ].filter(Boolean));
+        });
+      });
+    } else {
+      suggestionsList.style.display = 'none';
+    }
+  });
+  
+  // Hide suggestions when clicking outside
+  document.addEventListener('click', (e) => {
+    if (!input.contains(e.target) && !suggestionsList.contains(e.target)) {
+      suggestionsList.style.display = 'none';
+    }
+  });
+}
+
+// ============================================
+// USAGE: Call this during initialization
+// ============================================
+
+// Replace the old setupSearchBar() call in your initialize() function
+// The new setupSearchBar() handles both desktop and mobile automatically
 // ============================================
 // SORTING & FILTERING
 // ============================================
@@ -1810,28 +2216,45 @@ async function loadYouTubeLiveFeeds() {
     throw new Error("YouTube API quota exceeded - no live streams updated");
   }
 }
+// Example 5: Update the main channel loading function
 async function loadAllChannelFeeds() {
   console.log("Starting full channel update (RSS and Live API)...");
+  
   try {
     console.log("1/2: Loading latest uploads from RSS...");
     await loadYouTubeLatestFeeds();
-    console.log("1/2: Latest uploads loaded successfully.");
+    
     console.log("2/2: Loading live streams (YouTube API)...");
     await loadYouTubeLiveFeeds();
-    console.log("2/2: Live streams loaded successfully.");
+    
     console.log("Saving updated channel data to localStorage...");
-    localStorage.setItem(STORAGE_KEYS.channels, JSON.stringify(allChannels));
+    
+    // Use safe storage with error handling
+    const success = safeLocalStorageSet(
+      STORAGE_KEYS.channels, 
+      JSON.stringify(allChannels)
+    );
+    
+    if (!success) {
+      // Data wasn't saved, but we can still render it
+      console.warn('⚠️ Channels loaded but not saved to storage');
+      showNotification('⚠️ Channels loaded (not saved due to storage limits)', 'warning');
+    }
+    
     console.log("Rendering UI and updating components...");
     renderChannels(allChannels);
     updateFavoriteIcons();
     renderRecentlyWatched();
     updateAllChannelItems();
+    
     console.log("✅ Full channels update COMPLETE.");
     return true;
+    
   } catch (e) {
     console.log(`❌ Critical error during full channel update: ${e.message}`, true);
-    console.log("Updating UI with available data...");
-    localStorage.setItem(STORAGE_KEYS.channels, JSON.stringify(allChannels));
+    // Still try to save what we have
+    safeLocalStorageSet(STORAGE_KEYS.channels, JSON.stringify(allChannels));
+    
     renderChannels(allChannels);
     updateFavoriteIcons();
     renderRecentlyWatched();
@@ -1923,17 +2346,31 @@ function stopAutoUpdateService() {
 function showSettingsModal() {
   const settingsModal = document.getElementById("settingsModal");
   if (!settingsModal) return;
+
   settingsModal.style.display = "flex";
+  
+  // Existing settings code...
   const autoUpdateToggle = document.getElementById("autoUpdateToggle");
   const updateIntervalSelect = document.getElementById("updateInterval");
+
   if (autoUpdateToggle) {
     autoUpdateToggle.checked = isAutoUpdateEnabled;
   }
+
   if (updateIntervalSelect) {
     updateIntervalSelect.value = updateIntervalHours.toString();
   }
+
   updateIntervalDescriptionText(updateIntervalHours);
   updateLastUpdateDisplay();
+  
+  // Add storage info
+  if (!document.getElementById('storageUsageDisplay')) {
+    addStorageInfoToSettings();
+  } else {
+    updateStorageDisplay();
+  }
+  
 }
 
 function hideSettingsModal() {
@@ -2020,12 +2457,18 @@ function updateIntervalDescriptionText(hours) {
 }
 
 function setupSettingsModal() {
+  const settingsModal = document.getElementById("settingsModal");
+  if (!settingsModal) return;
+
+  // Find all elements (no logic to set values yet)
   const settingsBtn = document.getElementById("settingsBtn");
   const closeSettings = document.getElementById("closeSettings");
-  const settingsModal = document.getElementById("settingsModal");
   const autoUpdateToggle = document.getElementById("autoUpdateToggle");
   const updateIntervalSelect = document.getElementById("updateInterval");
   const manualUpdateBtn = document.getElementById("manualUpdateBtn");
+  const manageApiKeyBtn = document.getElementById("manageApiKeyBtn");
+
+  // --- Attach Event Listeners (Run Once) ---
   if (settingsBtn) {
     settingsBtn.addEventListener("click", showSettingsModal);
   }
@@ -2052,14 +2495,18 @@ function setupSettingsModal() {
   if (manualUpdateBtn) {
     manualUpdateBtn.addEventListener("click", manualUpdate);
   }
-  updateIntervalDescriptionText(updateIntervalHours);
-  const manageApiKeyBtn = document.getElementById("manageApiKeyBtn");
   if (manageApiKeyBtn) {
     manageApiKeyBtn.addEventListener("click", () => {
       hideSettingsModal();
       setTimeout(showAPIKeyModal, 300);
     });
   }
+
+  if (!document.getElementById('storageUsageDisplay')) {
+  addStorageInfoToSettings(); 
+}
+
+updateStorageDisplay();
 }
 // ============================================
 // API KEY MODAL
@@ -2067,7 +2514,9 @@ function setupSettingsModal() {
 function showAPIKeyModal() {
   const apiModal = document.getElementById("apiKeyModal");
   if (!apiModal) return;
+
   apiModal.style.display = "flex";
+
   const apiKeyInput = document.getElementById("apiKeyInput");
   if (apiKeyInput) {
     const existingKey = getStoredAPIKey();
@@ -2077,8 +2526,10 @@ function showAPIKeyModal() {
     } else {
       apiKeyInput.value = "";
     }
+
     setTimeout(() => apiKeyInput.focus(), 100);
   }
+
   setupAPIKeyModalEvents();
 }
 
@@ -2089,12 +2540,16 @@ function hideAPIKeyModal() {
   }
 }
 
+// Replace your setupAPIKeyModalEvents() function with this updated version:
+
 function setupAPIKeyModalEvents() {
   const submitBtn = document.getElementById("submitApiKey");
   const skipBtn = document.getElementById("skipApiKey");
+  const closeBtn = document.getElementById("closeApiKeyModal"); // NEW
   const apiKeyInput = document.getElementById("apiKeyInput");
   const toggleVisibilityBtn = document.getElementById("toggleApiKeyVisibility");
   const apiModal = document.getElementById("apiKeyModal");
+  
   if (submitBtn) {
     const newSubmitBtn = submitBtn.cloneNode(true);
     submitBtn.parentNode.replaceChild(newSubmitBtn, submitBtn);
@@ -2126,6 +2581,7 @@ function setupAPIKeyModalEvents() {
       }, 1000);
     });
   }
+  
   if (skipBtn) {
     const newSkipBtn = skipBtn.cloneNode(true);
     skipBtn.parentNode.replaceChild(newSkipBtn, skipBtn);
@@ -2135,6 +2591,17 @@ function setupAPIKeyModalEvents() {
       console.log("ℹ️ User skipped API key configuration");
     });
   }
+  
+  // NEW: Close button handler
+  if (closeBtn) {
+    const newCloseBtn = closeBtn.cloneNode(true);
+    closeBtn.parentNode.replaceChild(newCloseBtn, closeBtn);
+    newCloseBtn.addEventListener("click", function () {
+      hideAPIKeyModal();
+      console.log("ℹ️ API Key modal closed");
+    });
+  }
+  
   if (toggleVisibilityBtn && apiKeyInput) {
     const newToggleBtn = toggleVisibilityBtn.cloneNode(true);
     toggleVisibilityBtn.parentNode.replaceChild(newToggleBtn, toggleVisibilityBtn);
@@ -2148,6 +2615,7 @@ function setupAPIKeyModalEvents() {
       }
     });
   }
+  
   if (apiKeyInput) {
     apiKeyInput.addEventListener("keypress", function (e) {
       if (e.key === "Enter") {
@@ -2156,6 +2624,7 @@ function setupAPIKeyModalEvents() {
       }
     });
   }
+  
   if (apiModal) {
     apiModal.addEventListener("click", (e) => {
       if (e.target === apiModal) {
@@ -2163,6 +2632,7 @@ function setupAPIKeyModalEvents() {
       }
     });
   }
+  
   document.addEventListener("keydown", function escapeHandler(e) {
     if (e.key === "Escape" && apiModal && apiModal.style.display === "flex") {
       hideAPIKeyModal();
@@ -2395,19 +2865,19 @@ function setupPWA() {
 
 function fixImageUrl(imageUrl) {
   if (!imageUrl) return 'placeholder.png';
-  // If image is already HTTPS, return as-is
+  
+  // Already HTTPS
   if (imageUrl.startsWith('https://')) {
     return imageUrl;
   }
-  // If image is HTTP, use a CORS proxy
+  
+  // HTTP - use multiple fallback proxies
   if (imageUrl.startsWith('http://')) {
-    // Option 1: Use corsproxy.io
-    return `https://corsproxy.io/?${encodeURIComponent(imageUrl)}`;
-    // Option 2: Use images.weserv.nl (optimized for images)
-    // return `https://images.weserv.nl/?url=${encodeURIComponent(imageUrl.replace('http://', ''))}`;
-    // Option 3: Use allorigins.win
-    // return `https://api.allorigins.win/raw?url=${encodeURIComponent(imageUrl)}`;
+    // Try weserv.nl first (better for images)
+    const cleanUrl = imageUrl.replace('http://', '');
+    return `https://images.weserv.nl/?url=${encodeURIComponent(cleanUrl)}&w=200&fit=cover`;
   }
+  
   return imageUrl;
 }
 
@@ -2535,6 +3005,655 @@ function navigateToPreviousChannel() {
   lastFocusedElement = prevChannel;
   showNotification(`⏮️ ${name}`, 'info');
 }
+
+
+// ============================================
+// SAFE LOCALSTORAGE WRAPPER
+// ============================================
+
+/**
+ * Safely sets data in localStorage with quota error handling
+ * @param {string} key - Storage key
+ * @param {string} value - Value to store (should be stringified JSON)
+ * @param {boolean} retryOnFail - Whether to clear old data and retry
+ * @returns {boolean} - Success status
+ */
+function safeLocalStorageSet(key, value, retryOnFail = true) {
+  try {
+    localStorage.setItem(key, value);
+    return true;
+  } catch (e) {
+    if (e.name === 'QuotaExceededError') {
+      console.error('❌ Storage quota exceeded for key:', key);
+      showNotification('Storage full. Clearing old data...', 'warning');
+      
+      if (retryOnFail) {
+        // Clear non-critical data first
+        clearOldStorageData();
+        
+        // Retry once
+        try {
+          localStorage.setItem(key, value);
+          showNotification('✅ Data saved successfully', 'success');
+          return true;
+        } catch (e2) {
+          console.error('❌ Still failed after cleanup:', e2);
+          showNotification('❌ Storage full - please free up space', 'error');
+          return false;
+        }
+      }
+    } else {
+      console.error('❌ Storage error:', e);
+      showNotification('Failed to save data', 'error');
+    }
+    return false;
+  }
+}
+
+/**
+ * Clears old/non-critical data from localStorage
+ */
+function clearOldStorageData() {
+  // Priority: Keep channels and feeds, clear watch time first
+  const keysToTryClearing = [
+    'watchTimePerChannel',  // Least critical
+    'lastChannelsUpdate',   // Can be regenerated
+    recentlyWatchedKey,     // User can rebuild this
+    // Only as last resort:
+    // favoritesKey,
+    // STORAGE_KEYS.channels
+  ];
+  
+  for (const key of keysToTryClearing) {
+    if (localStorage.getItem(key)) {
+      console.log(`🗑️ Clearing ${key} to free space`);
+      localStorage.removeItem(key);
+      
+      // Check if we have enough space now
+      try {
+        const testData = 'x'.repeat(100000); // 100KB test
+        localStorage.setItem('_test', testData);
+        localStorage.removeItem('_test');
+        console.log('✅ Space freed successfully');
+        return; // We have space now
+      } catch (e) {
+        console.log('⚠️ Still need more space, continuing cleanup...');
+        continue;
+      }
+    }
+  }
+  
+  console.warn('⚠️ All non-critical data cleared, but may still be low on space');
+}
+
+/**
+ * Get current storage usage statistics
+ * @returns {Object} Storage usage info
+ */
+function getStorageUsage() {
+  let totalSize = 0;
+  const items = {};
+  
+  for (let key in localStorage) {
+    if (localStorage.hasOwnProperty(key)) {
+      const size = (localStorage[key].length + key.length) * 2; // UTF-16 = 2 bytes per char
+      items[key] = size;
+      totalSize += size;
+    }
+  }
+  
+  return {
+    totalBytes: totalSize,
+    totalKB: (totalSize / 1024).toFixed(2),
+    totalMB: (totalSize / 1024 / 1024).toFixed(2),
+    items: items,
+    itemCount: Object.keys(items).length
+  };
+}
+
+/**
+ * Log storage usage to console
+ */
+function logStorageUsage() {
+  const usage = getStorageUsage();
+  console.log('📊 Storage Usage:');
+  console.log(`   Total: ${usage.totalMB} MB (${usage.totalKB} KB)`);
+  console.log(`   Items: ${usage.itemCount}`);
+  console.log('   Breakdown:');
+  
+  const sorted = Object.entries(usage.items)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 10); // Top 10 items
+  
+  sorted.forEach(([key, size]) => {
+    console.log(`   - ${key}: ${(size / 1024).toFixed(2)} KB`);
+  });
+}
+
+
+// ============================================
+// COMPLETE IMPORT/EXPORT BACKUP SYSTEM
+// ============================================
+
+/**
+ * Export all application data as JSON backup
+ */
+function exportAllData() {
+  try {
+    // Gather all data from localStorage and memory
+    const data = {
+      version: "1.0.0",
+      exportDate: new Date().toISOString(),
+      channels: allChannels || [],
+      favorites: JSON.parse(localStorage.getItem(favoritesKey) || "[]"),
+      recentlyWatched: JSON.parse(localStorage.getItem(recentlyWatchedKey) || "[]"),
+      watchTime: loadWatchTime() || {},
+      rssFeeds: JSON.parse(localStorage.getItem(STORAGE_KEYS.feeds) || "[]"),
+      liveChannels: JSON.parse(localStorage.getItem(STORAGE_KEYS.live) || "[]"),
+      settings: {
+        autoUpdateEnabled: localStorage.getItem(AUTO_UPDATE_KEY) || "true",
+        updateIntervalHours: localStorage.getItem(UPDATE_INTERVAL_KEY) || "8",
+        defaultSortMethod: localStorage.getItem("defaultSortMethod") || "none",
+        lastUpdate: localStorage.getItem(CACHE_KEY) || "0"
+      }
+    };
+    
+    // Create blob and download
+    const blob = new Blob([JSON.stringify(data, null, 2)], { 
+      type: 'application/json' 
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `iptv-backup-${Date.now()}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    
+    showNotification('✅ Backup exported successfully', 'success');
+    console.log('✅ Backup exported:', data);
+    
+    return true;
+  } catch (error) {
+    console.error('❌ Export failed:', error);
+    showNotification('❌ Failed to export backup', 'error');
+    return false;
+  }
+}
+
+/**
+ * Import backup data from JSON file
+ * @param {File} file - The backup file to import
+ */
+async function importBackupData(file) {
+  if (!file) {
+    showNotification('❌ No file selected', 'error');
+    return false;
+  }
+  
+  // Validate file type
+  if (!file.name.endsWith('.json')) {
+    showNotification('❌ Please select a valid JSON backup file', 'error');
+    return false;
+  }
+  
+  try {
+    // Read file
+    const text = await file.text();
+    const data = JSON.parse(text);
+    
+    // Validate backup structure
+    if (!validateBackupData(data)) {
+      showNotification('❌ Invalid backup file format', 'error');
+      return false;
+    }
+    
+    // Show confirmation dialog
+    const confirmed = await showImportConfirmation(data);
+    if (!confirmed) {
+      showNotification('ℹ️ Import cancelled', 'info');
+      return false;
+    }
+    
+    // Perform import
+    await performImport(data);
+    
+    return true;
+    
+  } catch (error) {
+    console.error('❌ Import failed:', error);
+    showNotification('❌ Failed to import backup: ' + error.message, 'error');
+    return false;
+  }
+}
+
+/**
+ * Validate backup data structure
+ * @param {Object} data - Backup data to validate
+ * @returns {boolean} - Whether data is valid
+ */
+function validateBackupData(data) {
+  // Check required fields
+  if (!data || typeof data !== 'object') {
+    console.error('Invalid data structure');
+    return false;
+  }
+  
+  // Check version compatibility (optional)
+  if (data.version && !isVersionCompatible(data.version)) {
+    console.warn('⚠️ Backup version mismatch:', data.version);
+    // Still allow import, but warn user
+  }
+  
+  // Validate channels array
+  if (data.channels && !Array.isArray(data.channels)) {
+    console.error('Invalid channels data');
+    return false;
+  }
+  
+  // Validate favorites array
+  if (data.favorites && !Array.isArray(data.favorites)) {
+    console.error('Invalid favorites data');
+    return false;
+  }
+  
+  console.log('✅ Backup validation passed');
+  return true;
+}
+
+/**
+ * Check if backup version is compatible
+ * @param {string} version - Backup version
+ * @returns {boolean} - Whether version is compatible
+ */
+function isVersionCompatible(version) {
+  // Simple version check - expand as needed
+  const currentVersion = "1.0.0";
+  return version === currentVersion;
+}
+
+/**
+ * Show import confirmation dialog
+ * @param {Object} data - Backup data
+ * @returns {Promise<boolean>} - User confirmation
+ */
+function showImportConfirmation(data) {
+  return new Promise((resolve) => {
+    const exportDate = data.exportDate ? 
+      new Date(data.exportDate).toLocaleString() : 'Unknown';
+    
+    const channelCount = data.channels?.length || 0;
+    const favoriteCount = data.favorites?.length || 0;
+    const recentCount = data.recentlyWatched?.length || 0;
+    
+    // Create modal
+    const modal = document.createElement('div');
+    modal.className = 'settings-modal';
+    modal.style.display = 'flex';
+    modal.innerHTML = `
+      <div class="settings-content" style="max-width: 500px;">
+        <h2>📥 Import Backup</h2>
+        
+        <div class="setting-item">
+          <p><strong>Backup Information:</strong></p>
+          <ul style="list-style: none; padding: 0; margin: 10px 0;">
+            <li>📅 Export Date: ${exportDate}</li>
+            <li>📺 Channels: ${channelCount}</li>
+            <li>⭐ Favorites: ${favoriteCount}</li>
+            <li>🕐 Recent: ${recentCount}</li>
+            ${data.version ? `<li>🔢 Version: ${data.version}</li>` : ''}
+          </ul>
+        </div>
+        
+        <div class="setting-item" style="background: rgba(255, 152, 0, 0.1); 
+             padding: 15px; border-radius: 8px; border: 1px solid rgba(255, 152, 0, 0.3);">
+          <p style="color: #ff9800; margin: 0;">
+            <i class="fas fa-exclamation-triangle"></i>
+            <strong>Warning:</strong> This will replace your current data!
+          </p>
+          <p style="color: #ff9800; font-size: 14px; margin: 10px 0 0 0;">
+            Current data will be backed up automatically before import.
+          </p>
+        </div>
+        
+        <div class="setting-item">
+          <label style="cursor: pointer;">
+            <input type="checkbox" id="mergeDataCheckbox" style="margin-right: 10px;">
+            Merge with existing data (don't replace)
+          </label>
+          <p class="setting-description">
+            If checked, imported data will be added to your current data instead of replacing it.
+          </p>
+        </div>
+        
+        <div style="display: flex; gap: 10px; margin-top: 20px;">
+          <button id="confirmImportBtn" class="btn-primary" style="flex: 1;">
+            ✅ Import
+          </button>
+          <button id="cancelImportBtn" class="btn-secondary" style="flex: 1;">
+            ❌ Cancel
+          </button>
+        </div>
+      </div>
+    `;
+    
+    document.body.appendChild(modal);
+    
+    // Event listeners
+    document.getElementById('confirmImportBtn').addEventListener('click', () => {
+      const mergeData = document.getElementById('mergeDataCheckbox').checked;
+      modal.remove();
+      resolve({ confirmed: true, merge: mergeData });
+    });
+    
+    document.getElementById('cancelImportBtn').addEventListener('click', () => {
+      modal.remove();
+      resolve({ confirmed: false });
+    });
+    
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) {
+        modal.remove();
+        resolve({ confirmed: false });
+      }
+    });
+  }).then(result => {
+    // Store merge preference for performImport
+    if (result.confirmed) {
+      window._importMergeMode = result.merge;
+    }
+    return result.confirmed;
+  });
+}
+
+/**
+ * Perform the actual import of backup data
+ * @param {Object} data - Backup data
+ */
+async function performImport(data) {
+  const mergeMode = window._importMergeMode || false;
+  delete window._importMergeMode; // Clean up
+  
+  try {
+    // Step 1: Create automatic backup of current data
+    console.log('📦 Creating automatic backup of current data...');
+    const backupSuccess = await createAutoBackup();
+    if (!backupSuccess) {
+      console.warn('⚠️ Auto-backup failed, but continuing with import...');
+    }
+    
+    // Step 2: Import channels
+    if (data.channels && data.channels.length > 0) {
+      if (mergeMode) {
+        // Merge: Add new channels, update existing ones
+        console.log('🔄 Merging channels...');
+        data.channels.forEach(importedChannel => {
+          const existingIndex = allChannels.findIndex(
+            ch => ch.url === importedChannel.url
+          );
+          if (existingIndex !== -1) {
+            // Update existing
+            allChannels[existingIndex] = { ...allChannels[existingIndex], ...importedChannel };
+          } else {
+            // Add new
+            allChannels.push(importedChannel);
+          }
+        });
+      } else {
+        // Replace mode
+        console.log('🔄 Replacing channels...');
+        allChannels = [...data.channels];
+      }
+      
+      safeLocalStorageSet(STORAGE_KEYS.channels, JSON.stringify(allChannels));
+    }
+    
+    // Step 3: Import favorites
+    if (data.favorites) {
+      let favorites = mergeMode ? 
+        JSON.parse(localStorage.getItem(favoritesKey) || "[]") : [];
+      
+      if (mergeMode) {
+        // Merge favorites (avoid duplicates)
+        data.favorites.forEach(fav => {
+          if (!favorites.find(f => f.url === fav.url)) {
+            favorites.push(fav);
+          }
+        });
+      } else {
+        favorites = [...data.favorites];
+      }
+      
+      safeLocalStorageSet(favoritesKey, JSON.stringify(favorites));
+    }
+    
+    // Step 4: Import recently watched
+    if (data.recentlyWatched) {
+      let recent = mergeMode ? 
+        JSON.parse(localStorage.getItem(recentlyWatchedKey) || "[]") : [];
+      
+      if (mergeMode) {
+        // Merge recent (keep newest)
+        data.recentlyWatched.forEach(item => {
+          recent = recent.filter(r => r.url !== item.url);
+          recent.unshift(item);
+        });
+        recent = recent.slice(0, MAX_RECENT);
+      } else {
+        recent = [...data.recentlyWatched];
+      }
+      
+      safeLocalStorageSet(recentlyWatchedKey, JSON.stringify(recent));
+    }
+    
+    // Step 5: Import watch time
+    if (data.watchTime) {
+      if (mergeMode) {
+        const currentWatchTime = loadWatchTime();
+        // Merge watch times (add them together)
+        Object.keys(data.watchTime).forEach(channelId => {
+          currentWatchTime[channelId] = 
+            (currentWatchTime[channelId] || 0) + data.watchTime[channelId];
+        });
+        safeLocalStorageSet("watchTimePerChannel", JSON.stringify(currentWatchTime));
+      } else {
+        safeLocalStorageSet("watchTimePerChannel", JSON.stringify(data.watchTime));
+      }
+    }
+    
+    // Step 6: Import RSS feeds (only if not merging or no existing feeds)
+    if (data.rssFeeds && !mergeMode) {
+      safeLocalStorageSet(STORAGE_KEYS.feeds, JSON.stringify(data.rssFeeds));
+    }
+    
+    // Step 7: Import live channels config (only if not merging)
+    if (data.liveChannels && !mergeMode) {
+      safeLocalStorageSet(STORAGE_KEYS.live, JSON.stringify(data.liveChannels));
+    }
+    
+    // Step 8: Import settings (only if not merging)
+    if (data.settings && !mergeMode) {
+      if (data.settings.autoUpdateEnabled) {
+        localStorage.setItem(AUTO_UPDATE_KEY, data.settings.autoUpdateEnabled);
+      }
+      if (data.settings.updateIntervalHours) {
+        localStorage.setItem(UPDATE_INTERVAL_KEY, data.settings.updateIntervalHours);
+      }
+      if (data.settings.defaultSortMethod) {
+        localStorage.setItem("defaultSortMethod", data.settings.defaultSortMethod);
+      }
+    }
+    
+    // Step 9: Refresh UI
+    console.log('🔄 Refreshing UI...');
+    renderChannels(allChannels);
+    renderFavorites();
+    renderRecentlyWatched();
+    updateFavoriteIcons();
+    updateAllChannelItems();
+    
+    // Step 10: Restart auto-update if needed
+    if (!mergeMode && data.settings) {
+      stopAutoUpdateService();
+      startChannelAutoUpdate();
+    }
+    
+    showNotification(
+      `✅ Import successful! ${mergeMode ? 'Data merged' : 'Data restored'}`, 
+      'success'
+    );
+    console.log('✅ Import completed successfully');
+    
+    // Close settings modal if open
+    hideSettingsModal();
+    
+  } catch (error) {
+    console.error('❌ Import failed:', error);
+    showNotification('❌ Import failed: ' + error.message, 'error');
+    throw error;
+  }
+}
+
+/**
+ * Create automatic backup before import
+ * @returns {Promise<boolean>} Success status
+ */
+async function createAutoBackup() {
+  try {
+    const data = {
+      version: "1.0.0",
+      exportDate: new Date().toISOString(),
+      autoBackup: true,
+      channels: allChannels || [],
+      favorites: JSON.parse(localStorage.getItem(favoritesKey) || "[]"),
+      recentlyWatched: JSON.parse(localStorage.getItem(recentlyWatchedKey) || "[]"),
+      watchTime: loadWatchTime() || {},
+      settings: {
+        autoUpdateEnabled: localStorage.getItem(AUTO_UPDATE_KEY),
+        updateIntervalHours: localStorage.getItem(UPDATE_INTERVAL_KEY),
+        defaultSortMethod: localStorage.getItem("defaultSortMethod"),
+      }
+    };
+    
+    const blob = new Blob([JSON.stringify(data, null, 2)], { 
+      type: 'application/json' 
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `iptv-auto-backup-${Date.now()}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    
+    console.log('✅ Auto-backup created');
+    return true;
+  } catch (error) {
+    console.error('❌ Auto-backup failed:', error);
+    return false;
+  }
+}
+
+/**
+ * Handle file input change event
+ * @param {Event} event - Change event from file input
+ */
+async function handleImportFile(event) {
+  const file = event.target.files[0];
+  if (file) {
+    await importBackupData(file);
+  }
+  // Reset file input so same file can be selected again
+  event.target.value = '';
+}
+
+/**
+ * Trigger file input click
+ */
+function triggerImportDialog() {
+  const fileInput = document.getElementById('importFileInput');
+  if (fileInput) {
+    fileInput.click();
+  }
+}
+
+// ============================================
+// ADD TO SETTINGS MODAL
+// ============================================
+function addStorageInfoToSettings() {
+  const settingsContent = document.querySelector('.settings-content');
+  if (!settingsContent) return;
+  
+  const storageInfo = document.createElement('div');
+  storageInfo.className = 'setting-item';
+  storageInfo.innerHTML = `
+    <label>Storage Usage</label>
+    <div id="storageUsageDisplay" class="setting-description">
+      Calculating...
+    </div>
+    <button id="viewStorageDetails" class="btn-secondary" style="margin-top: 10px;">
+      📊 View Details
+    </button>
+    <button id="exportDataBtn" class="btn-secondary" style="margin-top: 10px;">
+      📥 Export Backup
+    </button>
+    <button id="importDataBtn" class="btn-secondary" style="margin-top: 10px;">
+      📤 Import Backup
+    </button>
+    <input type="file" id="importFileInput" accept=".json" style="display: none;">
+  `;
+
+  // 💡 Recommendation: Append to the main content instead of finding the close button
+  settingsContent.appendChild(storageInfo);
+
+  // Event listeners (attached only once)
+  document.getElementById('viewStorageDetails')?.addEventListener('click', () => {
+    logStorageUsage();
+    showNotification('Check console for storage details', 'info');
+  });
+
+
+  document.getElementById('exportDataBtn')?.addEventListener('click', exportAllData);
+  document.getElementById('importDataBtn')?.addEventListener('click', triggerImportDialog);
+  
+  const closeBtn = document.getElementById('closeSettings');
+  if (closeBtn && closeBtn.parentNode) {
+    closeBtn.parentNode.insertBefore(storageInfo, closeBtn);
+  }
+  
+  const fileInput = document.getElementById('importFileInput');
+  if (fileInput) {
+    fileInput.addEventListener('change', handleImportFile);
+  }
+
+}
+
+function updateStorageDisplay() {
+  const usage = getStorageUsage();
+  const display = document.getElementById('storageUsageDisplay');
+  
+  if (display) {
+    let color = '#4caf50'; // Green
+    if (parseFloat(usage.totalMB) > 4) {
+      color = '#ff9800'; // Orange - getting close to limit
+    }
+    if (parseFloat(usage.totalMB) > 8) {
+      color = '#f44336'; // Red - danger zone
+    }
+    
+    display.innerHTML = `
+      <span style="color: ${color}; font-weight: bold;">
+        ${usage.totalMB} MB
+      </span> 
+      used (${usage.itemCount} items)
+      ${parseFloat(usage.totalMB) > 4 ? '<br>⚠️ Consider clearing old data' : ''}
+    `;
+  }
+}
+
+
 // ============================================
 // EXPORT GLOBAL FUNCTIONS
 // ============================================
@@ -2551,4 +3670,7 @@ window.closeModal = closeModal;
 window.toggleFullscreen = toggleFullscreen;
 window.searchChannels = searchChannels;
 window.clearSearch = clearSearch;
+window.exportAllData = exportAllData;
+window.importBackupData = importBackupData;
+window.triggerImportDialog = triggerImportDialog;
 //console.log("✅ IPTV Channel Manager - Optimized Version Loaded Successfully");

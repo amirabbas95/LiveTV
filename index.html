@@ -11,6 +11,7 @@
   <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
   <link rel="stylesheet" href="styles.css">
+  
 </head>
 
 <body>
@@ -30,6 +31,7 @@
             <input type="text" id="channelSearch" placeholder="Search channels..." autocomplete="off"
               class="channel-search-navbar" />
             <button id="clearSearch" title="Clear search" class="clear-search-navbar">✕</button>
+            
           </div>
         </div>
         <!-- Right Section: Admin and Settings Buttons -->
@@ -52,7 +54,8 @@
             class="channel-search-mobile" />
           <button id="clearSearchMobile" title="Clear search" class="clear-search-navbar">✕</button>
         </div>
-        <div id="search-results-message" class="mt-2" style="display: none;"></div>
+        <div id="search-results-message" class="mt-2 text-sm text-gray-400" style="display: none;"></div>
+        <div id="search-results-message-mobile" class="mt-2 text-sm text-gray-400" style="display: none;"></div>
       </div>
     </nav>
   </header>
@@ -134,53 +137,58 @@
         </div>
       </div>
       <!-- API Key Modal -->
-      <div id="apiKeyModal" class="settings-modal" style="display: none;">
-        <div class="settings-content">
-          <h2>🔑 YouTube API Configuration</h2>
-          <div class="setting-item">
-            <label for="apiKeyInput">API Key</label>
-            <input type="password" id="apiKeyInput" class="api-key-input" placeholder="Enter your YouTube API key"
-              autocomplete="off">
-            <button type="button" id="toggleApiKeyVisibility" class="toggle-visibility-btn">
-              👁️ Show
-            </button>
-            <p class="setting-description">
-              Required for live stream detection. Get your API key from
-              <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener">
-                Google Cloud Console
-              </a>
-            </p>
-          </div>
-          <div class="setting-item">
-            <label class="checkbox-label">
-              <input type="checkbox" id="rememberKey" checked>
-              <span>Remember API key (stored locally)</span>
-            </label>
-            <p class="setting-description">
-              Your API key will be stored securely in your browser's local
-              storage
-            </p>
-          </div>
-          <div class="api-key-actions">
-            <button id="submitApiKey" class="btn-primary">
-              ✓ Save & Continue
-            </button>
-            <button id="skipApiKey" class="btn-secondary">
-              Skip for now
-            </button>
-          </div>
-          <div class="api-key-info">
-            <p><strong>Why do we need this?</strong></p>
-            <p>The YouTube API key allows us to detect which channels are
-              currently live streaming.
-            </p>
-          </div>
-        </div>
-      </div>
+<!-- Replace your API Key Modal with this -->
+<div id="apiKeyModal" class="settings-modal" style="display: none;">
+  <div class="settings-content">
+    <h2>🔑 YouTube API Configuration</h2>
+    
+    <div class="setting-item">
+      <label for="apiKeyInput">API Key</label>
+      <input type="password" id="apiKeyInput" class="api-key-input" placeholder="Enter your YouTube API key"
+        autocomplete="off">
+      <button type="button" id="toggleApiKeyVisibility" class="toggle-visibility-btn">
+        👁️ Show
+      </button>
+      <p class="setting-description">
+        Required for live stream detection. Get your API key from
+        <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener">
+          Google Cloud Console
+        </a>
+      </p>
+    </div>
+    
+    <div class="setting-item">
+      <label class="checkbox-label">
+        <input type="checkbox" id="rememberKey" checked>
+        <span>Remember API key (stored locally)</span>
+      </label>
+      <p class="setting-description">
+        Your API key will be stored securely in your browser's local storage
+      </p>
+    </div>
+    
+    <div class="api-key-actions">
+      <button id="submitApiKey" class="btn-primary">
+        ✓ Save & Continue
+      </button>
+      <button id="skipApiKey" class="btn-secondary">
+        Skip for now
+      </button>
+    </div>
+    
+    <div class="api-key-info">
+      <p><strong>Why do we need this?</strong></p>
+      <p>The YouTube API key allows us to detect which channels are currently live streaming.</p>
+    </div>
+    
+    <!-- Close Button -->
+    <button id="closeApiKeyModal" class="btn-secondary">Close</button>
+  </div>
+</div>
   </main>
   <div id="videoModal" class="fixed inset-0 bg-black bg-opacity-90 flex justify-center items-center z-50 hidden">
     <div class="relative w-full h-full flex flex-col justify-center items-center">
-      <span id=".closeModal" class="closeModal">&times;</span>
+      <span class="closeModal">&times;</span>
       <!-- New location for channel number overlay -->
       <div id="channel-number-overlay"></div>
       <div id="player-container">
