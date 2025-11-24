@@ -1819,7 +1819,7 @@ function getGridColumns() {
 }
 
 document.addEventListener("keydown", (e) => {
-  const searchInput = document.getElementById('channelSearch');
+  const searchInputDesktop = document.getElementById('channelSearchDesktop');
   const searchInputMobile = document.getElementById('channelSearchMobile');
   // 🎯 NEW CONDITION: Check if the currently focused element is the search bar
   // Check if focused on any search bar
