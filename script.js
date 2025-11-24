@@ -3648,7 +3648,7 @@ function addStorageInfoToSettings() {
   const storageInfo = document.createElement('div');
   storageInfo.className = 'setting-item';
   storageInfo.innerHTML = `
-    <label for="storageUsageDisplay">Storage Usage</label> 
+    <h3>Storage Usage</h3> 
     <div id="storageUsageDisplay" class="setting-description">
       Calculating...
     </div>
