@@ -43,6 +43,8 @@ let touchStartX = 0;
 let touchEndX = 0;
 let touchStartY = 0;
 let touchEndY = 0;
+let lastTapTime = 0;
+const DOUBLE_TAP_DELAY = 300;
 // Search state
 let searchQuery = "";
 let filteredChannels = [];
@@ -1393,7 +1395,7 @@ function setupSearchBar() {
     document.getElementById("search-results-message-mobile")
   ].filter(Boolean);
 
-  console.log(`🔍 Setting up search with ${searchInputs.length} input(s)`);
+  //console.log(`🔍 Setting up search with ${searchInputs.length} input(s)`);
 
   // Setup each search input
   searchInputs.forEach((searchInput, index) => {
@@ -1447,7 +1449,7 @@ function setupSearchBar() {
     });
   });
 
-  console.log("✅ Search bar setup complete");
+  //console.log("✅ Search bar setup complete");
 }
 
 /**
@@ -2738,7 +2740,7 @@ async function initialize() {
   if (savedChannels) {
     try {
       allChannels = JSON.parse(savedChannels);
-      console.log(`Successfully loaded ${allChannels.length} channels from localStorage.`);
+      //console.log(`Successfully loaded ${allChannels.length} channels from localStorage.`);
     } catch (e) {
       console.log("Invalid 'allChannelsData' found in localStorage. The data will be ignored.", true);
       console.log(`Error details: ${e.message}`, true);
@@ -2932,8 +2934,25 @@ function handleTouchStart(e) {
 }
 
 function handleTouchEnd(e) {
-  touchEndX = e.changedTouches[0].screenX;
-  touchEndY = e.changedTouches[0].screenY;
+  const currentTime = new Date().getTime();
+  const currentTouchX = e.changedTouches[0].screenX;
+  const currentTouchY = e.changedTouches[0].screenY;
+
+  touchEndX = currentTouchX;
+  touchEndY = currentTouchY;
+
+  // Check if the current tap is within the time window AND the touch movement is negligible
+  if (currentTime - lastTapTime < DOUBLE_TAP_DELAY && 
+      Math.abs(currentTouchX - touchStartX) < 10 && 
+      Math.abs(currentTouchY - touchStartY) < 10) { 
+    
+    window.toggleFullscreen(); 
+    lastTapTime = 0; // Reset to prevent accidental triple tap detection
+    return; // Skip the swipe handler
+  }
+
+  // If not a double tap, update the time for the next potential tap
+  lastTapTime = currentTime; 
   handleSwipe();
 }
 
@@ -3629,7 +3648,7 @@ function addStorageInfoToSettings() {
   const storageInfo = document.createElement('div');
   storageInfo.className = 'setting-item';
   storageInfo.innerHTML = `
-    <label>Storage Usage</label>
+    <label for="storageUsageDisplay">Storage Usage</label> 
     <div id="storageUsageDisplay" class="setting-description">
       Calculating...
     </div>

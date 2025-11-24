@@ -8,8 +8,32 @@
 	--bg-medium: #1f1f1f;
 	--text-light: #e0e0e0;
 	--text-muted: #a0a0a0;
-	--accent: #007bff;
+	--accent-color: #007bff;
+	/* 	--accent: #4caf50; */
 	--radius: 10px;
+	--spacing-unit: 1rem;
+}
+
+/* ====================================== 
+   HEADER NAVIGATION BUTTONS (Admin/Settings)
+====================================== */
+
+.nav-icon {
+    color: var(--text-light, #e0e0e0); 
+    font-size: 20px;
+    transition: color 0.15s ease;
+}
+
+/* Hover style using your defined accent color */
+.nav-icon:hover {
+    color: var(--accent-color); 
+}
+
+.header-action-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 0;
 }
 
 /* ====================================== 
@@ -23,6 +47,8 @@ body {
 	padding: 1rem;
 	line-height: 1.6;
 }
+
+
 
 /* ====================================== 
     3. Layouts & Containers 
@@ -69,8 +95,8 @@ main {
 .content-card:hover,
 .content-card:focus {
 	transform: translateY(-5px);
-	box-shadow: 0 12px 24px rgba(0, 0, 0, 0.6), 0 0 15px var(--accent);
-	outline: 4px solid var(--accent);
+	box-shadow: 0 12px 24px rgba(0, 0, 0, 0.6), 0 0 15px var(--accent-color);
+	outline: 4px solid var(--accent-color);
 }
 
 
@@ -128,14 +154,49 @@ main {
 }
 
 .skeleton {
-  background: linear-gradient(90deg, #1f1f1f 25%, #2a2a2a 50%, #1f1f1f 75%);
-  background-size: 200% 100%;
-  animation: skeleton-loading 1.5s infinite;
+	background: linear-gradient(90deg, #1f1f1f 25%, #2a2a2a 50%, #1f1f1f 75%);
+	background-size: 200% 100%;
+	animation: skeleton-loading 1.5s infinite;
 }
+
 @keyframes skeleton-loading {
-  0% { background-position: 200% 0; }
-  100% { background-position: -200% 0; }
+	0% {
+		background-position: 200% 0;
+	}
+
+	100% {
+		background-position: -200% 0;
+	}
 }
+
+
+/* ====================================== 
+   FIX: SETTINGS MODAL DROP-DOWN VISIBILITY
+====================================== */
+
+#updateInterval {
+	/* Set a medium dark background for contrast (e.g., #1f1f1f) */
+	background-color: var(--bg-medium, #1f1f1f);
+
+	/* Ensure the text is light and visible (e.g., #e0e0e0) */
+	color: var(--text-light, #e0e0e0);
+
+	/* Ensure the system dropdown arrow is displayed correctly */
+	-webkit-appearance: menulist;
+	-moz-appearance: menulist;
+	appearance: menulist;
+
+}
+
+/* IMPORTANT: Style for the options list when the dropdown is open */
+#updateInterval option {
+	/* Use a slightly darker background to make the white text pop out 
+       when the user clicks to view the list of choices. */
+	background-color: #333333;
+	color: #ffffff;
+	padding: 5px;
+}
+
 
 /* ====================================== 
    SORT CONTROLS
@@ -164,12 +225,12 @@ main {
 }
 
 .sort-controls button:hover {
-	color: var(--accent);
+	color: var(--accent-color);
 }
 
 .sort-controls button.active {
-	color: var(--accent);
-	border-bottom: 2px solid var(--accent);
+	color: var(--accent-color);
+	border-bottom: 2px solid var(--accent-color);
 }
 
 /* ====================================== 
@@ -213,29 +274,29 @@ main {
 
 /* Force video to cover the entire screen including notch areas in fullscreen */
 .video-js.vjs-fullscreen {
-    position: fixed !important;
-    top: 0 !important;
-    left: 0 !important;
-    width: 100vw !important;
-    height: 100vh !important;
-    z-index: 9999 !important;
-    margin: 0 !important;
-    padding: 0 !important;
-    /* Clean background for the notch area */
-    background-color: #000 !important; 
+	position: fixed !important;
+	top: 0 !important;
+	left: 0 !important;
+	width: 100vw !important;
+	height: 100vh !important;
+	z-index: 9999 !important;
+	margin: 0 !important;
+	padding: 0 !important;
+	/* Clean background for the notch area */
+	background-color: #000 !important;
 }
 
 /* Ensure body doesn't scroll when modal is open */
 body.modal-open {
-    overflow: hidden;
+	overflow: hidden;
 }
 
 .notification {
-  position: fixed;
-  top: 20px;
-  left: 50%;
-  transform: translateX(-50%);
-  /* Remove the left: -350px animation */
+	position: fixed;
+	top: 20px;
+	left: 50%;
+	transform: translateX(-50%);
+	/* Remove the left: -350px animation */
 }
 
 /* ====================================== 
@@ -325,7 +386,7 @@ body.modal-open {
 
 #channel-info {
 	text-align: center;
-	background-color: var(--bg-color-medium);
+	background-color: var(--bg-medium);
 	border-top: 1px solid rgba(255, 255, 255, 0.05);
 }
 
@@ -343,7 +404,7 @@ body.modal-open {
 	font-size: 1.5rem;
 	font-weight: 700;
 	margin: 0;
-	color: var(--text-color-light);
+	color: var(--text-light);
 	line-height: 1.2;
 }
 
@@ -366,7 +427,7 @@ body.modal-open {
 
 #channel-description {
 	font-size: 0.8rem;
-	color: var(--text-color-muted);
+	color: var(--text-muted);
 	margin: 0;
 	line-height: 1.2;
 }
@@ -527,17 +588,27 @@ body.modal-open {
 }
 
 /* API Key Modal */
+
+.input-button-wrapper {
+    /* Set this container as the reference point for absolute positioning */
+    position: relative;
+    /* Ensure it fills the available width and stacks correctly */
+    width: 100%;
+    /* Remove default margin that was previously on the input */
+    margin-top: 8px; 
+}
+
 .api-key-input {
-	width: 100%;
-	padding: 12px;
-	background: rgba(255, 255, 255, 0.05);
-	border: 1px solid rgba(255, 255, 255, 0.2);
-	border-radius: 8px;
-	color: white;
-	font-size: 14px;
-	font-family: "Courier New", monospace;
-	margin-top: 8px;
-	transition: all 0.3s ease;
+    width: 100%;
+    padding: 12px;
+    padding-right: 70px; 
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 8px;
+    color: white;
+    font-size: 14px;
+    font-family: "Courier New", monospace;
+    transition: all 0.3s ease;
 }
 
 .api-key-input:focus {
@@ -549,7 +620,7 @@ body.modal-open {
 
 .toggle-visibility-btn {
 	position: absolute;
-	right: 42px;
+	right: 10px;
 	top: 50%;
 	transform: translateY(-50%);
 	background: transparent;
@@ -594,7 +665,7 @@ body.modal-open {
 }
 
 #channelSearch:focus {
-	border-color: var(--accent);
+	border-color: var(--accent-color);
 	background: #333;
 	box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.1);
 }
@@ -613,7 +684,7 @@ body.modal-open {
 }
 
 #clearSearch:hover {
-	color: var(--accent);
+	color: var(--accent-color);
 	background: rgba(255, 255, 255, 0.1);
 }
 
@@ -622,7 +693,7 @@ body.modal-open {
 ====================================== */
 #loading-spinner {
 	border: 8px solid #f3f3f3;
-	border-top: 8px solid var(--accent);
+	border-top: 8px solid var(--accent-color);
 	border-radius: 50%;
 	width: 60px;
 	height: 60px;
@@ -722,7 +793,6 @@ body.modal-open {
 .channel-search-navbar:focus,
 .channel-search-mobile:focus {
 	border-color: var(--accent-color);
-	/* Assuming --accent-color is defined (e.g., yellow-400 equivalent) */
 	background: #444;
 	box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.1);
 }
