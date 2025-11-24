@@ -1,5 +1,5 @@
 // ============================================
-// IPTV CHANNEL MANAGER - COMPLETE OPTIMIZED VERSION
+// IPTV CHANNEL MANAGER - COMPLETE VERSION
 // Full replacement with all improvements integrated
 // ============================================
 // ============================================
@@ -131,8 +131,10 @@ class ChannelLoader {
       if (element) updateFn(element);
     });
     lastFocusedElement = document.activeElement;
-    showChannelInfoOverlay();
+    //showChannelInfoOverlay();
   }
+
+
   async cleanupPlayer() {
     stopWatching();
     this.cleanupEventListeners();
@@ -175,7 +177,9 @@ class ChannelLoader {
       }
     });
   }
+
   async initializePlayer(url, name, isLive, token) {
+
     const container = await this.waitForElement('player-container');
     token.throwIfCancelled();
     const streamConfig = createStreamConfig(url);
@@ -210,6 +214,7 @@ class ChannelLoader {
     }
     await this.waitForPlayerReady(token);
     token.throwIfCancelled();
+    showChannelInfoOverlay();
     await this.attemptAutoplay();
   }
   setupHLSErrorRecovery() {
@@ -735,6 +740,7 @@ function createStreamConfig(url) {
     setTimeout(() => {
       showErrorToUser('⚠️ This stream uses HTTP and cannot be played on this HTTPS site. Please contact the stream provider for an HTTPS URL.');
     }, 500);
+
     // Return a dummy config that will fail gracefully
     return {
       type: 'hls',
@@ -887,9 +893,6 @@ async function selectChannel(url, name, image, description, number, isLive) {
 function showChannelInfoOverlay() {
   const channelInfoOverlay = document.getElementById("channel-info-overlay");
   if (!channelInfoOverlay) return;
-  if (overlayTimeoutShow) clearTimeout(overlayTimeoutShow);
-  if (overlayTimeoutHide) clearTimeout(overlayTimeoutHide);
-
 
   const modal = document.getElementById("videoModal");
   if (modal) {
@@ -908,8 +911,11 @@ function showChannelInfoOverlay() {
 
 function closeModal() {
   const modal = document.getElementById("videoModal");
-  if (modal) modal.style.display = "none";
-  
+  if (modal) {
+    modal.style.display = "none";
+    modal.classList.add("hidden");
+  }
+
   channelLoader.cleanupPlayer().then(() => {
     // Player cleaned up
   }).catch(error => {
@@ -926,7 +932,7 @@ function closeModal() {
   if (lastFocusedElement && lastFocusedElement.isConnected) {
     lastFocusedElement.focus();
     // Also need to sync focusedIndex if using this method
-    focusedIndex = allChannelItems.indexOf(lastFocusedElement); 
+    focusedIndex = allChannelItems.indexOf(lastFocusedElement);
   } else if (allChannelItems.length > 0) {
     allChannelItems[0].focus();
     focusedIndex = 0; // <-- ALWAYS sync focusedIndex!
@@ -1809,11 +1815,14 @@ function getGridColumns() {
   const columnArray = gridTemplateColumns.split(" ");
   return columnArray.length;
 }
+
 document.addEventListener("keydown", (e) => {
   const searchInput = document.getElementById('channelSearch');
+  const searchInputMobile = document.getElementById('channelSearchMobile');
   // 🎯 NEW CONDITION: Check if the currently focused element is the search bar
-  // If the user is focused on the search bar, do nothing and return.
-  if (searchInput && document.activeElement === searchInput) {
+  // Check if focused on any search bar
+  if ((searchInputDesktop && document.activeElement === searchInputDesktop) ||
+    (searchInputMobile && document.activeElement === searchInputMobile)) {
     return;
   }
   // Also check if any other input or textarea is focused to prevent accidental triggers
@@ -2831,8 +2840,35 @@ function setupPWA() {
             const newWorker = registration.installing;
             newWorker.addEventListener('statechange', () => {
               if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                // Assuming you have a function called showNotification defined elsewhere
-                showNotification('New version available! Refresh to update.', 'info');
+                // Create a persistent notification with action
+                const updateNotification = document.createElement('div');
+                updateNotification.style.cssText = `
+        position: fixed;
+        bottom: 20px;
+        right: 20px;
+        background: #2196F3;
+        color: white;
+        padding: 15px 20px;
+        border-radius: 8px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+        z-index: 10000;
+        display: flex;
+        gap: 10px;
+        align-items: center;
+      `;
+                updateNotification.innerHTML = `
+        <span>New version available!</span>
+        <button onclick="location.reload()" style="
+          background: white;
+          color: #2196F3;
+          border: none;
+          padding: 8px 16px;
+          border-radius: 4px;
+          cursor: pointer;
+          font-weight: bold;
+        ">Update Now</button>
+      `;
+                document.body.appendChild(updateNotification);
               }
             });
           });
@@ -3008,6 +3044,21 @@ function navigateToPreviousChannel() {
  * @returns {boolean} - Success status
  */
 function safeLocalStorageSet(key, value, retryOnFail = true) {
+  // ✅ Check storage before attempting to save
+  const estimatedSize = new Blob([value]).size;
+  const usage = getStorageUsage();
+  const availableSpace = (5 * 1024 * 1024) - usage.totalBytes; // 5MB total
+
+  if (estimatedSize > availableSpace) {
+    console.warn('⚠️ Insufficient storage space');
+    if (retryOnFail) {
+      clearOldStorageData();
+      // Retry with same logic
+    } else {
+      showNotification('Storage full - please export your data', 'error');
+      return false;
+    }
+  }
   try {
     localStorage.setItem(key, value);
     return true;
