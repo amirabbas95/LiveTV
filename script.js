@@ -891,7 +891,7 @@ function showChannelInfoOverlay() {
   if (overlayTimeoutHide) clearTimeout(overlayTimeoutHide);
 
 
-const modal = document.getElementById("videoModal");
+  const modal = document.getElementById("videoModal");
   if (modal) {
     modal.style.display = "flex"; // Change from "flex" to ensure it works
     modal.classList.remove("hidden"); // Remove Tailwind's hidden class
@@ -909,39 +909,28 @@ const modal = document.getElementById("videoModal");
 function closeModal() {
   const modal = document.getElementById("videoModal");
   if (modal) modal.style.display = "none";
+  
   channelLoader.cleanupPlayer().then(() => {
-    //console.log('✅ Modal closed and player cleaned up');
+    // Player cleaned up
   }).catch(error => {
-    console.error('❌ Error during modal close cleanup:', error);
+    console.warn('⚠️ Error during player cleanup:', error);
   });
-  // --- FIX: Restore focus to the last channel card on the main grid ---
-  if (lastFocusedElement && allChannelItems.length > 0) {
-    // Find the index of the stored lastFocusedElement in the current channel list
-    const restoredIndex = allChannelItems.findIndex(item => item === lastFocusedElement);
-    if (restoredIndex !== -1) {
-      // 1. Focus the element
-      allChannelItems[restoredIndex].focus();
-      // 2. Scroll it into view (smoothly)
-      allChannelItems[restoredIndex].scrollIntoView({
-        behavior: "smooth",
-        block: "center"
-      });
-      // 3. Update the global focusedIndex state for consistent arrow key navigation
-      focusedIndex = restoredIndex;
-      //console.log(`✅ Focus restored to last played channel index: ${focusedIndex}`);
-      return;
-    }
-  }
-  // Fallback if lastFocusedElement is null or no longer in the DOM (e.g., due to filtering/sorting)
-  if (allChannelItems.length > 0) {
+
+  // 1. Re-render the Recently Watched list to show the new history order
+  renderRecentlyWatched();
+
+  // 2. CRITICAL: Rebuild the channel list with the new DOM elements
+  updateAllChannelItems(); // <-- MOVE THIS UP
+
+  // 3. Restore Focus: Now the fallback focus lands on the correct new element at index 0
+  if (lastFocusedElement && lastFocusedElement.isConnected) {
+    lastFocusedElement.focus();
+    // Also need to sync focusedIndex if using this method
+    focusedIndex = allChannelItems.indexOf(lastFocusedElement); 
+  } else if (allChannelItems.length > 0) {
     allChannelItems[0].focus();
-    allChannelItems[0].scrollIntoView({
-      behavior: "smooth",
-      block: "center"
-    });
-    focusedIndex = 0;
+    focusedIndex = 0; // <-- ALWAYS sync focusedIndex!
   }
-  updateAllChannelItems();
 }
 
 function toggleFullscreen() {
@@ -981,20 +970,20 @@ function stopWatching() {
 
 function saveCurrentWatchTime() {
   if (!currentChannelId || !watchStartTime) return;
-  
+
   const watchedMs = Date.now() - watchStartTime;
   const watchedSeconds = Math.floor(watchedMs / 1000);
   if (watchedSeconds < 5) return;
-  
+
   const watchData = loadWatchTime();
   watchData[currentChannelId] = (watchData[currentChannelId] || 0) + watchedSeconds;
-  
+
   // Use safe storage instead of direct localStorage.setItem
   const success = safeLocalStorageSet(
-    "watchTimePerChannel", 
+    "watchTimePerChannel",
     JSON.stringify(watchData)
   );
-  
+
   if (success) {
     watchStartTime = Date.now();
   } else {
@@ -1022,16 +1011,16 @@ function sortChannelsByWatchTime(channels) {
 
 function saveChannelsData(channels) {
   const success = safeLocalStorageSet(
-    STORAGE_KEYS.channels, 
+    STORAGE_KEYS.channels,
     JSON.stringify(channels)
   );
-  
+
   if (!success) {
     console.error('Failed to save channels data');
     // Optionally show user a dialog to export data
     promptDataExport();
   }
-  
+
   return success;
 }
 // ============================================
@@ -1040,26 +1029,26 @@ function saveChannelsData(channels) {
 // Example 4: Saving recently watched
 function saveRecentlyWatched(channel) {
   const {
-    name, url, image, description, number, 
+    name, url, image, description, number,
     isLive = "true", category = "Unknown",
   } = channel;
-  
+
   let recent = JSON.parse(localStorage.getItem(recentlyWatchedKey) || "[]");
   recent = recent.filter((item) => item.url !== url);
   recent.unshift({
     name, url, image, description, number, isLive, category,
   });
-  
+
   if (recent.length > MAX_RECENT) {
     recent.pop();
   }
-  
+
   // Use safe storage
   const success = safeLocalStorageSet(
-    recentlyWatchedKey, 
+    recentlyWatchedKey,
     JSON.stringify(recent)
   );
-  
+
   if (success) {
     renderRecentlyWatched();
   }
@@ -1068,10 +1057,10 @@ function saveRecentlyWatched(channel) {
 // Example 3: Saving favorites
 function toggleFavorite(url, name, image, description, number, isLive, category, event) {
   if (event) event.stopPropagation();
-  
+
   let favorites = JSON.parse(localStorage.getItem(favoritesKey) || "[]");
   const index = favorites.findIndex((item) => item.url === url);
-  
+
   if (index > -1) {
     favorites.splice(index, 1);
   } else {
@@ -1079,18 +1068,18 @@ function toggleFavorite(url, name, image, description, number, isLive, category,
       name, url, image, description, number, isLive, category,
     });
   }
-  
+
   // Use safe storage
   const success = safeLocalStorageSet(
-    favoritesKey, 
+    favoritesKey,
     JSON.stringify(favorites)
   );
-  
+
   if (!success) {
     showNotification('Failed to save favorite', 'error');
     return; // Don't update UI if save failed
   }
-  
+
   renderFavorites();
   updateFavoriteIcons();
   updateAllChannelItems();
@@ -1385,43 +1374,43 @@ function setupSearchBar() {
     document.getElementById("channelSearch"),         // Desktop
     document.getElementById("channelSearchMobile")    // Mobile
   ].filter(Boolean); // Remove null/undefined
-  
+
   // Get both clear buttons
   const clearButtons = [
     document.getElementById("clearSearch"),           // Desktop
     document.getElementById("clearSearchMobile")      // Mobile
   ].filter(Boolean);
-  
+
   // Get both result message elements
   const resultMessages = [
     document.getElementById("search-results-message"),
     document.getElementById("search-results-message-mobile")
   ].filter(Boolean);
-  
+
   console.log(`🔍 Setting up search with ${searchInputs.length} input(s)`);
-  
+
   // Setup each search input
   searchInputs.forEach((searchInput, index) => {
     let searchTimeout;
-    
+
     // Input event - triggers search
     searchInput.addEventListener("input", (e) => {
       const query = e.target.value;
-      
+
       // Sync the value to the other search input
       searchInputs.forEach(input => {
         if (input !== e.target && input.value !== query) {
           input.value = query;
         }
       });
-      
+
       // Debounced search
       clearTimeout(searchTimeout);
       searchTimeout = setTimeout(() => {
         performSearch(query, resultMessages);
       }, 300);
     });
-    
+
     // Escape key - clears search
     searchInput.addEventListener("keydown", (e) => {
       if (e.key === "Escape") {
@@ -1429,18 +1418,18 @@ function setupSearchBar() {
         searchInput.blur();
       }
     });
-    
+
     // Focus event - highlight current input
     searchInput.addEventListener("focus", () => {
       searchInput.style.borderColor = "#007bff";
     });
-    
+
     // Blur event - restore normal border
     searchInput.addEventListener("blur", () => {
       searchInput.style.borderColor = "#444";
     });
   });
-  
+
   // Setup clear buttons
   clearButtons.forEach((btn, index) => {
     btn.addEventListener("click", () => {
@@ -1451,7 +1440,7 @@ function setupSearchBar() {
       }
     });
   });
-  
+
   console.log("✅ Search bar setup complete");
 }
 
@@ -1462,7 +1451,7 @@ function setupSearchBar() {
  */
 function performSearch(query, resultMessages) {
   searchQuery = query.toLowerCase().trim();
-  
+
   if (!searchQuery) {
     // Empty search - show all channels
     filteredChannels = [];
@@ -1471,30 +1460,30 @@ function performSearch(query, resultMessages) {
     hideAllResultMessages(resultMessages);
     return;
   }
-  
+
   // Perform the search
   filteredChannels = allChannels.filter(channel => {
     const nameMatch = channel.name.toLowerCase().includes(searchQuery);
-    const descMatch = channel.description && 
-                      channel.description.toLowerCase().includes(searchQuery);
-    const catMatch = channel.category && 
-                     channel.category.toLowerCase().includes(searchQuery);
-    const numMatch = channel.number && 
-                     channel.number.toString().includes(searchQuery);
-    
+    const descMatch = channel.description &&
+      channel.description.toLowerCase().includes(searchQuery);
+    const catMatch = channel.category &&
+      channel.category.toLowerCase().includes(searchQuery);
+    const numMatch = channel.number &&
+      channel.number.toString().includes(searchQuery);
+
     return nameMatch || descMatch || catMatch || numMatch;
   });
-  
+
   console.log(`🔍 Search: "${query}" - Found ${filteredChannels.length} channels`);
-  
+
   // Hide favorites and recent when searching
   hideFavoritesAndRecent();
-  
+
   // Render filtered results
   renderChannels(filteredChannels);
   updateFavoriteIcons();
   updateAllChannelItems();
-  
+
   // Update all result message elements
   updateAllResultMessages(resultMessages, query, filteredChannels.length);
 }
@@ -1508,7 +1497,7 @@ function performSearch(query, resultMessages) {
 function updateAllResultMessages(resultMessages, query, count) {
   resultMessages.forEach(msg => {
     if (!msg) return;
-    
+
     if (count === 0) {
       msg.innerHTML = `
         <div style="color: #ff9800; padding: 8px;">
@@ -1550,21 +1539,21 @@ function hideAllResultMessages(resultMessages) {
 function clearSearch(searchInputs, resultMessages) {
   searchQuery = "";
   filteredChannels = [];
-  
+
   // Clear all search inputs
   searchInputs.forEach(input => {
     if (input) input.value = "";
   });
-  
+
   // Hide all result messages
   hideAllResultMessages(resultMessages);
-  
+
   // Show favorites and recent sections again
   showFavoritesAndRecent();
-  
+
   // Render all channels
   sortChannelsAndRender(currentSortMethod);
-  
+
   console.log("🔍 Search cleared");
 }
 
@@ -1592,7 +1581,7 @@ function searchChannelsWithHighlight(query) {
     document.getElementById("search-results-message"),
     document.getElementById("search-results-message-mobile")
   ].filter(Boolean));
-  
+
   // Optional: Highlight matching text in channel cards
   highlightSearchResults(query);
 }
@@ -1603,10 +1592,10 @@ function searchChannelsWithHighlight(query) {
  */
 function highlightSearchResults(query) {
   if (!query) return;
-  
+
   const cards = document.querySelectorAll('.channel-item');
   const regex = new RegExp(`(${escapeRegex(query)})`, 'gi');
-  
+
   cards.forEach(card => {
     const name = card.dataset.name;
     if (name && name.toLowerCase().includes(query.toLowerCase())) {
@@ -1637,25 +1626,25 @@ function escapeRegex(str) {
 const searchStats = {
   searches: [],
   maxHistory: 10,
-  
+
   addSearch(query, resultCount) {
     this.searches.unshift({
       query,
       resultCount,
       timestamp: Date.now()
     });
-    
+
     if (this.searches.length > this.maxHistory) {
       this.searches.pop();
     }
   },
-  
+
   getPopularSearches() {
     const counts = {};
     this.searches.forEach(s => {
       counts[s.query] = (counts[s.query] || 0) + 1;
     });
-    
+
     return Object.entries(counts)
       .sort((a, b) => b[1] - a[1])
       .slice(0, 5)
@@ -1666,7 +1655,7 @@ const searchStats = {
 // Update performSearch to track stats
 function performSearchWithStats(query, resultMessages) {
   performSearch(query, resultMessages);
-  
+
   if (query) {
     searchStats.addSearch(query, filteredChannels.length);
   }
@@ -1682,7 +1671,7 @@ function performSearchWithStats(query, resultMessages) {
  */
 function setupSearchSuggestions(input) {
   if (!input) return;
-  
+
   const suggestionsList = document.createElement('div');
   suggestionsList.className = 'search-suggestions';
   suggestionsList.style.cssText = `
@@ -1699,23 +1688,23 @@ function setupSearchSuggestions(input) {
     display: none;
     z-index: 1000;
   `;
-  
+
   input.parentElement.style.position = 'relative';
   input.parentElement.appendChild(suggestionsList);
-  
+
   input.addEventListener('input', (e) => {
     const query = e.target.value.toLowerCase().trim();
-    
+
     if (query.length < 2) {
       suggestionsList.style.display = 'none';
       return;
     }
-    
+
     const suggestions = allChannels
       .filter(ch => ch.name.toLowerCase().includes(query))
       .slice(0, 5)
       .map(ch => ch.name);
-    
+
     if (suggestions.length > 0) {
       suggestionsList.innerHTML = suggestions
         .map(name => `
@@ -1729,9 +1718,9 @@ function setupSearchSuggestions(input) {
             ${escapeHtml(name)}
           </div>
         `).join('');
-      
+
       suggestionsList.style.display = 'block';
-      
+
       // Handle suggestion clicks
       suggestionsList.querySelectorAll('.suggestion-item').forEach(item => {
         item.addEventListener('click', () => {
@@ -1747,7 +1736,7 @@ function setupSearchSuggestions(input) {
       suggestionsList.style.display = 'none';
     }
   });
-  
+
   // Hide suggestions when clicking outside
   document.addEventListener('click', (e) => {
     if (!input.contains(e.target) && !suggestionsList.contains(e.target)) {
@@ -2219,42 +2208,42 @@ async function loadYouTubeLiveFeeds() {
 // Example 5: Update the main channel loading function
 async function loadAllChannelFeeds() {
   console.log("Starting full channel update (RSS and Live API)...");
-  
+
   try {
     console.log("1/2: Loading latest uploads from RSS...");
     await loadYouTubeLatestFeeds();
-    
+
     console.log("2/2: Loading live streams (YouTube API)...");
     await loadYouTubeLiveFeeds();
-    
+
     console.log("Saving updated channel data to localStorage...");
-    
+
     // Use safe storage with error handling
     const success = safeLocalStorageSet(
-      STORAGE_KEYS.channels, 
+      STORAGE_KEYS.channels,
       JSON.stringify(allChannels)
     );
-    
+
     if (!success) {
       // Data wasn't saved, but we can still render it
       console.warn('⚠️ Channels loaded but not saved to storage');
       showNotification('⚠️ Channels loaded (not saved due to storage limits)', 'warning');
     }
-    
+
     console.log("Rendering UI and updating components...");
     renderChannels(allChannels);
     updateFavoriteIcons();
     renderRecentlyWatched();
     updateAllChannelItems();
-    
+
     console.log("✅ Full channels update COMPLETE.");
     return true;
-    
+
   } catch (e) {
     console.log(`❌ Critical error during full channel update: ${e.message}`, true);
     // Still try to save what we have
     safeLocalStorageSet(STORAGE_KEYS.channels, JSON.stringify(allChannels));
-    
+
     renderChannels(allChannels);
     updateFavoriteIcons();
     renderRecentlyWatched();
@@ -2348,7 +2337,7 @@ function showSettingsModal() {
   if (!settingsModal) return;
 
   settingsModal.style.display = "flex";
-  
+
   // Existing settings code...
   const autoUpdateToggle = document.getElementById("autoUpdateToggle");
   const updateIntervalSelect = document.getElementById("updateInterval");
@@ -2363,14 +2352,14 @@ function showSettingsModal() {
 
   updateIntervalDescriptionText(updateIntervalHours);
   updateLastUpdateDisplay();
-  
+
   // Add storage info
   if (!document.getElementById('storageUsageDisplay')) {
     addStorageInfoToSettings();
   } else {
     updateStorageDisplay();
   }
-  
+
 }
 
 function hideSettingsModal() {
@@ -2503,10 +2492,10 @@ function setupSettingsModal() {
   }
 
   if (!document.getElementById('storageUsageDisplay')) {
-  addStorageInfoToSettings(); 
-}
+    addStorageInfoToSettings();
+  }
 
-updateStorageDisplay();
+  updateStorageDisplay();
 }
 // ============================================
 // API KEY MODAL
@@ -2549,7 +2538,7 @@ function setupAPIKeyModalEvents() {
   const apiKeyInput = document.getElementById("apiKeyInput");
   const toggleVisibilityBtn = document.getElementById("toggleApiKeyVisibility");
   const apiModal = document.getElementById("apiKeyModal");
-  
+
   if (submitBtn) {
     const newSubmitBtn = submitBtn.cloneNode(true);
     submitBtn.parentNode.replaceChild(newSubmitBtn, submitBtn);
@@ -2581,7 +2570,7 @@ function setupAPIKeyModalEvents() {
       }, 1000);
     });
   }
-  
+
   if (skipBtn) {
     const newSkipBtn = skipBtn.cloneNode(true);
     skipBtn.parentNode.replaceChild(newSkipBtn, skipBtn);
@@ -2591,7 +2580,7 @@ function setupAPIKeyModalEvents() {
       console.log("ℹ️ User skipped API key configuration");
     });
   }
-  
+
   // NEW: Close button handler
   if (closeBtn) {
     const newCloseBtn = closeBtn.cloneNode(true);
@@ -2601,7 +2590,7 @@ function setupAPIKeyModalEvents() {
       console.log("ℹ️ API Key modal closed");
     });
   }
-  
+
   if (toggleVisibilityBtn && apiKeyInput) {
     const newToggleBtn = toggleVisibilityBtn.cloneNode(true);
     toggleVisibilityBtn.parentNode.replaceChild(newToggleBtn, toggleVisibilityBtn);
@@ -2615,7 +2604,7 @@ function setupAPIKeyModalEvents() {
       }
     });
   }
-  
+
   if (apiKeyInput) {
     apiKeyInput.addEventListener("keypress", function (e) {
       if (e.key === "Enter") {
@@ -2624,7 +2613,7 @@ function setupAPIKeyModalEvents() {
       }
     });
   }
-  
+
   if (apiModal) {
     apiModal.addEventListener("click", (e) => {
       if (e.target === apiModal) {
@@ -2632,7 +2621,7 @@ function setupAPIKeyModalEvents() {
       }
     });
   }
-  
+
   document.addEventListener("keydown", function escapeHandler(e) {
     if (e.key === "Escape" && apiModal && apiModal.style.display === "flex") {
       hideAPIKeyModal();
@@ -2865,19 +2854,19 @@ function setupPWA() {
 
 function fixImageUrl(imageUrl) {
   if (!imageUrl) return 'placeholder.png';
-  
+
   // Already HTTPS
   if (imageUrl.startsWith('https://')) {
     return imageUrl;
   }
-  
+
   // HTTP - use multiple fallback proxies
   if (imageUrl.startsWith('http://')) {
     // Try weserv.nl first (better for images)
     const cleanUrl = imageUrl.replace('http://', '');
     return `https://images.weserv.nl/?url=${encodeURIComponent(cleanUrl)}&w=200&fit=cover`;
   }
-  
+
   return imageUrl;
 }
 
@@ -3026,11 +3015,11 @@ function safeLocalStorageSet(key, value, retryOnFail = true) {
     if (e.name === 'QuotaExceededError') {
       console.error('❌ Storage quota exceeded for key:', key);
       showNotification('Storage full. Clearing old data...', 'warning');
-      
+
       if (retryOnFail) {
         // Clear non-critical data first
         clearOldStorageData();
-        
+
         // Retry once
         try {
           localStorage.setItem(key, value);
@@ -3063,12 +3052,12 @@ function clearOldStorageData() {
     // favoritesKey,
     // STORAGE_KEYS.channels
   ];
-  
+
   for (const key of keysToTryClearing) {
     if (localStorage.getItem(key)) {
       console.log(`🗑️ Clearing ${key} to free space`);
       localStorage.removeItem(key);
-      
+
       // Check if we have enough space now
       try {
         const testData = 'x'.repeat(100000); // 100KB test
@@ -3082,7 +3071,7 @@ function clearOldStorageData() {
       }
     }
   }
-  
+
   console.warn('⚠️ All non-critical data cleared, but may still be low on space');
 }
 
@@ -3093,7 +3082,7 @@ function clearOldStorageData() {
 function getStorageUsage() {
   let totalSize = 0;
   const items = {};
-  
+
   for (let key in localStorage) {
     if (localStorage.hasOwnProperty(key)) {
       const size = (localStorage[key].length + key.length) * 2; // UTF-16 = 2 bytes per char
@@ -3101,7 +3090,7 @@ function getStorageUsage() {
       totalSize += size;
     }
   }
-  
+
   return {
     totalBytes: totalSize,
     totalKB: (totalSize / 1024).toFixed(2),
@@ -3120,11 +3109,11 @@ function logStorageUsage() {
   console.log(`   Total: ${usage.totalMB} MB (${usage.totalKB} KB)`);
   console.log(`   Items: ${usage.itemCount}`);
   console.log('   Breakdown:');
-  
+
   const sorted = Object.entries(usage.items)
     .sort((a, b) => b[1] - a[1])
     .slice(0, 10); // Top 10 items
-  
+
   sorted.forEach(([key, size]) => {
     console.log(`   - ${key}: ${(size / 1024).toFixed(2)} KB`);
   });
@@ -3157,10 +3146,10 @@ function exportAllData() {
         lastUpdate: localStorage.getItem(CACHE_KEY) || "0"
       }
     };
-    
+
     // Create blob and download
-    const blob = new Blob([JSON.stringify(data, null, 2)], { 
-      type: 'application/json' 
+    const blob = new Blob([JSON.stringify(data, null, 2)], {
+      type: 'application/json'
     });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -3170,10 +3159,10 @@ function exportAllData() {
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
-    
+
     showNotification('✅ Backup exported successfully', 'success');
     console.log('✅ Backup exported:', data);
-    
+
     return true;
   } catch (error) {
     console.error('❌ Export failed:', error);
@@ -3191,36 +3180,36 @@ async function importBackupData(file) {
     showNotification('❌ No file selected', 'error');
     return false;
   }
-  
+
   // Validate file type
   if (!file.name.endsWith('.json')) {
     showNotification('❌ Please select a valid JSON backup file', 'error');
     return false;
   }
-  
+
   try {
     // Read file
     const text = await file.text();
     const data = JSON.parse(text);
-    
+
     // Validate backup structure
     if (!validateBackupData(data)) {
       showNotification('❌ Invalid backup file format', 'error');
       return false;
     }
-    
+
     // Show confirmation dialog
     const confirmed = await showImportConfirmation(data);
     if (!confirmed) {
       showNotification('ℹ️ Import cancelled', 'info');
       return false;
     }
-    
+
     // Perform import
     await performImport(data);
-    
+
     return true;
-    
+
   } catch (error) {
     console.error('❌ Import failed:', error);
     showNotification('❌ Failed to import backup: ' + error.message, 'error');
@@ -3239,25 +3228,25 @@ function validateBackupData(data) {
     console.error('Invalid data structure');
     return false;
   }
-  
+
   // Check version compatibility (optional)
   if (data.version && !isVersionCompatible(data.version)) {
     console.warn('⚠️ Backup version mismatch:', data.version);
     // Still allow import, but warn user
   }
-  
+
   // Validate channels array
   if (data.channels && !Array.isArray(data.channels)) {
     console.error('Invalid channels data');
     return false;
   }
-  
+
   // Validate favorites array
   if (data.favorites && !Array.isArray(data.favorites)) {
     console.error('Invalid favorites data');
     return false;
   }
-  
+
   console.log('✅ Backup validation passed');
   return true;
 }
@@ -3280,13 +3269,13 @@ function isVersionCompatible(version) {
  */
 function showImportConfirmation(data) {
   return new Promise((resolve) => {
-    const exportDate = data.exportDate ? 
+    const exportDate = data.exportDate ?
       new Date(data.exportDate).toLocaleString() : 'Unknown';
-    
+
     const channelCount = data.channels?.length || 0;
     const favoriteCount = data.favorites?.length || 0;
     const recentCount = data.recentlyWatched?.length || 0;
-    
+
     // Create modal
     const modal = document.createElement('div');
     modal.className = 'settings-modal';
@@ -3337,21 +3326,21 @@ function showImportConfirmation(data) {
         </div>
       </div>
     `;
-    
+
     document.body.appendChild(modal);
-    
+
     // Event listeners
     document.getElementById('confirmImportBtn').addEventListener('click', () => {
       const mergeData = document.getElementById('mergeDataCheckbox').checked;
       modal.remove();
       resolve({ confirmed: true, merge: mergeData });
     });
-    
+
     document.getElementById('cancelImportBtn').addEventListener('click', () => {
       modal.remove();
       resolve({ confirmed: false });
     });
-    
+
     modal.addEventListener('click', (e) => {
       if (e.target === modal) {
         modal.remove();
@@ -3374,7 +3363,7 @@ function showImportConfirmation(data) {
 async function performImport(data) {
   const mergeMode = window._importMergeMode || false;
   delete window._importMergeMode; // Clean up
-  
+
   try {
     // Step 1: Create automatic backup of current data
     console.log('📦 Creating automatic backup of current data...');
@@ -3382,7 +3371,7 @@ async function performImport(data) {
     if (!backupSuccess) {
       console.warn('⚠️ Auto-backup failed, but continuing with import...');
     }
-    
+
     // Step 2: Import channels
     if (data.channels && data.channels.length > 0) {
       if (mergeMode) {
@@ -3405,15 +3394,15 @@ async function performImport(data) {
         console.log('🔄 Replacing channels...');
         allChannels = [...data.channels];
       }
-      
+
       safeLocalStorageSet(STORAGE_KEYS.channels, JSON.stringify(allChannels));
     }
-    
+
     // Step 3: Import favorites
     if (data.favorites) {
-      let favorites = mergeMode ? 
+      let favorites = mergeMode ?
         JSON.parse(localStorage.getItem(favoritesKey) || "[]") : [];
-      
+
       if (mergeMode) {
         // Merge favorites (avoid duplicates)
         data.favorites.forEach(fav => {
@@ -3424,15 +3413,15 @@ async function performImport(data) {
       } else {
         favorites = [...data.favorites];
       }
-      
+
       safeLocalStorageSet(favoritesKey, JSON.stringify(favorites));
     }
-    
+
     // Step 4: Import recently watched
     if (data.recentlyWatched) {
-      let recent = mergeMode ? 
+      let recent = mergeMode ?
         JSON.parse(localStorage.getItem(recentlyWatchedKey) || "[]") : [];
-      
+
       if (mergeMode) {
         // Merge recent (keep newest)
         data.recentlyWatched.forEach(item => {
@@ -3443,17 +3432,17 @@ async function performImport(data) {
       } else {
         recent = [...data.recentlyWatched];
       }
-      
+
       safeLocalStorageSet(recentlyWatchedKey, JSON.stringify(recent));
     }
-    
+
     // Step 5: Import watch time
     if (data.watchTime) {
       if (mergeMode) {
         const currentWatchTime = loadWatchTime();
         // Merge watch times (add them together)
         Object.keys(data.watchTime).forEach(channelId => {
-          currentWatchTime[channelId] = 
+          currentWatchTime[channelId] =
             (currentWatchTime[channelId] || 0) + data.watchTime[channelId];
         });
         safeLocalStorageSet("watchTimePerChannel", JSON.stringify(currentWatchTime));
@@ -3461,17 +3450,17 @@ async function performImport(data) {
         safeLocalStorageSet("watchTimePerChannel", JSON.stringify(data.watchTime));
       }
     }
-    
+
     // Step 6: Import RSS feeds (only if not merging or no existing feeds)
     if (data.rssFeeds && !mergeMode) {
       safeLocalStorageSet(STORAGE_KEYS.feeds, JSON.stringify(data.rssFeeds));
     }
-    
+
     // Step 7: Import live channels config (only if not merging)
     if (data.liveChannels && !mergeMode) {
       safeLocalStorageSet(STORAGE_KEYS.live, JSON.stringify(data.liveChannels));
     }
-    
+
     // Step 8: Import settings (only if not merging)
     if (data.settings && !mergeMode) {
       if (data.settings.autoUpdateEnabled) {
@@ -3484,7 +3473,7 @@ async function performImport(data) {
         localStorage.setItem("defaultSortMethod", data.settings.defaultSortMethod);
       }
     }
-    
+
     // Step 9: Refresh UI
     console.log('🔄 Refreshing UI...');
     renderChannels(allChannels);
@@ -3492,22 +3481,22 @@ async function performImport(data) {
     renderRecentlyWatched();
     updateFavoriteIcons();
     updateAllChannelItems();
-    
+
     // Step 10: Restart auto-update if needed
     if (!mergeMode && data.settings) {
       stopAutoUpdateService();
       startChannelAutoUpdate();
     }
-    
+
     showNotification(
-      `✅ Import successful! ${mergeMode ? 'Data merged' : 'Data restored'}`, 
+      `✅ Import successful! ${mergeMode ? 'Data merged' : 'Data restored'}`,
       'success'
     );
     console.log('✅ Import completed successfully');
-    
+
     // Close settings modal if open
     hideSettingsModal();
-    
+
   } catch (error) {
     console.error('❌ Import failed:', error);
     showNotification('❌ Import failed: ' + error.message, 'error');
@@ -3535,9 +3524,9 @@ async function createAutoBackup() {
         defaultSortMethod: localStorage.getItem("defaultSortMethod"),
       }
     };
-    
-    const blob = new Blob([JSON.stringify(data, null, 2)], { 
-      type: 'application/json' 
+
+    const blob = new Blob([JSON.stringify(data, null, 2)], {
+      type: 'application/json'
     });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -3547,7 +3536,7 @@ async function createAutoBackup() {
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
-    
+
     console.log('✅ Auto-backup created');
     return true;
   } catch (error) {
@@ -3585,7 +3574,7 @@ function triggerImportDialog() {
 function addStorageInfoToSettings() {
   const settingsContent = document.querySelector('.settings-content');
   if (!settingsContent) return;
-  
+
   const storageInfo = document.createElement('div');
   storageInfo.className = 'setting-item';
   storageInfo.innerHTML = `
@@ -3617,12 +3606,12 @@ function addStorageInfoToSettings() {
 
   document.getElementById('exportDataBtn')?.addEventListener('click', exportAllData);
   document.getElementById('importDataBtn')?.addEventListener('click', triggerImportDialog);
-  
+
   const closeBtn = document.getElementById('closeSettings');
   if (closeBtn && closeBtn.parentNode) {
     closeBtn.parentNode.insertBefore(storageInfo, closeBtn);
   }
-  
+
   const fileInput = document.getElementById('importFileInput');
   if (fileInput) {
     fileInput.addEventListener('change', handleImportFile);
@@ -3633,7 +3622,7 @@ function addStorageInfoToSettings() {
 function updateStorageDisplay() {
   const usage = getStorageUsage();
   const display = document.getElementById('storageUsageDisplay');
-  
+
   if (display) {
     let color = '#4caf50'; // Green
     if (parseFloat(usage.totalMB) > 4) {
@@ -3642,7 +3631,7 @@ function updateStorageDisplay() {
     if (parseFloat(usage.totalMB) > 8) {
       color = '#f44336'; // Red - danger zone
     }
-    
+
     display.innerHTML = `
       <span style="color: ${color}; font-weight: bold;">
         ${usage.totalMB} MB
