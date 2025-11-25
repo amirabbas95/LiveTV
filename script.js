@@ -1,23 +1,29 @@
 // ============================================
-// IPTV CHANNEL MANAGER - COMPLETE VERSION
-// Full replacement with all improvements integrated
+// IPTV CHANNEL MANAGER - ENHANCED VERSION
+// Integrated Favorites & Recently Watched improvements
 // ============================================
+
 // ============================================
 // CONSTANTS & CONFIGURATION
 // ============================================
 const AUTO_UPDATE_KEY = "autoUpdateEnabled";
 const UPDATE_INTERVAL_KEY = "updateIntervalHours";
 const MAX_RECENT = 18;
-const favoritesKey = "favorites";
-const recentlyWatchedKey = "recentlyWatched";
+
+// ✅ NEW: Improved localStorage keys with namespace
+const LS_KEYS = {
+  FAVORITES: "favorites",
+  RECENT: "recentlyWatched",
+  CHANNELS: "allChannelsData",
+  LIVE: "liveChannelsData",
+  FEEDS: "rssFeedsData",
+  WATCH_TIME: "watchTimePerChannel",
+};
+
 const API_KEY_STORAGE_KEY = "youtube_api_key";
 const CACHE_KEY = "lastChannelsUpdate";
 const CACHE_DURATION = 60 * 60 * 1000; // 1 hour
-const STORAGE_KEYS = {
-  channels: "allChannelsData",
-  live: "liveChannelsData",
-  feeds: "rssFeedsData",
-};
+
 const PLAYBACK_CONSTANTS = {
   MAX_ELEMENT_WAIT_TIME: 2000,
   PLAYER_READY_TIMEOUT: 5000,
@@ -25,6 +31,10 @@ const PLAYBACK_CONSTANTS = {
   YOUTUBE_READY_CHECK_INTERVAL: 100,
   TRANSITION_DELAY: 0,
 };
+
+// ✅ NEW: Debounce configuration
+const DEBOUNCE_MS = 180;
+
 // ============================================
 // GLOBAL STATE VARIABLES
 // ============================================
@@ -45,12 +55,15 @@ let touchStartY = 0;
 let touchEndY = 0;
 let lastTapTime = 0;
 const DOUBLE_TAP_DELAY = 300;
+
 // Search state
 let searchQuery = "";
 let filteredChannels = [];
+
 // Caches
 const rssCache = new Map();
 const liveCache = new Map();
+
 // Intervals & Timeouts
 let watchInterval = null;
 let autoUpdateInterval = null;
@@ -59,6 +72,445 @@ let overlayTimeoutHide = null;
 let numberTimeout = null;
 let navigationDebounce = null;
 let numberBuffer = "";
+
+// ============================================
+// ✅ NEW: SAFE LOCALSTORAGE HELPERS
+// ============================================
+
+/**
+ * Safely parse JSON with fallback
+ */
+function safeJSONParse(value, fallback) {
+  try {
+    return JSON.parse(value);
+  } catch (e) {
+    console.warn('JSON parse error:', e);
+    return fallback;
+  }
+}
+
+/**
+ * Read array from localStorage safely
+ */
+function readArray(key) {
+  const raw = localStorage.getItem(key);
+  const parsed = safeJSONParse(raw, null);
+  if (Array.isArray(parsed)) return parsed;
+  return [];
+}
+
+/**
+ * Write array to localStorage safely
+ */
+function writeArray(key, arr) {
+  try {
+    localStorage.setItem(key, JSON.stringify(arr));
+    return true;
+  } catch (e) {
+    console.error('localStorage write error:', e);
+    if (e.name === 'QuotaExceededError') {
+      showNotification('Storage full - clearing old data', 'warning');
+      clearOldStorageData();
+      try {
+        localStorage.setItem(key, JSON.stringify(arr));
+        return true;
+      } catch (e2) {
+        console.error('Still failed after cleanup:', e2);
+        return false;
+      }
+    }
+    return false;
+  }
+}
+
+// ============================================
+// ✅ NEW: DEBOUNCE UTILITY
+// ============================================
+
+/**
+ * Debounce function to limit rapid calls
+ */
+function debounce(fn, wait = 200) {
+  let timeout;
+  return function (...args) {
+    clearTimeout(timeout);
+    timeout = setTimeout(() => fn.apply(this, args), wait);
+  };
+}
+
+// ============================================
+// ✅ NEW: ENHANCED FAVORITES API
+// ============================================
+
+/**
+ * Get all favorites with validation
+ */
+function getFavorites() {
+  const favorites = readArray(LS_KEYS.FAVORITES);
+  // Validate structure: ensure each item has required fields
+  return favorites.filter(fav =>
+    fav && fav.url && fav.name
+  );
+}
+
+/**
+ * Check if channel is favorited
+ */
+function isFavorite(url) {
+  if (!url) return false;
+  return getFavorites().some(fav => fav.url === url);
+}
+
+/**
+ * Add channel to favorites
+ */
+function addFavorite(channelData) {
+  if (!channelData || !channelData.url) {
+    console.warn('Invalid channel data for favorite');
+    return false;
+  }
+
+  const favorites = getFavorites();
+
+  // Check if already exists
+  if (favorites.some(fav => fav.url === channelData.url)) {
+    console.log('Channel already in favorites');
+    return false;
+  }
+
+  // Add to beginning of array
+  favorites.unshift({
+    name: channelData.name,
+    url: channelData.url,
+    image: channelData.image,
+    description: channelData.description,
+    number: channelData.number,
+    isLive: channelData.isLive,
+    category: channelData.category || "Unknown",
+    addedAt: Date.now()
+  });
+
+  const success = writeArray(LS_KEYS.FAVORITES, favorites);
+
+  if (success) {
+    dispatchStorageUpdate('favorites');
+    return true;
+  }
+
+  return false;
+}
+
+/**
+ * Remove channel from favorites
+ */
+function removeFavorite(url) {
+  if (!url) return false;
+
+  const favorites = getFavorites();
+  const newFavorites = favorites.filter(fav => fav.url !== url);
+
+  if (newFavorites.length === favorites.length) {
+    console.log('Channel not in favorites');
+    return false;
+  }
+
+  const success = writeArray(LS_KEYS.FAVORITES, newFavorites);
+
+  if (success) {
+    dispatchStorageUpdate('favorites');
+    return true;
+  }
+
+  return false;
+}
+
+/**
+ * Toggle favorite status
+ */
+function toggleFavoriteStatus(channelData) {
+  if (!channelData || !channelData.url) {
+    console.warn('Invalid channel data');
+    return false;
+  }
+
+  if (isFavorite(channelData.url)) {
+    return removeFavorite(channelData.url);
+
+  } else {
+    return addFavorite(channelData);
+  }
+}
+
+/**
+ * Clear all favorites
+ */
+function clearAllFavorites() {
+  const success = writeArray(LS_KEYS.FAVORITES, []);
+  if (success) {
+    dispatchStorageUpdate('favorites');
+  }
+  return success;
+}
+
+// ============================================
+// ✅ NEW: ENHANCED RECENTLY WATCHED API
+// ============================================
+
+/**
+ * Get recently watched channels with timestamp validation
+ */
+function getRecentlyWatched() {
+  const raw = readArray(LS_KEYS.RECENT);
+
+  // Normalize and validate entries
+  const normalized = raw.map(item => {
+    // Handle legacy format (just URL string)
+    if (typeof item === 'string') {
+      return { url: item, watchedAt: 0 };
+    }
+
+    // Validate object format
+    if (item && item.url) {
+      return {
+        url: item.url,
+        name: item.name,
+        image: item.image,
+        description: item.description,
+        number: item.number,
+        isLive: item.isLive,
+        category: item.category,
+        watchedAt: item.watchedAt || item.at || 0
+      };
+    }
+
+    return null;
+  }).filter(Boolean);
+
+  return normalized;
+}
+
+/**
+ * Add channel to recently watched (with debounce)
+ */
+function addToRecentlyWatched(channelData, opts = {}) {
+  if (!channelData || !channelData.url) {
+    console.warn('Invalid channel data for recent');
+    return false;
+  }
+
+  const timestamp = opts.timestamp ?? Date.now();
+  const recent = getRecentlyWatched();
+
+  // Remove if already exists
+  const filtered = recent.filter(item => item.url !== channelData.url);
+
+  // Add to beginning with timestamp
+  filtered.unshift({
+    name: channelData.name,
+    url: channelData.url,
+    image: channelData.image,
+    description: channelData.description,
+    number: channelData.number,
+    isLive: channelData.isLive,
+    category: channelData.category || "Unknown",
+    watchedAt: timestamp
+  });
+
+  // Keep only MAX_RECENT items
+  const trimmed = filtered.slice(0, MAX_RECENT);
+
+  const success = writeArray(LS_KEYS.RECENT, trimmed);
+
+  if (success) {
+    dispatchStorageUpdate('recent');
+    return true;
+  }
+
+  return false;
+}
+
+/**
+ * Debounced version of addToRecentlyWatched
+ */
+const debouncedAddRecent = debounce((channelData) => {
+  addToRecentlyWatched(channelData);
+}, DEBOUNCE_MS);
+
+/**
+ * Remove channel from recently watched
+ */
+function removeFromRecentlyWatched(url) {
+  if (!url) return false;
+
+  const recent = getRecentlyWatched();
+  const filtered = recent.filter(item => item.url !== url);
+
+  if (filtered.length === recent.length) {
+    console.log('Channel not in recent');
+    return false;
+  }
+
+  const success = writeArray(LS_KEYS.RECENT, filtered);
+
+  if (success) {
+    dispatchStorageUpdate('recent');
+    return true;
+  }
+
+  return false;
+}
+
+/**
+ * Clear all recently watched
+ */
+function clearRecentlyWatched() {
+  const success = writeArray(LS_KEYS.RECENT, []);
+  if (success) {
+    dispatchStorageUpdate('recent');
+  }
+  return success;
+}
+
+// ============================================
+// ✅ NEW: CROSS-TAB SYNCHRONIZATION
+// ============================================
+
+/**
+ * Dispatch custom event for storage updates
+ */
+function dispatchStorageUpdate(type) {
+  window.dispatchEvent(new CustomEvent('iptv-storage-updated', {
+    detail: { type }
+  }));
+}
+
+/**
+ * Listen to storage events from other tabs
+ */
+window.addEventListener('storage', (e) => {
+  if (e.key === LS_KEYS.FAVORITES) {
+    console.log('📡 Favorites updated in another tab');
+    dispatchStorageUpdate('favorites');
+  }
+  if (e.key === LS_KEYS.RECENT) {
+    console.log('📡 Recent updated in another tab');
+    dispatchStorageUpdate('recent');
+  }
+});
+
+/**
+ * Handle storage updates (same tab + other tabs)
+ */
+window.addEventListener('iptv-storage-updated', (e) => {
+  const type = e.detail && e.detail.type;
+
+  if (!type) {
+    // Refresh everything if type unknown
+    renderFavorites();
+    renderRecentlyWatched();
+    updateFavoriteIcons();
+    return;
+  }
+
+  if (type === 'favorites') {
+    renderFavorites();
+    updateFavoriteIcons();
+  }
+
+  if (type === 'recent') {
+    renderRecentlyWatched();
+  }
+});
+
+// ============================================
+// LEGACY COMPATIBILITY LAYER
+// ============================================
+
+/**
+ * Migrate old favorites format to new format
+ */
+function migrateLegacyFavorites() {
+  const oldKey = "favorites";
+  const oldFavorites = localStorage.getItem(oldKey);
+
+  if (!oldFavorites) return;
+
+  try {
+    const parsed = JSON.parse(oldFavorites);
+    if (Array.isArray(parsed) && parsed.length > 0) {
+      console.log('🔄 Migrating old favorites format...');
+
+      // Check if already in new format
+      const newFavorites = getFavorites();
+      if (newFavorites.length === 0) {
+        writeArray(LS_KEYS.FAVORITES, parsed);
+        console.log('✅ Favorites migrated successfully');
+      }
+    }
+  } catch (e) {
+    console.warn('Migration failed:', e);
+  }
+}
+
+/**
+ * Migrate old recently watched format
+ */
+function migrateLegacyRecent() {
+  const oldKey = "recentlyWatched";
+  const oldRecent = localStorage.getItem(oldKey);
+
+  if (!oldRecent) return;
+
+  try {
+    const parsed = JSON.parse(oldRecent);
+    if (Array.isArray(parsed) && parsed.length > 0) {
+      console.log('🔄 Migrating old recent format...');
+
+      const newRecent = getRecentlyWatched();
+      if (newRecent.length === 0) {
+        // Add timestamps to old entries
+        const withTimestamps = parsed.map((item, index) => ({
+          ...item,
+          watchedAt: Date.now() - (index * 1000) // Stagger timestamps
+        }));
+        writeArray(LS_KEYS.RECENT, withTimestamps);
+        console.log('✅ Recent watched migrated successfully');
+      }
+    }
+  } catch (e) {
+    console.warn('Migration failed:', e);
+  }
+}
+
+/**
+ * Wrapper functions for backward compatibility
+ */
+function saveRecentlyWatched(channel) {
+  debouncedAddRecent(channel);
+}
+
+function toggleFavorite(url, name, image, description, number, isLive, category, event) {
+  if (event) event.stopPropagation();
+
+  const channelData = {
+    url, name, image, description, number, isLive,
+    category: category || "Unknown"
+  };
+
+  const success = toggleFavoriteStatus(channelData);
+
+  if (success) {
+    // Immediate UI update
+    setTimeout(() => {
+      renderFavorites();
+      updateFavoriteIcons();
+      updateAllChannelItems();
+    }, PLAYBACK_CONSTANTS.DOM_MUTATION_CHECK_INTERVAL);
+  } else {
+    showNotification('Failed to update favorite', 'error');
+  }
+}
+
 // ============================================
 // CANCELLATION TOKEN SYSTEM
 // ============================================
@@ -80,6 +532,7 @@ class CancellationToken {
     return this.cancelled;
   }
 }
+
 // ============================================
 // CHANNEL LOADER CLASS
 // ============================================
@@ -89,6 +542,7 @@ class ChannelLoader {
     this.playerInstance = null;
     this.eventCleanupCallbacks = [];
   }
+
   async loadChannel(url, name, image, description, number, isLive) {
     if (this.currentOperation) {
       this.currentOperation.cancel('New channel selected');
@@ -106,13 +560,12 @@ class ChannelLoader {
       token.throwIfCancelled();
       await this.initializePlayer(url, name, isLive, token);
       token.throwIfCancelled();
-      //console.log(`✅ Channel loaded successfully: ${name}`);
     } catch (error) {
       if (!token.isCancelled()) {
         console.error(`❌ Failed to load channel ${name}:`, error);
         showErrorToUser(`Failed to load ${name}: ${error.message}`);
       } else {
-        console.log(`⏭️ Channel load cancelled: ${name} - ${error.message}`);
+        console.log(`⭕️ Channel load cancelled: ${name} - ${error.message}`);
       }
     } finally {
       if (this.currentOperation === token) {
@@ -120,6 +573,7 @@ class ChannelLoader {
       }
     }
   }
+
   updateChannelUI(name, image, description, number) {
     const updates = {
       'content-image': (el) => el.src = fixImageUrl(image) || 'placeholder.png',
@@ -133,9 +587,7 @@ class ChannelLoader {
       if (element) updateFn(element);
     });
     lastFocusedElement = document.activeElement;
-    //showChannelInfoOverlay();
   }
-
 
   async cleanupPlayer() {
     stopWatching();
@@ -154,7 +606,6 @@ class ChannelLoader {
         if (oldElement && oldElement.parentNode) {
           oldElement.parentNode.removeChild(oldElement);
         }
-        //console.log('✅ Player cleaned up successfully');
       } catch (error) {
         console.warn('⚠️ Error during player cleanup:', error);
         this.playerInstance = null;
@@ -181,7 +632,6 @@ class ChannelLoader {
   }
 
   async initializePlayer(url, name, isLive, token) {
-
     const container = await this.waitForElement('player-container');
     token.throwIfCancelled();
     const streamConfig = createStreamConfig(url);
@@ -196,14 +646,12 @@ class ChannelLoader {
     token.throwIfCancelled();
     const playerConfig = buildPlayerOptions(streamConfig, metadata);
     console.log('🎬 Initializing Video.js player...');
-    // Wrap player initialization in try-catch for HLS errors
     try {
       this.playerInstance = videojs(videoElement, playerConfig);
     } catch (error) {
       console.error('❌ Player initialization failed:', error);
       throw new Error(`Failed to initialize player: ${error.message}`);
     }
-    // Set up HLS error recovery
     if (streamConfig.type === 'hls' && this.playerInstance.tech({
       IWillNotUseThisInPlugins: true
     })) {
@@ -219,6 +667,7 @@ class ChannelLoader {
     showChannelInfoOverlay();
     await this.attemptAutoplay();
   }
+
   setupHLSErrorRecovery() {
     if (!this.playerInstance) return;
     const tech = this.playerInstance.tech({
@@ -231,7 +680,6 @@ class ChannelLoader {
       errorCount++;
       console.warn(`⚠️ HLS error detected (${errorCount}/${maxErrors})`);
       if (errorCount < maxErrors) {
-        // Try to recover
         setTimeout(() => {
           if (this.playerInstance && tech.vhs) {
             console.log('🔄 Attempting HLS recovery...');
@@ -259,6 +707,7 @@ class ChannelLoader {
       });
     }
   }
+
   createVideoElement(id) {
     const video = document.createElement('video');
     video.id = id;
@@ -270,6 +719,7 @@ class ChannelLoader {
     video.setAttribute('crossorigin', 'anonymous');
     return video;
   }
+
   waitForElement(id) {
     return new Promise((resolve, reject) => {
       const existing = document.getElementById(id);
@@ -295,6 +745,7 @@ class ChannelLoader {
       }, PLAYBACK_CONSTANTS.MAX_ELEMENT_WAIT_TIME);
     });
   }
+
   waitForPlayerReady(token) {
     return new Promise((resolve, reject) => {
       if (!this.playerInstance) {
@@ -317,7 +768,6 @@ class ChannelLoader {
           return;
         }
         resolved = true;
-        //console.log('✅ Player ready');
         resolve();
       });
       this.playerInstance.one('error', () => {
@@ -329,19 +779,20 @@ class ChannelLoader {
       });
     });
   }
+
   async attemptAutoplay() {
     if (!this.playerInstance) return;
     try {
       const playPromise = this.playerInstance.play();
       if (playPromise !== undefined) {
         await playPromise;
-        //console.log('✅ Autoplay successful');
       }
     } catch (error) {
       console.warn('⚠️ Autoplay blocked:', error.message);
       this.showPlayButton();
     }
   }
+
   setupPlayerEvents(name, isLive, isYouTube, token) {
     if (!this.playerInstance) return;
     this.playerInstance.off();
@@ -354,15 +805,13 @@ class ChannelLoader {
         type: error?.type,
         metadata: error?.metadata
       });
-      // Handle specific error codes
       if (error) {
         switch (error.code) {
-          case 1: // MEDIA_ERR_ABORTED
+          case 1:
             console.warn('⚠️ Media loading aborted');
             break;
-          case 2: // MEDIA_ERR_NETWORK
+          case 2:
             console.warn('⚠️ Network error - attempting recovery...');
-            // Try to reload the source
             setTimeout(() => {
               if (this.playerInstance && !token.isCancelled()) {
                 console.log('🔄 Attempting to reload stream...');
@@ -373,13 +822,13 @@ class ChannelLoader {
                   showErrorToUser('Stream failed to load. Please try again.');
                 });
               }
-            }, 2000);
-            return; // Don't stop watching yet
-          case 3: // MEDIA_ERR_DECODE
+            }, PLAYBACK_CONSTANTS.MAX_ELEMENT_WAIT_TIME);
+            return;
+          case 3:
             console.error('❌ Decoding error - stream format issue');
             showErrorToUser('Stream format not supported');
             break;
-          case 4: // MEDIA_ERR_SRC_NOT_SUPPORTED
+          case 4:
             console.error('❌ Source not supported');
             showErrorToUser('Stream format not supported');
             break;
@@ -403,7 +852,7 @@ class ChannelLoader {
     };
     const endedHandler = () => {
       if (token.isCancelled()) return;
-      console.log('⏹️ Playback ended');
+      console.log('ℹ️ Playback ended');
       stopWatching();
     };
     const metadataHandler = () => {
@@ -416,7 +865,6 @@ class ChannelLoader {
         this.playerInstance.controls(false);
       }
     };
-    // HLS-specific error recovery
     const retryHandler = () => {
       if (token.isCancelled()) return;
       console.log('🔄 Attempting HLS recovery...');
@@ -440,6 +888,7 @@ class ChannelLoader {
       }
     });
   }
+
   setupYouTubeQualityMonitoring(token) {
     const checkInterval = PLAYBACK_CONSTANTS.YOUTUBE_READY_CHECK_INTERVAL;
     let attempts = 0;
@@ -476,13 +925,13 @@ class ChannelLoader {
             console.warn('Could not remove YouTube quality listener:', e);
           }
         });
-        //console.log('✅ YouTube quality monitoring setup complete');
       } catch (error) {
         console.warn('⚠️ YouTube quality monitoring setup failed:', error);
       }
     };
     checkYouTubeReady();
   }
+
   updateQualityDisplay() {
     if (!this.playerInstance) return;
     const qualityEl = document.getElementById('video-quality');
@@ -490,6 +939,7 @@ class ChannelLoader {
     const height = this.playerInstance.videoHeight();
     qualityEl.textContent = height ? `${height}p` : 'Auto';
   }
+
   showPlayButton() {
     const existing = document.querySelector('.play-fallback-overlay');
     if (existing && existing.parentNode) {
@@ -552,6 +1002,7 @@ transition: transform 0.2s;
       }
     });
   }
+
   cleanupEventListeners() {
     this.eventCleanupCallbacks.forEach(cleanup => {
       try {
@@ -562,31 +1013,17 @@ transition: transform 0.2s;
     });
     this.eventCleanupCallbacks = [];
   }
+
   getPlayer() {
     return this.playerInstance;
   }
 }
-// ============================================
-// GLOBAL INSTANCE
-// ============================================
+
 const channelLoader = new ChannelLoader();
+
 // ============================================
 // UTILITY FUNCTIONS
 // ============================================
-// CORS proxy fallback
-function attemptCorsProxy(url) {
-  const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(url)}`;
-  log(`Trying CORS proxy: ${proxyUrl}`, 'info');
-  if (playerInstance) {
-    playerInstance.src({
-      src: proxyUrl,
-      type: 'application/x-mpegURL'
-    });
-    playerInstance.play().catch(e => {
-      log(`CORS proxy also failed: ${e.message}`, 'error');
-    });
-  }
-}
 
 function extractYouTubeID(url) {
   const match = url.match(
@@ -606,8 +1043,7 @@ function log(message, isError = false) {
 `;
   logArea.scrollTop = logArea.scrollHeight;
 }
-// ONLY SHOWING THE FIXED showNotification FUNCTION
-// Replace this function in your existing script.js
+
 function showNotification(message, type = "info") {
   console.log(`🔔 ${type.toUpperCase()}: ${message}`);
   const colors = {
@@ -631,23 +1067,21 @@ z-index: 10001;
 font-weight: 500;
 box-shadow: 0 4px 6px rgba(0,0,0,0.3);
 min-width: 250px;
-transition: left 0.4s ease, opacity 0.4s ease;
+transition: top 0.4s ease, opacity 0.4s ease;
 `;
   notification.textContent = message;
   document.body.appendChild(notification);
 
-  // Trigger slide-in animation
   requestAnimationFrame(() => {
     notification.style.top = '20px';
     notification.style.opacity = '1';
   });
-  // Auto-hide after 3 seconds
+
   setTimeout(() => {
     notification.style.top = '-100px';
     notification.style.opacity = '0';
     setTimeout(() => notification.remove(), 400);
   }, 3000);
-
 }
 
 function showErrorToUser(message) {
@@ -669,7 +1103,7 @@ function showErrorToUser(message) {
   setTimeout(() => {
     errorDiv.style.opacity = '0';
     setTimeout(() => errorDiv.remove(), 300);
-  }, 5000);
+  }, PLAYBACK_CONSTANTS.PLAYER_READY_TIMEOUT);
 }
 
 function getTimeAgo(timestamp) {
@@ -682,12 +1116,14 @@ function getTimeAgo(timestamp) {
   const days = Math.floor(hours / 24);
   return `${days} day${days > 1 ? "s" : ""} ago`;
 }
+
 // ============================================
 // API KEY MANAGEMENT
 // ============================================
+
 function saveAPIKey(apiKey) {
   if (apiKey && apiKey.trim()) {
-    const encrypted = btoa(btoa(apiKey.trim())); // Double encoding
+    const encrypted = btoa(btoa(apiKey.trim()));
     localStorage.setItem(API_KEY_STORAGE_KEY, encrypted);
     API_KEY = apiKey.trim();
     return true;
@@ -718,12 +1154,13 @@ function clearAPIKey() {
   localStorage.removeItem(API_KEY_STORAGE_KEY);
   API_KEY = "";
 }
+
 // ============================================
 // VIDEO PLAYER FUNCTIONS
 // ============================================
+
 function createStreamConfig(url) {
   const youtubeID = extractYouTubeID(url);
-  // 1. Check for YouTube ID
   if (youtubeID) {
     return {
       type: 'youtube',
@@ -734,16 +1171,12 @@ function createStreamConfig(url) {
       }
     };
   }
-  // 2. Fix mixed content: Show error for HTTP URLs on HTTPS sites
   if (window.location.protocol === 'https:' && url.startsWith('http://')) {
     console.error(`❌ Mixed Content Error: Cannot load HTTP stream on HTTPS page`);
     console.log(`Stream URL: ${url}`);
-    // Show user-friendly error
     setTimeout(() => {
       showErrorToUser('⚠️ This stream uses HTTP and cannot be played on this HTTPS site. Please contact the stream provider for an HTTPS URL.');
     }, 500);
-
-    // Return a dummy config that will fail gracefully
     return {
       type: 'hls',
       techOrder: ['html5'],
@@ -753,7 +1186,6 @@ function createStreamConfig(url) {
       }
     };
   }
-  // 3. Check for 'imarkaz' link and force MP4 type
   if (url.includes('imarkaz')) {
     return {
       type: 'mp4',
@@ -764,7 +1196,6 @@ function createStreamConfig(url) {
       }
     };
   }
-  // 3. Fallback to file extension check
   const ext = url.split('?')[0].split('.').pop().toLowerCase();
   switch (ext) {
     case 'mp4':
@@ -820,14 +1251,12 @@ function buildPlayerOptions(streamConfig, metadata) {
     sources: [streamConfig.source],
     playbackRates: [0.5, 1, 1.25, 1.5, 2],
     loadingSpinner: true,
-    errorDisplay: false, // Suppress automatic error display
-    // Additional recommended options
+    errorDisplay: false,
     html5: {
       nativeTextTracks: false,
       preloadTextTracks: false
     }
   };
-  // YouTube-specific configuration
   if (streamConfig.type === 'youtube') {
     baseOptions.youtube = {
       ytControls: true,
@@ -839,19 +1268,18 @@ function buildPlayerOptions(streamConfig, metadata) {
         rel: 0,
         modestbranding: 1,
         iv_load_policy: 3,
-        enablejsapi: 1, // Enable JS API for better control
-        origin: window.location.origin // Security improvement
+        enablejsapi: 1,
+        origin: window.location.origin
       }
     };
   }
-  // HLS-specific configuration
   if (streamConfig.type === 'hls') {
     baseOptions.html5 = {
       vhs: {
         overrideNative: true,
         enableLowInitialPlaylist: true,
         smoothQualityChange: true,
-        bandwidth: 4194304, // 4 Mbps initial bandwidth estimate
+        bandwidth: 4194304,
         withCredentials: false,
         limitRenditionByPlayerDimensions: false,
         useDevicePixelRatio: false,
@@ -864,16 +1292,14 @@ function buildPlayerOptions(streamConfig, metadata) {
         timeout: 45000,
         enablePlaylistRefresh: true,
         playlistRefreshInterval: 30000,
-        // Additional HLS optimizations
         maxBufferLength: 30,
-        maxBufferSize: 60 * 1024 * 1024, // 60MB buffer
+        maxBufferSize: 60 * 1024 * 1024,
         bufferBehind: 30
       },
       nativeAudioTracks: false,
       nativeVideoTracks: false
     };
   }
-  // Add DASH support if needed
   if (streamConfig.type === 'dash') {
     baseOptions.html5 = baseOptions.html5 || {};
     baseOptions.html5.vhs = {
@@ -884,6 +1310,7 @@ function buildPlayerOptions(streamConfig, metadata) {
   }
   return baseOptions;
 }
+
 async function selectChannel(url, name, image, description, number, isLive) {
   if (!url) {
     console.warn('⚠️ No URL provided for channel selection');
@@ -895,13 +1322,11 @@ async function selectChannel(url, name, image, description, number, isLive) {
 function showChannelInfoOverlay() {
   const channelInfoOverlay = document.getElementById("channel-info-overlay");
   if (!channelInfoOverlay) return;
-
   const modal = document.getElementById("videoModal");
   if (modal) {
-    modal.style.display = "flex"; // Change from "flex" to ensure it works
-    modal.classList.remove("hidden"); // Remove Tailwind's hidden class
+    modal.style.display = "flex";
+    modal.classList.remove("hidden");
   }
-
   channelInfoOverlay.classList.remove("show");
   overlayTimeoutShow = setTimeout(() => {
     channelInfoOverlay.classList.add("show");
@@ -917,27 +1342,18 @@ function closeModal() {
     modal.style.display = "none";
     modal.classList.add("hidden");
   }
-
   channelLoader.cleanupPlayer().then(() => {
-    // Player cleaned up
   }).catch(error => {
     console.warn('⚠️ Error during player cleanup:', error);
   });
-
-  // 1. Re-render the Recently Watched list to show the new history order
   renderRecentlyWatched();
-
-  // 2. CRITICAL: Rebuild the channel list with the new DOM elements
-  updateAllChannelItems(); // <-- MOVE THIS UP
-
-  // 3. Restore Focus: Now the fallback focus lands on the correct new element at index 0
+  updateAllChannelItems();
   if (lastFocusedElement && lastFocusedElement.isConnected) {
     lastFocusedElement.focus();
-    // Also need to sync focusedIndex if using this method
     focusedIndex = allChannelItems.indexOf(lastFocusedElement);
   } else if (allChannelItems.length > 0) {
     allChannelItems[0].focus();
-    focusedIndex = 0; // <-- ALWAYS sync focusedIndex!
+    focusedIndex = 0;
   }
 }
 
@@ -951,9 +1367,11 @@ function toggleFullscreen() {
     }
   }
 }
+
 // ============================================
 // WATCH TIME MANAGEMENT
 // ============================================
+
 function startWatching(channelId) {
   stopWatching();
   currentChannelId = channelId;
@@ -971,27 +1389,21 @@ function stopWatching() {
     watchInterval = null;
   }
   saveCurrentWatchTime();
-  //console.log(`⏸️ Stopped watching: ${currentChannelId}`);
   currentChannelId = "";
   watchStartTime = 0;
 }
 
 function saveCurrentWatchTime() {
   if (!currentChannelId || !watchStartTime) return;
-
   const watchedMs = Date.now() - watchStartTime;
   const watchedSeconds = Math.floor(watchedMs / 1000);
   if (watchedSeconds < 5) return;
-
   const watchData = loadWatchTime();
   watchData[currentChannelId] = (watchData[currentChannelId] || 0) + watchedSeconds;
-
-  // Use safe storage instead of direct localStorage.setItem
   const success = safeLocalStorageSet(
-    "watchTimePerChannel",
+    LS_KEYS.WATCH_TIME,
     JSON.stringify(watchData)
   );
-
   if (success) {
     watchStartTime = Date.now();
   } else {
@@ -1001,7 +1413,7 @@ function saveCurrentWatchTime() {
 
 function loadWatchTime() {
   try {
-    return JSON.parse(localStorage.getItem("watchTimePerChannel")) || {};
+    return JSON.parse(localStorage.getItem(LS_KEYS.WATCH_TIME)) || {};
   } catch (e) {
     console.error("Error loading watch time:", e);
     return {};
@@ -1019,79 +1431,19 @@ function sortChannelsByWatchTime(channels) {
 
 function saveChannelsData(channels) {
   const success = safeLocalStorageSet(
-    STORAGE_KEYS.channels,
+    LS_KEYS.CHANNELS,
     JSON.stringify(channels)
   );
-
   if (!success) {
     console.error('Failed to save channels data');
-    // Optionally show user a dialog to export data
     promptDataExport();
   }
-
   return success;
 }
+
 // ============================================
-// CHANNEL UI FUNCTIONS
+// ✅ ENHANCED CHANNEL UI FUNCTIONS
 // ============================================
-// Example 4: Saving recently watched
-function saveRecentlyWatched(channel) {
-  const {
-    name, url, image, description, number,
-    isLive = "true", category = "Unknown",
-  } = channel;
-
-  let recent = JSON.parse(localStorage.getItem(recentlyWatchedKey) || "[]");
-  recent = recent.filter((item) => item.url !== url);
-  recent.unshift({
-    name, url, image, description, number, isLive, category,
-  });
-
-  if (recent.length > MAX_RECENT) {
-    recent.pop();
-  }
-
-  // Use safe storage
-  const success = safeLocalStorageSet(
-    recentlyWatchedKey,
-    JSON.stringify(recent)
-  );
-
-  if (success) {
-    renderRecentlyWatched();
-  }
-}
-
-// Example 3: Saving favorites
-function toggleFavorite(url, name, image, description, number, isLive, category, event) {
-  if (event) event.stopPropagation();
-
-  let favorites = JSON.parse(localStorage.getItem(favoritesKey) || "[]");
-  const index = favorites.findIndex((item) => item.url === url);
-
-  if (index > -1) {
-    favorites.splice(index, 1);
-  } else {
-    favorites.unshift({
-      name, url, image, description, number, isLive, category,
-    });
-  }
-
-  // Use safe storage
-  const success = safeLocalStorageSet(
-    favoritesKey,
-    JSON.stringify(favorites)
-  );
-
-  if (!success) {
-    showNotification('Failed to save favorite', 'error');
-    return; // Don't update UI if save failed
-  }
-
-  renderFavorites();
-  updateFavoriteIcons();
-  updateAllChannelItems();
-}
 
 function createChannelItem(channel) {
   const item = document.createElement("div");
@@ -1110,6 +1462,7 @@ function createChannelItem(channel) {
   item.dataset.number = numberText;
   item.dataset.isLive = channel.isLive;
   item.dataset.category = channel.category || "Unknown";
+
   const clickHandler = (e) => {
     e.stopPropagation();
     if (e.target.classList.contains("favorite-icon") ||
@@ -1124,14 +1477,17 @@ function createChannelItem(channel) {
       channel.number,
       channel.isLive
     );
+    // ✅ Use debounced version for recently watched
     saveRecentlyWatched(channel);
   };
+
   item.addEventListener("click", clickHandler);
   item._clickHandler = clickHandler;
+
   const wrapper = document.createElement("div");
   wrapper.className = "thumb-wrapper";
+
   const img = document.createElement("img");
-  // FIX: Use the proxy function for images
   img.src = fixImageUrl(channel.image);
   img.alt = `${channel.name} Logo`;
   img.loading = "lazy";
@@ -1140,9 +1496,11 @@ function createChannelItem(channel) {
     this.src = "placeholder.png";
     this.alt = "Image not available";
   };
+
   const numberBadge = document.createElement("span");
   numberBadge.className = "channel-number";
   numberBadge.textContent = channel.number;
+
   if (channel.isLive === true || channel.isLive === "true") {
     const liveIndicator = document.createElement("img");
     liveIndicator.src = "live.webp";
@@ -1150,11 +1508,14 @@ function createChannelItem(channel) {
     liveIndicator.className = "live-indicator";
     wrapper.appendChild(liveIndicator);
   }
+
   wrapper.appendChild(img);
   wrapper.appendChild(numberBadge);
+
   const favoriteIcon = document.createElement("span");
   favoriteIcon.className = "favorite-icon";
   favoriteIcon.innerHTML = '<i class="fas fa-star"></i>';
+
   const favoriteHandler = (e) => {
     e.stopPropagation();
     toggleFavorite(
@@ -1168,10 +1529,13 @@ function createChannelItem(channel) {
       e
     );
   };
+
   favoriteIcon.addEventListener("click", favoriteHandler);
   item._favoriteHandler = favoriteHandler;
+
   item.appendChild(wrapper);
   item.appendChild(favoriteIcon);
+
   return item;
 }
 
@@ -1186,23 +1550,25 @@ function cleanupChannelItems() {
       favoriteIcon.removeEventListener("click", item._favoriteHandler);
       delete item._favoriteHandler;
     }
-    // Remove from DOM if not connected
     if (!item.isConnected) {
       item.remove();
     }
   });
-  allChannelItems.length = 0; // Clear the array
+  allChannelItems.length = 0;
 }
 
 function renderChannels(channels) {
   cleanupChannelItems();
   const mainContainer = document.getElementById("channels");
   if (!mainContainer) return;
+
   const existingGrids = mainContainer.querySelectorAll(".content-grid");
   const existingHeadings = mainContainer.querySelectorAll("h2:not(.sort-container h2)");
   existingGrids.forEach((grid) => grid.remove());
   existingHeadings.forEach((heading) => heading.remove());
+
   const fragment = document.createDocumentFragment();
+
   if (currentSortMethod === "none") {
     const categorizedChannels = channels.reduce((acc, channel) => {
       const category = channel.category || "Unknown";
@@ -1210,47 +1576,61 @@ function renderChannels(channels) {
       acc[category].push(channel);
       return acc;
     }, {});
+
     for (const category in categorizedChannels) {
       const channelCount = categorizedChannels[category].length;
       const categoryHeading = document.createElement("h2");
       categoryHeading.textContent = `${category} (${channelCount})`;
       categoryHeading.className = "text-xl font-bold mt-6 mb-4 col-span-full";
+
       const categoryGrid = document.createElement("div");
       categoryGrid.className = "content-grid";
+
       categorizedChannels[category].forEach((channel) => {
         const item = createChannelItem(channel);
         categoryGrid.appendChild(item);
       });
+
       fragment.appendChild(categoryHeading);
       fragment.appendChild(categoryGrid);
     }
   } else {
     const totalChannelCount = channels.length;
     const mainHeading = document.createElement("h2");
-    mainHeading.textContent = `> Channels < (${totalChannelCount})`;
+    mainHeading.textContent = `> All Channels < (${totalChannelCount})`;
     mainHeading.className = "text-xl font-bold mt-6 mb-4 col-span-full";
+
     const categoryGrid = document.createElement("div");
     categoryGrid.className = "content-grid";
+
     channels.forEach((channel) => {
       const item = createChannelItem(channel);
       categoryGrid.appendChild(item);
     });
+
     fragment.appendChild(mainHeading);
     fragment.appendChild(categoryGrid);
   }
+
   mainContainer.appendChild(fragment);
   updateAllChannelItems();
   console.log(`✅ Rendered ${channels.length} channels in ${currentSortMethod} view`);
 }
 
+// ✅ ENHANCED: Render favorites with new API
 function renderFavorites() {
   const container = document.getElementById("favoritesGrid");
   if (!container) return;
-  const favorites = JSON.parse(localStorage.getItem(favoritesKey) || "[]");
+
+  const favorites = getFavorites();
   container.innerHTML = "";
+
   const favSection = document.getElementById("favorites");
   if (favorites.length === 0) {
-    if (favSection) favSection.style.display = "none";
+
+    favSection.style.display = "grid"; // or "block"
+        container.innerHTML = '<p class="text-gray-400 col-span-full text-center">No favorites yet</p>';
+
   } else {
     if (favSection) favSection.style.display = "grid";
     favorites.forEach((channel) => {
@@ -1260,14 +1640,20 @@ function renderFavorites() {
   }
 }
 
+// ✅ ENHANCED: Render recently watched with timestamps
 function renderRecentlyWatched() {
   const container = document.getElementById("recentlyWatchedGrid");
   if (!container) return;
-  const recent = JSON.parse(localStorage.getItem(recentlyWatchedKey) || "[]");
+
+  const recent = getRecentlyWatched();
   container.innerHTML = "";
+
   const recentSection = document.getElementById("recentlyWatched");
   if (recent.length === 0) {
-    if (recentSection) recentSection.style.display = "none";
+
+    recentSection.style.display = "grid"; // or "block"
+    container.innerHTML = '<p class="text-gray-400 col-span-full text-center">No recently watched channels</p>';
+
   } else {
     if (recentSection) recentSection.style.display = "grid";
     recent.forEach((channel) => {
@@ -1277,9 +1663,11 @@ function renderRecentlyWatched() {
   }
 }
 
+// ✅ ENHANCED: Update favorite icons with new API
 function updateFavoriteIcons() {
-  const favorites = JSON.parse(localStorage.getItem(favoritesKey) || "[]");
+  const favorites = getFavorites();
   const favoriteUrls = new Set(favorites.map((fav) => fav.url));
+
   document.querySelectorAll(".channel-item").forEach((item) => {
     const url = item.dataset.url;
     const icon = item.querySelector(".favorite-icon");
@@ -1296,9 +1684,11 @@ function updateFavoriteIcons() {
 function updateAllChannelItems() {
   allChannelItems = Array.from(document.querySelectorAll(".channel-item"));
 }
+
 // ============================================
 // SEARCH FUNCTIONALITY
 // ============================================
+
 function searchChannels(query) {
   searchQuery = query.toLowerCase().trim();
   if (!searchQuery) {
@@ -1356,120 +1746,86 @@ function hideFavoritesAndRecent() {
 }
 
 function showFavoritesAndRecent() {
-  const favorites = JSON.parse(localStorage.getItem(favoritesKey) || "[]");
+  const favorites = getFavorites();
   const favSection = document.getElementById("favorites");
   if (favSection && favorites.length > 0) {
     favSection.style.display = "grid";
   }
-  const recent = JSON.parse(localStorage.getItem(recentlyWatchedKey) || "[]");
+  const recent = getRecentlyWatched();
   const recentSection = document.getElementById("recentlyWatched");
   if (recentSection && recent.length > 0) {
     recentSection.style.display = "grid";
   }
 }
 
-// ============================================
-// SYNCHRONIZED SEARCH BAR IMPLEMENTATION
-// Handles both desktop and mobile search inputs
-// ============================================
-
-/**
- * Sets up synchronized search functionality for desktop and mobile
- */
 function setupSearchBar() {
-  // Get both search inputs
   const searchInputs = [
-    document.getElementById("channelSearch"),         // Desktop
-    document.getElementById("channelSearchMobile")    // Mobile
-  ].filter(Boolean); // Remove null/undefined
-
-  // Get both clear buttons
-  const clearButtons = [
-    document.getElementById("clearSearch"),           // Desktop
-    document.getElementById("clearSearchMobile")      // Mobile
+    document.getElementById("channelSearch"),
+    document.getElementById("channelSearchDesktop"),
+    document.getElementById("channelSearchMobile")
   ].filter(Boolean);
 
-  // Get both result message elements
+  const clearButtons = [
+    document.getElementById("clearSearch"),
+    document.getElementById("clearSearchMobile")
+  ].filter(Boolean);
+
   const resultMessages = [
     document.getElementById("search-results-message"),
     document.getElementById("search-results-message-mobile")
   ].filter(Boolean);
 
-  //console.log(`🔍 Setting up search with ${searchInputs.length} input(s)`);
-
-  // Setup each search input
   searchInputs.forEach((searchInput, index) => {
     let searchTimeout;
 
-    // Input event - triggers search
     searchInput.addEventListener("input", (e) => {
       const query = e.target.value;
-
-      // Sync the value to the other search input
       searchInputs.forEach(input => {
         if (input !== e.target && input.value !== query) {
           input.value = query;
         }
       });
-
-      // Debounced search
       clearTimeout(searchTimeout);
       searchTimeout = setTimeout(() => {
         performSearch(query, resultMessages);
       }, 300);
     });
 
-    // Escape key - clears search
     searchInput.addEventListener("keydown", (e) => {
       if (e.key === "Escape") {
-        clearSearch(searchInputs, resultMessages);
+        clearSearchAll(searchInputs, resultMessages);
         searchInput.blur();
       }
     });
 
-    // Focus event - highlight current input
     searchInput.addEventListener("focus", () => {
       searchInput.style.borderColor = "#007bff";
     });
 
-    // Blur event - restore normal border
     searchInput.addEventListener("blur", () => {
       searchInput.style.borderColor = "#444";
     });
   });
 
-  // Setup clear buttons
   clearButtons.forEach((btn, index) => {
     btn.addEventListener("click", () => {
-      clearSearch(searchInputs, resultMessages);
-      // Focus the corresponding search input
+      clearSearchAll(searchInputs, resultMessages);
       if (searchInputs[index]) {
         searchInputs[index].focus();
       }
     });
   });
-
-  //console.log("✅ Search bar setup complete");
 }
 
-/**
- * Performs the actual search and updates all result messages
- * @param {string} query - Search query
- * @param {Array} resultMessages - Array of result message elements
- */
 function performSearch(query, resultMessages) {
   searchQuery = query.toLowerCase().trim();
-
   if (!searchQuery) {
-    // Empty search - show all channels
     filteredChannels = [];
     sortChannelsAndRender(currentSortMethod);
     showFavoritesAndRecent();
     hideAllResultMessages(resultMessages);
     return;
   }
-
-  // Perform the search
   filteredChannels = allChannels.filter(channel => {
     const nameMatch = channel.name.toLowerCase().includes(searchQuery);
     const descMatch = channel.description &&
@@ -1478,34 +1834,19 @@ function performSearch(query, resultMessages) {
       channel.category.toLowerCase().includes(searchQuery);
     const numMatch = channel.number &&
       channel.number.toString().includes(searchQuery);
-
     return nameMatch || descMatch || catMatch || numMatch;
   });
-
   console.log(`🔍 Search: "${query}" - Found ${filteredChannels.length} channels`);
-
-  // Hide favorites and recent when searching
   hideFavoritesAndRecent();
-
-  // Render filtered results
   renderChannels(filteredChannels);
   updateFavoriteIcons();
   updateAllChannelItems();
-
-  // Update all result message elements
   updateAllResultMessages(resultMessages, query, filteredChannels.length);
 }
 
-/**
- * Updates all search result message elements
- * @param {Array} resultMessages - Array of message elements
- * @param {string} query - Search query
- * @param {number} count - Number of results found
- */
 function updateAllResultMessages(resultMessages, query, count) {
   resultMessages.forEach(msg => {
     if (!msg) return;
-
     if (count === 0) {
       msg.innerHTML = `
         <div style="color: #ff9800; padding: 8px;">
@@ -1527,10 +1868,6 @@ function updateAllResultMessages(resultMessages, query, count) {
   });
 }
 
-/**
- * Hides all result message elements
- * @param {Array} resultMessages - Array of message elements
- */
 function hideAllResultMessages(resultMessages) {
   resultMessages.forEach(msg => {
     if (msg) {
@@ -1539,37 +1876,18 @@ function hideAllResultMessages(resultMessages) {
   });
 }
 
-/**
- * Clears search in all inputs and result messages
- * @param {Array} searchInputs - Array of search input elements
- * @param {Array} resultMessages - Array of result message elements
- */
-function clearSearch(searchInputs, resultMessages) {
+function clearSearchAll(searchInputs, resultMessages) {
   searchQuery = "";
   filteredChannels = [];
-
-  // Clear all search inputs
   searchInputs.forEach(input => {
     if (input) input.value = "";
   });
-
-  // Hide all result messages
   hideAllResultMessages(resultMessages);
-
-  // Show favorites and recent sections again
   showFavoritesAndRecent();
-
-  // Render all channels
   sortChannelsAndRender(currentSortMethod);
-
   console.log("🔍 Search cleared");
 }
 
-/**
- * Escape HTML to prevent XSS in search results
- * @param {string} text - Text to escape
- * @returns {string} Escaped text
- */
 function escapeHtml(text) {
   const div = document.createElement('div');
   div.textContent = text;
@@ -1577,191 +1895,9 @@ function escapeHtml(text) {
 }
 
 // ============================================
-// ENHANCED SEARCH FUNCTIONALITY
-// ============================================
-
-/**
- * Search with highlighting (optional enhancement)
- * @param {string} query - Search query
- */
-function searchChannelsWithHighlight(query) {
-  performSearch(query, [
-    document.getElementById("search-results-message"),
-    document.getElementById("search-results-message-mobile")
-  ].filter(Boolean));
-
-  // Optional: Highlight matching text in channel cards
-  highlightSearchResults(query);
-}
-
-/**
- * Highlights search terms in channel cards
- * @param {string} query - Search query
- */
-function highlightSearchResults(query) {
-  if (!query) return;
-
-  const cards = document.querySelectorAll('.channel-item');
-  const regex = new RegExp(`(${escapeRegex(query)})`, 'gi');
-
-  cards.forEach(card => {
-    const name = card.dataset.name;
-    if (name && name.toLowerCase().includes(query.toLowerCase())) {
-      // Add a subtle glow effect to matching cards
-      card.style.boxShadow = '0 0 15px rgba(0, 123, 255, 0.5)';
-    } else {
-      card.style.boxShadow = '';
-    }
-  });
-}
-
-/**
- * Escape special regex characters
- * @param {string} str - String to escape
- * @returns {string} Escaped string
- */
-function escapeRegex(str) {
-  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
-// ============================================
-// SEARCH STATISTICS (Optional Feature)
-// ============================================
-
-/**
- * Track search statistics
- */
-const searchStats = {
-  searches: [],
-  maxHistory: 10,
-
-  addSearch(query, resultCount) {
-    this.searches.unshift({
-      query,
-      resultCount,
-      timestamp: Date.now()
-    });
-
-    if (this.searches.length > this.maxHistory) {
-      this.searches.pop();
-    }
-  },
-
-  getPopularSearches() {
-    const counts = {};
-    this.searches.forEach(s => {
-      counts[s.query] = (counts[s.query] || 0) + 1;
-    });
-
-    return Object.entries(counts)
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 5)
-      .map(([query]) => query);
-  }
-};
-
-// Update performSearch to track stats
-function performSearchWithStats(query, resultMessages) {
-  performSearch(query, resultMessages);
-
-  if (query) {
-    searchStats.addSearch(query, filteredChannels.length);
-  }
-}
-
-// ============================================
-// EXAMPLE: Add search suggestions (Optional)
-// ============================================
-
-/**
- * Show search suggestions based on channel names
- * @param {HTMLElement} input - Search input element
- */
-function setupSearchSuggestions(input) {
-  if (!input) return;
-
-  const suggestionsList = document.createElement('div');
-  suggestionsList.className = 'search-suggestions';
-  suggestionsList.style.cssText = `
-    position: absolute;
-    top: 100%;
-    left: 0;
-    right: 0;
-    background: #2a2a2a;
-    border: 1px solid #444;
-    border-top: none;
-    border-radius: 0 0 8px 8px;
-    max-height: 200px;
-    overflow-y: auto;
-    display: none;
-    z-index: 1000;
-  `;
-
-  input.parentElement.style.position = 'relative';
-  input.parentElement.appendChild(suggestionsList);
-
-  input.addEventListener('input', (e) => {
-    const query = e.target.value.toLowerCase().trim();
-
-    if (query.length < 2) {
-      suggestionsList.style.display = 'none';
-      return;
-    }
-
-    const suggestions = allChannels
-      .filter(ch => ch.name.toLowerCase().includes(query))
-      .slice(0, 5)
-      .map(ch => ch.name);
-
-    if (suggestions.length > 0) {
-      suggestionsList.innerHTML = suggestions
-        .map(name => `
-          <div class="suggestion-item" style="
-            padding: 10px;
-            cursor: pointer;
-            border-bottom: 1px solid #333;
-            transition: background 0.2s;
-          " onmouseover="this.style.background='#333'" 
-             onmouseout="this.style.background='transparent'">
-            ${escapeHtml(name)}
-          </div>
-        `).join('');
-
-      suggestionsList.style.display = 'block';
-
-      // Handle suggestion clicks
-      suggestionsList.querySelectorAll('.suggestion-item').forEach(item => {
-        item.addEventListener('click', () => {
-          input.value = item.textContent.trim();
-          suggestionsList.style.display = 'none';
-          performSearch(input.value, [
-            document.getElementById("search-results-message"),
-            document.getElementById("search-results-message-mobile")
-          ].filter(Boolean));
-        });
-      });
-    } else {
-      suggestionsList.style.display = 'none';
-    }
-  });
-
-  // Hide suggestions when clicking outside
-  document.addEventListener('click', (e) => {
-    if (!input.contains(e.target) && !suggestionsList.contains(e.target)) {
-      suggestionsList.style.display = 'none';
-    }
-  });
-}
-
-// ============================================
-// USAGE: Call this during initialization
-// ============================================
-
-// Replace the old setupSearchBar() call in your initialize() function
-// The new setupSearchBar() handles both desktop and mobile automatically
-// ============================================
 // SORTING & FILTERING
 // ============================================
+
 function sortChannelsAndRender(sortMethod = "none") {
   const channelsToSort = searchQuery ? filteredChannels : allChannels;
   let sortedChannels = [...channelsToSort];
@@ -1805,9 +1941,11 @@ function updateSortButtons(method) {
     activeBtn.classList.add("active");
   }
 }
+
 // ============================================
 // KEYBOARD NAVIGATION
 // ============================================
+
 function getGridColumns() {
   const grid = document.querySelector(".content-grid");
   if (!grid) return 1;
@@ -1821,13 +1959,10 @@ function getGridColumns() {
 document.addEventListener("keydown", (e) => {
   const searchInputDesktop = document.getElementById('channelSearchDesktop');
   const searchInputMobile = document.getElementById('channelSearchMobile');
-  // 🎯 NEW CONDITION: Check if the currently focused element is the search bar
-  // Check if focused on any search bar
   if ((searchInputDesktop && document.activeElement === searchInputDesktop) ||
     (searchInputMobile && document.activeElement === searchInputMobile)) {
     return;
   }
-  // Also check if any other input or textarea is focused to prevent accidental triggers
   const focusedTag = document.activeElement.tagName.toLowerCase();
   if (focusedTag === 'input' || focusedTag === 'textarea') {
     return;
@@ -1870,6 +2005,7 @@ document.addEventListener("keydown", (e) => {
     }, 1000);
   }
 });
+
 document.addEventListener("keydown", (event) => {
   if (navigationDebounce) clearTimeout(navigationDebounce);
   navigationDebounce = setTimeout(() => {
@@ -2018,9 +2154,11 @@ document.addEventListener("keydown", (event) => {
     }
   }, 50);
 });
+
 // ============================================
 // YOUTUBE API & RSS FEEDS
 // ============================================
+
 function extractChannelId(feedUrl) {
   const match = feedUrl.match(/channel_id=([^&]+)/);
   return match ? match[1] : null;
@@ -2058,8 +2196,9 @@ function processRSSData(data, feed) {
   updateOrAddChannel(channelObj);
   console.log(`✅ ${feed.name} Successfully updated`);
 }
+
 async function loadYouTubeLatestFeeds() {
-  const storedFeeds = localStorage.getItem(STORAGE_KEYS.feeds);
+  const storedFeeds = localStorage.getItem(LS_KEYS.FEEDS);
   if (!storedFeeds) {
     showNotification("No RSS feeds found in localStorage.", "warning");
     return;
@@ -2101,16 +2240,17 @@ async function loadYouTubeLatestFeeds() {
     }
   }
 }
+
 async function loadYouTubeLiveFeeds() {
   if (!API_KEY) {
     API_KEY = getStoredAPIKey();
   }
   if (!API_KEY || !hasValidAPIKey()) {
-    console.log("🔑 No valid API key found, prompting user...");
+    console.log("🔒 No valid API key found, prompting user...");
     showAPIKeyModal();
     return;
   }
-  const storedLive = localStorage.getItem(STORAGE_KEYS.live);
+  const storedLive = localStorage.getItem(LS_KEYS.LIVE);
   if (!storedLive) {
     showNotification("No live channels found in localStorage.", "warning");
     return;
@@ -2216,45 +2356,33 @@ async function loadYouTubeLiveFeeds() {
     throw new Error("YouTube API quota exceeded - no live streams updated");
   }
 }
-// Example 5: Update the main channel loading function
+
 async function loadAllChannelFeeds() {
   console.log("Starting full channel update (RSS and Live API)...");
-
   try {
     console.log("1/2: Loading latest uploads from RSS...");
     await loadYouTubeLatestFeeds();
-
     console.log("2/2: Loading live streams (YouTube API)...");
     await loadYouTubeLiveFeeds();
-
     console.log("Saving updated channel data to localStorage...");
-
-    // Use safe storage with error handling
     const success = safeLocalStorageSet(
-      STORAGE_KEYS.channels,
+      LS_KEYS.CHANNELS,
       JSON.stringify(allChannels)
     );
-
     if (!success) {
-      // Data wasn't saved, but we can still render it
       console.warn('⚠️ Channels loaded but not saved to storage');
       showNotification('⚠️ Channels loaded (not saved due to storage limits)', 'warning');
     }
-
-    console.log("Rendering UI and updating components...");
+    console.log("🔄 Refreshing UI...");
     renderChannels(allChannels);
     updateFavoriteIcons();
     renderRecentlyWatched();
     updateAllChannelItems();
-
     console.log("✅ Full channels update COMPLETE.");
     return true;
-
   } catch (e) {
     console.log(`❌ Critical error during full channel update: ${e.message}`, true);
-    // Still try to save what we have
-    safeLocalStorageSet(STORAGE_KEYS.channels, JSON.stringify(allChannels));
-
+    safeLocalStorageSet(LS_KEYS.CHANNELS, JSON.stringify(allChannels));
     renderChannels(allChannels);
     updateFavoriteIcons();
     renderRecentlyWatched();
@@ -2262,6 +2390,7 @@ async function loadAllChannelFeeds() {
     return false;
   }
 }
+
 // ============================================
 // AUTO-UPDATE SERVICE
 // ============================================
@@ -2736,7 +2865,7 @@ async function initialize() {
   setupSearchBar();
   setupTouchGestures();
   setupPWA();
-  let savedChannels = localStorage.getItem(STORAGE_KEYS.channels);
+  let savedChannels = localStorage.getItem(LS_KEYS.CHANNELS);
   if (savedChannels) {
     try {
       allChannels = JSON.parse(savedChannels);
@@ -2942,17 +3071,17 @@ function handleTouchEnd(e) {
   touchEndY = currentTouchY;
 
   // Check if the current tap is within the time window AND the touch movement is negligible
-  if (currentTime - lastTapTime < DOUBLE_TAP_DELAY && 
-      Math.abs(currentTouchX - touchStartX) < 10 && 
-      Math.abs(currentTouchY - touchStartY) < 10) { 
-    
-    window.toggleFullscreen(); 
+  if (currentTime - lastTapTime < DOUBLE_TAP_DELAY &&
+    Math.abs(currentTouchX - touchStartX) < 10 &&
+    Math.abs(currentTouchY - touchStartY) < 10) {
+
+    window.toggleFullscreen();
     lastTapTime = 0; // Reset to prevent accidental triple tap detection
     return; // Skip the swipe handler
   }
 
   // If not a double tap, update the time for the next potential tap
-  lastTapTime = currentTime; 
+  lastTapTime = currentTime;
   handleSwipe();
 }
 
@@ -3115,12 +3244,12 @@ function safeLocalStorageSet(key, value, retryOnFail = true) {
 function clearOldStorageData() {
   // Priority: Keep channels and feeds, clear watch time first
   const keysToTryClearing = [
-    'watchTimePerChannel',  // Least critical
-    'lastChannelsUpdate',   // Can be regenerated
-    recentlyWatchedKey,     // User can rebuild this
+    LS_KEYS.WATCH_TIME,  // Least critical
+    CACHE_KEY,   // Can be regenerated
+    LS_KEYS.RECENT,     // User can rebuild this
     // Only as last resort:
-    // favoritesKey,
-    // STORAGE_KEYS.channels
+    //LS_KEYS.FAVORITES,
+    //LS_KEYS.CHANNELS
   ];
 
   for (const key of keysToTryClearing) {
@@ -3204,11 +3333,11 @@ function exportAllData() {
       version: "1.0.0",
       exportDate: new Date().toISOString(),
       channels: allChannels || [],
-      favorites: JSON.parse(localStorage.getItem(favoritesKey) || "[]"),
-      recentlyWatched: JSON.parse(localStorage.getItem(recentlyWatchedKey) || "[]"),
+      favorites: JSON.parse(localStorage.getItem(LS_KEYS.FAVORITES) || "[]"),
+      recentlyWatched: JSON.parse(localStorage.getItem(LS_KEYS.RECENT) || "[]"),
       watchTime: loadWatchTime() || {},
-      rssFeeds: JSON.parse(localStorage.getItem(STORAGE_KEYS.feeds) || "[]"),
-      liveChannels: JSON.parse(localStorage.getItem(STORAGE_KEYS.live) || "[]"),
+      rssFeeds: JSON.parse(localStorage.getItem(LS_KEYS.FEEDS) || "[]"),
+      liveChannels: JSON.parse(localStorage.getItem(LS_KEYS.LIVE) || "[]"),
       settings: {
         autoUpdateEnabled: localStorage.getItem(AUTO_UPDATE_KEY) || "true",
         updateIntervalHours: localStorage.getItem(UPDATE_INTERVAL_KEY) || "8",
@@ -3465,13 +3594,13 @@ async function performImport(data) {
         allChannels = [...data.channels];
       }
 
-      safeLocalStorageSet(STORAGE_KEYS.channels, JSON.stringify(allChannels));
+      safeLocalStorageSet(LS_KEYS.CHANNELS, JSON.stringify(allChannels));
     }
 
     // Step 3: Import favorites
     if (data.favorites) {
       let favorites = mergeMode ?
-        JSON.parse(localStorage.getItem(favoritesKey) || "[]") : [];
+        JSON.parse(localStorage.getItem(LS_KEYS.FAVORITES) || "[]") : [];
 
       if (mergeMode) {
         // Merge favorites (avoid duplicates)
@@ -3484,13 +3613,13 @@ async function performImport(data) {
         favorites = [...data.favorites];
       }
 
-      safeLocalStorageSet(favoritesKey, JSON.stringify(favorites));
+      safeLocalStorageSet(LS_KEYS.FAVORITES, JSON.stringify(favorites));
     }
 
     // Step 4: Import recently watched
     if (data.recentlyWatched) {
       let recent = mergeMode ?
-        JSON.parse(localStorage.getItem(recentlyWatchedKey) || "[]") : [];
+        JSON.parse(localStorage.getItem(LS_KEYS.RECENT) || "[]") : [];
 
       if (mergeMode) {
         // Merge recent (keep newest)
@@ -3503,7 +3632,7 @@ async function performImport(data) {
         recent = [...data.recentlyWatched];
       }
 
-      safeLocalStorageSet(recentlyWatchedKey, JSON.stringify(recent));
+      safeLocalStorageSet(LS_KEYS.RECENT, JSON.stringify(recent));
     }
 
     // Step 5: Import watch time
@@ -3515,20 +3644,20 @@ async function performImport(data) {
           currentWatchTime[channelId] =
             (currentWatchTime[channelId] || 0) + data.watchTime[channelId];
         });
-        safeLocalStorageSet("watchTimePerChannel", JSON.stringify(currentWatchTime));
+        safeLocalStorageSet(LS_KEYS.WATCH_TIME, JSON.stringify(currentWatchTime));
       } else {
-        safeLocalStorageSet("watchTimePerChannel", JSON.stringify(data.watchTime));
+        safeLocalStorageSet(LS_KEYS.WATCH_TIME, JSON.stringify(data.watchTime));
       }
     }
 
     // Step 6: Import RSS feeds (only if not merging or no existing feeds)
     if (data.rssFeeds && !mergeMode) {
-      safeLocalStorageSet(STORAGE_KEYS.feeds, JSON.stringify(data.rssFeeds));
+      safeLocalStorageSet(LS_KEYS.FEEDS, JSON.stringify(data.rssFeeds));
     }
 
     // Step 7: Import live channels config (only if not merging)
     if (data.liveChannels && !mergeMode) {
-      safeLocalStorageSet(STORAGE_KEYS.live, JSON.stringify(data.liveChannels));
+      safeLocalStorageSet(LS_KEYS.LIVE, JSON.stringify(data.liveChannels));
     }
 
     // Step 8: Import settings (only if not merging)
@@ -3585,8 +3714,8 @@ async function createAutoBackup() {
       exportDate: new Date().toISOString(),
       autoBackup: true,
       channels: allChannels || [],
-      favorites: JSON.parse(localStorage.getItem(favoritesKey) || "[]"),
-      recentlyWatched: JSON.parse(localStorage.getItem(recentlyWatchedKey) || "[]"),
+      favorites: JSON.parse(localStorage.getItem(LS_KEYS.FAVORITES) || "[]"),
+      recentlyWatched: JSON.parse(localStorage.getItem(LS_KEYS.RECENT) || "[]"),
       watchTime: loadWatchTime() || {},
       settings: {
         autoUpdateEnabled: localStorage.getItem(AUTO_UPDATE_KEY),
@@ -3638,6 +3767,8 @@ function triggerImportDialog() {
   }
 }
 
+
+
 // ============================================
 // ADD TO SETTINGS MODAL
 // ============================================
@@ -3653,15 +3784,23 @@ function addStorageInfoToSettings() {
       Calculating...
     </div>
     <button id="viewStorageDetails" class="btn-secondary" style="margin-top: 10px;">
-      📊 View Details
+      <i class="fas fa-chart-bar text-green-500"></i> View Details
     </button>
     <button id="exportDataBtn" class="btn-secondary" style="margin-top: 10px;">
-      📥 Export Backup
+      <i class="fas fa-file-export text-blue-500"></i> Export Backup
     </button>
     <button id="importDataBtn" class="btn-secondary" style="margin-top: 10px;">
-      📤 Import Backup
+      <i class="fas fa-file-import text-red-500"></i> Import Backup
     </button>
+    <button id="clearRecentBtn" class="btn-secondary" style="margin-top: 10px;">
+      <i class="fas fa-history text-green-500"></i> Clear Recently Watched
+    </button>
+    <button id="clearFavoritesBtn" class="btn-secondary" style="margin-top: 10px;">
+      <i class="fas fa-star text-yellow-500"></i>Clear All Favorites
+    </button>
+
     <input type="file" id="importFileInput" accept=".json" style="display: none;">
+    
   `;
 
   // 💡 Recommendation: Append to the main content instead of finding the close button
@@ -3676,6 +3815,9 @@ function addStorageInfoToSettings() {
 
   document.getElementById('exportDataBtn')?.addEventListener('click', exportAllData);
   document.getElementById('importDataBtn')?.addEventListener('click', triggerImportDialog);
+
+  document.getElementById('clearRecentBtn')?.addEventListener('click', clearRecentlyWatched);
+  document.getElementById('clearFavoritesBtn')?.addEventListener('click', clearAllFavorites);
 
   const closeBtn = document.getElementById('closeSettings');
   if (closeBtn && closeBtn.parentNode) {

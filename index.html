@@ -14,7 +14,7 @@
 
 </head>
 
-<body>
+<body class="h-full flex flex-col">
   <header class="shadow-lg sticky top-0 z-20 flex-wrap" style="background-color: #121212;">
     <nav class="">
       <!-- The 'container' ensures content is centered and responsive -->
@@ -56,46 +56,56 @@
       </div>
     </nav>
   </header>
+
   <main>
-    <div class="container">
+    <div class="container" class="flex-1 overflow-y-auto pb-20">
       <div id="channel-number-overlay">
       </div>
-      <div id="recentlyWatched" class="section">
-        <h2 class="text-xl font-bold mt-6 mb-4 col-span-full">Recently
-          Watched
-        </h2>
-        <div class="content-grid" id="recentlyWatchedGrid"></div>
-      </div>
-      <div id="favorites" class="section">
-        <h2 class="text-xl font-bold mt-6 mb-4 col-span-full">Favorites</h2>
-        <div class="content-grid" id="favoritesGrid"></div>
-      </div>
+
       <div id="loading-spinner"></div>
-      <div id="channels" class="section">
-        <div class="sort-container">
-          <h2 class="text-xl font-bold mt-6 mb-4 col-span-full">All
-            Channels
+
+      <div class="p-4 max-w-7xl mx-auto">
+
+        <div id="recentlyWatched" class="mb-12">
+          <h2 class="text-2xl font-bold mb-4 flex items-center gap-3">
+            <i class="fas fa-history text-blue-500"></i>Recently Watched
           </h2>
-          <div class="sort-controls">
-            <button onclick="handleSortChange('none')" title="No Sort">
-              <i class="fas fa-ban"></i>
-            </button>
-            <button onclick="handleSortChange('asc')" title="Sort Name A-Z">
-              <i class="fas fa-sort-alpha-down"></i>
-            </button>
-            <button onclick="handleSortChange('desc')" title="Sort Name Z-A">
-              <i class="fas fa-sort-alpha-up"></i>
-            </button>
-            <button onclick="handleSortChange('watchTime')" title="Sort by Watch Time">
-              <i class="fas fa-clock"></i>
-            </button>
+          <div class="content-grid" id="recentlyWatchedGrid"></div>
+        </div>
+        <div id="favorites" class="mb-12">
+          <h2 class="text-2xl font-bold mb-4 flex items-center gap-3">
+            <i class="fas fa-star text-yellow-500"></i>Favorites
+          </h2>
+          <div class="content-grid" id="favoritesGrid"></div>
+        </div>
+
+        <div id="channels" class="mb-12">
+          <div class="sort-container">
+            <h2 class="text-2xl font-bold mb-4 flex items-center gap-3">
+              <i class="fas fa-list text-blue-500"></i>Channels
+            </h2>
+            <div class="sort-controls">
+              <button onclick="handleSortChange('none')" title="No Sort">
+                <i class="fas fa-ban"></i>
+              </button>
+              <button onclick="handleSortChange('asc')" title="Sort Name A-Z">
+                <i class="fas fa-sort-alpha-down"></i>
+              </button>
+              <button onclick="handleSortChange('desc')" title="Sort Name Z-A">
+                <i class="fas fa-sort-alpha-up"></i>
+              </button>
+              <button onclick="handleSortChange('watchTime')" title="Sort by Watch Time">
+                <i class="fas fa-clock"></i>
+              </button>
+            </div>
           </div>
         </div>
+
       </div>
+
       <!-- Settings Modal -->
       <div id="settingsModal" class="settings-modal" style="display: none;">
         <div class="settings-content">
-          <h2>Settings</h2>
           <!-- Auto-update settings -->
           <div class="setting-item">
             <label>
@@ -187,9 +197,9 @@
         </div>
       </div>
   </main>
-  <div id="videoModal" class="fixed inset-0 bg-black bg-opacity-90 flex justify-center items-center z-50 hidden">
-    <div class="relative w-full h-full flex flex-col justify-center items-center">
-      <span class="closeModal">&times;</span>
+  <div id="videoModal" class="hidden fixed inset-0 bg-black bg-opacity-95 z-50 flex items-center justify-center">
+    <div class="relative w-full h-full flex justify-center items-center">
+      <button onclick="closeModal()" class="absolute top-4 right-4 text-white text-4xl z-10">&times;</button>
       <!-- New location for channel number overlay -->
       <div id="channel-number-overlay"></div>
       <div id="player-container">
