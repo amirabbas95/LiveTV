@@ -572,7 +572,11 @@ class ChannelLoader {
         this.currentOperation = null;
       }
     }
+
+    
   }
+
+  
 
   updateChannelUI(name, image, description, number) {
     const updates = {
@@ -659,17 +663,19 @@ class ChannelLoader {
     }
 
     // --- START NEW CODE FOR AUTOMATIC FULLSCREEN ---
-    // Attach the device orientation listener
-    window.addEventListener('orientationchange', handleOrientationChange);
+   // Attach orientation change listener
+   window.addEventListener('orientationchange', handleOrientationChange);
     
-    // Check orientation immediately on load (if device is already in landscape)
-    handleOrientationChange(); 
+   // Check orientation immediately on load
+   handleOrientationChange();
 
-    // Add cleanup for the event listener using the existing mechanism
-    this.eventCleanupCallbacks.push(() => {
-        window.removeEventListener('orientationchange', handleOrientationChange);
-    });
+   // Add cleanup for the event listener
+   this.eventCleanupCallbacks.push(() => {
+     window.removeEventListener('orientationchange', handleOrientationChange);
+   });
     // --- END NEW CODE FOR AUTOMATIC FULLSCREEN ---
+
+
     
     this.setupPlayerEvents(name, isLive, streamConfig.type === 'youtube', token);
     token.throwIfCancelled();
@@ -886,15 +892,20 @@ class ChannelLoader {
 
 
     // **** NEW FULLSCREEN HANDLERS ****
-    const enterFullscreenHandler = () => {
-      if (token.isCancelled()) return;
-      lockOrientationToLandscape();
-    };
+   // Orientation lock when entering fullscreen
+   const enterFullscreenHandler = () => {
+     if (token.isCancelled()) return;
+     lockOrientationToLandscape();
+   };
 
-    const exitFullscreenHandler = () => {
-      if (token.isCancelled()) return;
-      unlockOrientation();
-    };
+      const exitFullscreenHandler = () => {
+     if (token.isCancelled()) return;
+     unlockOrientation();
+   };
+
+
+
+
     // *********************************
 
 
@@ -907,8 +918,8 @@ class ChannelLoader {
     this.playerInstance.on('retryplaylist', retryHandler);
 
     // **** ATTACH NEW LISTENERS ****
-    this.playerInstance.on('enterfullscreen', enterFullscreenHandler);
-    this.playerInstance.on('exitfullscreen', exitFullscreenHandler);
+      this.playerInstance.on('enterfullscreen', enterFullscreenHandler);
+   this.playerInstance.on('exitfullscreen', exitFullscreenHandler);
     // ******************************
 
 
@@ -923,8 +934,8 @@ class ChannelLoader {
         this.playerInstance.off('retryplaylist', retryHandler);
 
         // **** CLEANUP NEW LISTENERS ****
-        this.playerInstance.off('enterfullscreen', enterFullscreenHandler);
-        this.playerInstance.off('exitfullscreen', exitFullscreenHandler);
+       this.playerInstance.off('enterfullscreen', enterFullscreenHandler);
+       this.playerInstance.off('exitfullscreen', exitFullscreenHandler);
         // *******************************
       }
     });
@@ -1147,34 +1158,43 @@ function showErrorToUser(message) {
   }, PLAYBACK_CONSTANTS.PLAYER_READY_TIMEOUT);
 }
 
-// ============================================
-// ✅ NEW: ORIENTATION LOCK FUNCTIONS
-// ============================================
 
-// Function to run when the video goes full screen
+/**
+ * Lock screen orientation to landscape mode.
+ * Called when video enters fullscreen manually.
+ */
 function lockOrientationToLandscape() {
-  // Check if screen orientation API is available
+  // Check if Screen Orientation API is available
   if (!screen.orientation || !screen.orientation.lock) {
-    console.warn("Screen Orientation API not supported.");
+    console.warn("⚠️ Screen Orientation API not supported");
     return;
   }
   
-  // 'landscape' covers both primary and secondary landscape modes
-  screen.orientation.lock('landscape').then(() => {
-    console.log("Orientation locked to landscape successfully.");
-  }).catch((err) => {
-    // This catch block usually runs if the OS lock is enabled or if the context is insecure.
-    console.warn("Failed to lock orientation:", err);
-  });
+  // Lock to landscape (allows both primary and secondary landscape)
+  screen.orientation.lock('landscape')
+    .then(() => {
+      console.log("🔒 Orientation locked to landscape");
+    })
+    .catch((err) => {
+      // This usually fails if:
+      // - Not in fullscreen mode
+      // - Device has rotation lock enabled
+      // - Browser doesn't support locking
+      console.warn("⚠️ Failed to lock orientation:", err.message);
+    });
 }
 
-// Function to run when the video exits full screen
+/**
+ * Unlock screen orientation.
+ * Called when video exits fullscreen.
+ */
 function unlockOrientation() {
   if (!screen.orientation || !screen.orientation.unlock) {
     return;
   }
+  
   screen.orientation.unlock();
-  console.log("Orientation unlocked.");
+  console.log("🔓 Orientation unlocked");
 }
 
 function getTimeAgo(timestamp) {
@@ -1427,74 +1447,61 @@ function closeModal() {
     focusedIndex = 0;
   }
 }
-// ============================================
-// ✅ NEW: AUTOMATIC FULLSCREEN TOGGLE
-// ============================================
 
-/**
- * Toggles Video.js fullscreen mode based on device orientation.
- * Only runs if a video is currently loaded and playing.
- */
-function handleOrientationChange() {
-  // 1. Get the current player instance
-  const currentLoader = window.currentChannelLoader;
-  if (!currentLoader || !currentLoader.playerInstance) {
-    return; // Do nothing if no channel is loaded
-  }
-  const player = currentLoader.playerInstance;
-  
-  // 2. Check the screen orientation
-  // We use screen.orientation.type for the modern API
-  const isLandscape = screen.orientation.type.startsWith('landscape');
-
-  // 3. Control fullscreen state
-  if (isLandscape) {
-    // Device is rotated to landscape, go fullscreen
-    if (!player.isFullscreen()) {
-      player.requestFullscreen();
-      console.log("Device rotated to landscape: Entering fullscreen.");
-    }
-  } else {
-    // Device is rotated back to portrait, exit fullscreen
-    if (player.isFullscreen()) {
-      player.exitFullscreen();
-      console.log("Device rotated to portrait: Exiting fullscreen.");
-    }
-  }
-}
 
 // ============================================
-// ✅ NEW: AUTOMATIC FULLSCREEN TOGGLE
+// AUTOMATIC FULLSCREEN ON LANDSCAPE ROTATION
 // ============================================
 
 /**
- * Toggles Video.js fullscreen mode based on device orientation.
- * Only runs if a video is currently loaded and playing.
+ * Handles device orientation changes and toggles fullscreen accordingly.
+ * This function checks if:
+ * 1. A video player is currently active
+ * 2. The device orientation has changed
+ * Then automatically enters/exits fullscreen based on orientation.
  */
 function handleOrientationChange() {
-  // 1. Get the current player instance
-  const currentLoader = window.currentChannelLoader;
-  if (!currentLoader || !currentLoader.playerInstance) {
-    return; // Do nothing if no channel is loaded
-  }
-  const player = currentLoader.playerInstance;
+  // Get the current player instance
+  const player = channelLoader.getPlayer();
   
-  // 2. Check the screen orientation
-  // We use screen.orientation.type for the modern API
-  const isLandscape = screen.orientation.type.startsWith('landscape');
+  // Do nothing if no player is active
+  if (!player) {
+    console.log('⏸️ No active player, skipping orientation change');
+    return;
+  }
 
-  // 3. Control fullscreen state
+  // Check if video modal is open
+  const modal = document.getElementById("videoModal");
+  const isModalOpen = modal && modal.style.display === "flex";
+  
+  if (!isModalOpen) {
+    console.log('⏸️ Video modal not open, skipping orientation change');
+    return;
+  }
+
+  // Determine current orientation
+  // screen.orientation.type returns values like:
+  // - "portrait-primary", "portrait-secondary" 
+  // - "landscape-primary", "landscape-secondary"
+  const isLandscape = screen.orientation && 
+                      screen.orientation.type.startsWith('landscape');
+
+  console.log(`📱 Orientation changed: ${screen.orientation?.type || 'unknown'}`);
+
+  // Toggle fullscreen based on orientation
   if (isLandscape) {
-    // Device is rotated to landscape, go fullscreen
+    // Device rotated to landscape → Enter fullscreen
     if (!player.isFullscreen()) {
+      console.log('🔄 Entering fullscreen (landscape detected)');
       player.requestFullscreen();
-      console.log("Device rotated to landscape: Entering fullscreen.");
+      showNotification('Fullscreen enabled', 'info');
     }
   } else {
-    // Device is rotated back to portrait, exit fullscreen
+    // Device rotated to portrait → Exit fullscreen
     if (player.isFullscreen()) {
+      console.log('🔄 Exiting fullscreen (portrait detected)');
       player.exitFullscreen();
-      console.log("Device rotated to portrait: Exiting fullscreen.");
+      showNotification('Fullscreen disabled', 'info');
     }
   }
 }
@@ -4022,3 +4029,6 @@ window.importBackupData = importBackupData;
 window.triggerImportDialog = triggerImportDialog;
 window.clearOldStorageData = clearOldStorageData;
 window.updateStorageDisplay = updateStorageDisplay;
+window.handleOrientationChange = handleOrientationChange;
+window.lockOrientationToLandscape = lockOrientationToLandscape;
+window.unlockOrientation = unlockOrientation;

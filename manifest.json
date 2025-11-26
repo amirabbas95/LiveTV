@@ -1,11 +1,11 @@
 {
-"name": "Live TV Player",
+  "name": "Live TV Player",
   "short_name": "LiveTV",
   "description": "An optimized, remote-friendly web player for watching live television channels.",
   "start_url": "/LiveTV/index.html",
   "scope": "/LiveTV/",
   "display": "standalone",
-  "orientation": "any",
+  "orientation": "portrait",
   "theme_color": "#121212",
   "background_color": "#121212",
   "icons": [
