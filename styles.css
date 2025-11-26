@@ -205,7 +205,6 @@ main {
 	display: flex;
 	justify-content: space-between;
 	align-items: center;
-	margin-bottom: 1rem;
 }
 
 .sort-controls {
@@ -219,7 +218,6 @@ main {
 	border: none;
 	font-size: 20px;
 	cursor: pointer;
-	margin: 0 5px;
 	color: #cbd5e0;
 	transition: color 0.3s;
 }
@@ -273,6 +271,7 @@ main {
 }
 
 /* Force video to cover the entire screen including notch areas in fullscreen */
+/* Force video to fit the screen and respect safe areas (notches) */
 .video-js.vjs-fullscreen {
 	position: fixed !important;
 	top: 0 !important;
@@ -281,8 +280,18 @@ main {
 	height: 100vh !important;
 	z-index: 9999 !important;
 	margin: 0 !important;
-	padding: 0 !important;
-	/* Clean background for the notch area */
+    
+    /* MODIFIED: This sets the "paddings" you need. It instructs the browser 
+       to add padding around the video content equal to the safe area insets 
+       (like the notch), ensuring the video is visible and not under the cutout. */
+	padding: 
+		env(safe-area-inset-top, 0) 
+		env(safe-area-inset-right, 0) 
+		env(safe-area-inset-bottom, 0) 
+		env(safe-area-inset-left, 0) 
+		!important;
+    
+	/* Black background for the areas under the notch/safe area */
 	background-color: #000 !important;
 }
 

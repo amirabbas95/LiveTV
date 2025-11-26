@@ -869,6 +869,21 @@ class ChannelLoader {
       if (token.isCancelled()) return;
       console.log('🔄 Attempting HLS recovery...');
     };
+
+
+    // **** NEW FULLSCREEN HANDLERS ****
+    const enterFullscreenHandler = () => {
+      if (token.isCancelled()) return;
+      lockOrientationToLandscape();
+    };
+
+    const exitFullscreenHandler = () => {
+      if (token.isCancelled()) return;
+      unlockOrientation();
+    };
+    // *********************************
+
+
     this.playerInstance.on('error', errorHandler);
     this.playerInstance.on('waiting', waitingHandler);
     this.playerInstance.on('playing', playingHandler);
@@ -876,6 +891,13 @@ class ChannelLoader {
     this.playerInstance.on('ended', endedHandler);
     this.playerInstance.on('loadedmetadata', metadataHandler);
     this.playerInstance.on('retryplaylist', retryHandler);
+
+    // **** ATTACH NEW LISTENERS ****
+    this.playerInstance.on('enterfullscreen', enterFullscreenHandler);
+    this.playerInstance.on('exitfullscreen', exitFullscreenHandler);
+    // ******************************
+
+
     this.eventCleanupCallbacks.push(() => {
       if (this.playerInstance) {
         this.playerInstance.off('error', errorHandler);
@@ -885,6 +907,11 @@ class ChannelLoader {
         this.playerInstance.off('ended', endedHandler);
         this.playerInstance.off('loadedmetadata', metadataHandler);
         this.playerInstance.off('retryplaylist', retryHandler);
+
+        // **** CLEANUP NEW LISTENERS ****
+        this.playerInstance.off('enterfullscreen', enterFullscreenHandler);
+        this.playerInstance.off('exitfullscreen', exitFullscreenHandler);
+        // *******************************
       }
     });
   }
@@ -1106,6 +1133,36 @@ function showErrorToUser(message) {
   }, PLAYBACK_CONSTANTS.PLAYER_READY_TIMEOUT);
 }
 
+// ============================================
+// ✅ NEW: ORIENTATION LOCK FUNCTIONS
+// ============================================
+
+// Function to run when the video goes full screen
+function lockOrientationToLandscape() {
+  // Check if screen orientation API is available
+  if (!screen.orientation || !screen.orientation.lock) {
+    console.warn("Screen Orientation API not supported.");
+    return;
+  }
+  
+  // 'landscape' covers both primary and secondary landscape modes
+  screen.orientation.lock('landscape').then(() => {
+    console.log("Orientation locked to landscape successfully.");
+  }).catch((err) => {
+    // This catch block usually runs if the OS lock is enabled or if the context is insecure.
+    console.warn("Failed to lock orientation:", err);
+  });
+}
+
+// Function to run when the video exits full screen
+function unlockOrientation() {
+  if (!screen.orientation || !screen.orientation.unlock) {
+    return;
+  }
+  screen.orientation.unlock();
+  console.log("Orientation unlocked.");
+}
+
 function getTimeAgo(timestamp) {
   const seconds = Math.floor((Date.now() - timestamp) / 1000);
   if (seconds < 60) return "just now";
@@ -1156,7 +1213,7 @@ function clearAPIKey() {
 }
 
 // ============================================
-// VIDEO PLAYER FUNCTIONS
+// STREAM CONFIGURATION
 // ============================================
 
 function createStreamConfig(url) {
@@ -1595,6 +1652,7 @@ function renderChannels(channels) {
       fragment.appendChild(categoryGrid);
     }
   } else {
+    // Render all channels in a single grid if sorted
     const totalChannelCount = channels.length;
     const mainHeading = document.createElement("h2");
     mainHeading.textContent = `> All Channels < (${totalChannelCount})`;
@@ -2716,7 +2774,7 @@ function setupAPIKeyModalEvents() {
     skipBtn.parentNode.replaceChild(newSkipBtn, skipBtn);
     newSkipBtn.addEventListener("click", function () {
       hideAPIKeyModal();
-      showNotification("⏭️ Live channels update skipped", "info");
+      showNotification("⭕️ Live channels update skipped", "info");
       console.log("ℹ️ User skipped API key configuration");
     });
   }
@@ -2769,9 +2827,11 @@ function setupAPIKeyModalEvents() {
     }
   });
 }
+
 // ============================================
 // NETWORK MONITORING
 // ============================================
+
 function setupNetworkMonitoring() {
   window.addEventListener("online", handleNetworkRestored);
   window.addEventListener("offline", handleNetworkLost);
@@ -3110,12 +3170,12 @@ function handleSwipe() {
     if (Math.abs(deltaY) > minSwipeDistance) {
       if (deltaY < 0) {
         // Swipe up - next channel
-        console.log('👆 Swipe up detected');
-        navigateToNextChannel();
+        //console.log('👆 Swipe up detected');
+        //navigateToNextChannel();
       } else {
         // Swipe down - previous channel
-        console.log('👇 Swipe down detected');
-        navigateToPreviousChannel();
+        //console.log('👇 Swipe down detected');
+        //navigateToPreviousChannel();
       }
     }
   }
@@ -3874,4 +3934,5 @@ window.clearSearch = clearSearch;
 window.exportAllData = exportAllData;
 window.importBackupData = importBackupData;
 window.triggerImportDialog = triggerImportDialog;
-//console.log("✅ IPTV Channel Manager - Optimized Version Loaded Successfully");
+window.clearOldStorageData = clearOldStorageData;
+window.updateStorageDisplay = updateStorageDisplay;
