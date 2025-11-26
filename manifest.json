@@ -5,7 +5,7 @@
   "start_url": "/LiveTV/index.html",
   "scope": "/LiveTV/",
   "display": "standalone",
-  "orientation": "portrait",
+  "orientation": "any",
   "theme_color": "#121212",
   "background_color": "#121212",
   "icons": [
