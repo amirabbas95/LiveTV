@@ -657,6 +657,20 @@ class ChannelLoader {
     })) {
       this.setupHLSErrorRecovery();
     }
+
+    // --- START NEW CODE FOR AUTOMATIC FULLSCREEN ---
+    // Attach the device orientation listener
+    window.addEventListener('orientationchange', handleOrientationChange);
+    
+    // Check orientation immediately on load (if device is already in landscape)
+    handleOrientationChange(); 
+
+    // Add cleanup for the event listener using the existing mechanism
+    this.eventCleanupCallbacks.push(() => {
+        window.removeEventListener('orientationchange', handleOrientationChange);
+    });
+    // --- END NEW CODE FOR AUTOMATIC FULLSCREEN ---
+    
     this.setupPlayerEvents(name, isLive, streamConfig.type === 'youtube', token);
     token.throwIfCancelled();
     if (streamConfig.type === 'youtube') {
@@ -1413,6 +1427,78 @@ function closeModal() {
     focusedIndex = 0;
   }
 }
+// ============================================
+// ✅ NEW: AUTOMATIC FULLSCREEN TOGGLE
+// ============================================
+
+/**
+ * Toggles Video.js fullscreen mode based on device orientation.
+ * Only runs if a video is currently loaded and playing.
+ */
+function handleOrientationChange() {
+  // 1. Get the current player instance
+  const currentLoader = window.currentChannelLoader;
+  if (!currentLoader || !currentLoader.playerInstance) {
+    return; // Do nothing if no channel is loaded
+  }
+  const player = currentLoader.playerInstance;
+  
+  // 2. Check the screen orientation
+  // We use screen.orientation.type for the modern API
+  const isLandscape = screen.orientation.type.startsWith('landscape');
+
+  // 3. Control fullscreen state
+  if (isLandscape) {
+    // Device is rotated to landscape, go fullscreen
+    if (!player.isFullscreen()) {
+      player.requestFullscreen();
+      console.log("Device rotated to landscape: Entering fullscreen.");
+    }
+  } else {
+    // Device is rotated back to portrait, exit fullscreen
+    if (player.isFullscreen()) {
+      player.exitFullscreen();
+      console.log("Device rotated to portrait: Exiting fullscreen.");
+    }
+  }
+}
+
+// ============================================
+// ✅ NEW: AUTOMATIC FULLSCREEN TOGGLE
+// ============================================
+
+/**
+ * Toggles Video.js fullscreen mode based on device orientation.
+ * Only runs if a video is currently loaded and playing.
+ */
+function handleOrientationChange() {
+  // 1. Get the current player instance
+  const currentLoader = window.currentChannelLoader;
+  if (!currentLoader || !currentLoader.playerInstance) {
+    return; // Do nothing if no channel is loaded
+  }
+  const player = currentLoader.playerInstance;
+  
+  // 2. Check the screen orientation
+  // We use screen.orientation.type for the modern API
+  const isLandscape = screen.orientation.type.startsWith('landscape');
+
+  // 3. Control fullscreen state
+  if (isLandscape) {
+    // Device is rotated to landscape, go fullscreen
+    if (!player.isFullscreen()) {
+      player.requestFullscreen();
+      console.log("Device rotated to landscape: Entering fullscreen.");
+    }
+  } else {
+    // Device is rotated back to portrait, exit fullscreen
+    if (player.isFullscreen()) {
+      player.exitFullscreen();
+      console.log("Device rotated to portrait: Exiting fullscreen.");
+    }
+  }
+}
+
 
 function toggleFullscreen() {
   const player = channelLoader.getPlayer();
