@@ -4,7 +4,7 @@
   "description": "An optimized, remote-friendly web player for watching live television channels.",
   "start_url": "/LiveTV/index.html",
   "scope": "/LiveTV/",
-  "display": "standalone",
+  "display": "fullscreen",
   "orientation": "any",
   "theme_color": "#121212",
   "background_color": "#121212",
