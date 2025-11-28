@@ -9,7 +9,11 @@
 const AUTO_UPDATE_KEY = "autoUpdateEnabled";
 const UPDATE_INTERVAL_KEY = "updateIntervalHours";
 const MAX_RECENT = 18;
-const USER_PREFERENCES_KEY = "userPreferences";
+
+let fullscreenPrompt = null;
+let promptTimeout = null;
+let hasUserInteracted = false;
+
 
 // ✅ NEW: Improved localStorage keys with namespace
 const LS_KEYS = {
@@ -19,15 +23,6 @@ const LS_KEYS = {
   LIVE: "liveChannelsData",
   FEEDS: "rssFeedsData",
   WATCH_TIME: "watchTimePerChannel",
-};
-
-// ✅ NEW: User preferences defaults
-const DEFAULT_PREFERENCES = {
-  allowAutoRotate: true,
-  autoFullscreen: true,
-  enableNotifications: true,
-  defaultQuality: "auto",
-  theme: "dark"
 };
 
 const API_KEY_STORAGE_KEY = "youtube_api_key";
@@ -65,11 +60,6 @@ let touchStartY = 0;
 let touchEndY = 0;
 let lastTapTime = 0;
 const DOUBLE_TAP_DELAY = 300;
-
-// ✅ NEW: Fullscreen prompt variables
-let fullscreenPrompt = null;
-let promptTimeout = null;
-let hasUserInteracted = false;
 
 // Search state
 let searchQuery = "";
@@ -1359,28 +1349,9 @@ async function selectChannel(url, name, image, description, number, isLive) {
     return;
   }
 
-  // Remove any existing prompts when changing channels
-  removeFullscreenPrompt();
+
 
   await channelLoader.loadChannel(url, name, image, description, number, isLive);
-  
-  // ✅ Check if we should show fullscreen prompt (with delay for mobile)
-  setTimeout(() => {
-    const preferences = getUserPreferences();
-    if (preferences.autoFullscreen) {
-      const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-      
-      if (isMobile && !hasUserInteracted) {
-        // Show prompt on mobile after a short delay
-        setTimeout(() => {
-          showFullscreenPrompt();
-        }, 2000);
-      } else {
-        // Desktop or mobile with previous interaction
-        checkAndEnterFullscreen();
-      }
-    }
-  }, 500);
 }
 
 function showChannelInfoOverlay() {
@@ -1400,24 +1371,16 @@ function showChannelInfoOverlay() {
   }, 6000);
 }
 
-
 function closeModal() {
   const modal = document.getElementById("videoModal");
-  const player = channelLoader.getPlayer();
-  
   if (modal) {
     modal.style.display = "none";
     modal.classList.add("hidden");
   }
-  
-  // ✅ Clean up fullscreen prompt when closing modal
-  removeFullscreenPrompt();
-  
   channelLoader.cleanupPlayer().then(() => {
   }).catch(error => {
     console.warn('⚠️ Error during player cleanup:', error);
   });
-  
   renderRecentlyWatched();
   updateAllChannelItems();
   if (lastFocusedElement && lastFocusedElement.isConnected) {
@@ -1429,6 +1392,146 @@ function closeModal() {
   }
 }
 
+
+// ============================================
+// AUTOMATIC FULLSCREEN ON LANDSCAPE ROTATION
+// ============================================
+/**
+ * Handles device orientation changes and toggles fullscreen accordingly.
+ * This function checks if:
+ * 1. A video player is currently active
+ * 2. The device orientation has changed
+ * Then automatically enters/exits fullscreen based on orientation.
+ */
+/*
+* Condition:
+* 1. A video is actively playing (player is present and modal is open)
+* 2. The device orientation has changed
+* Then automatically enters/exits fullscreen based on orientation.
+*/
+// ============================================
+// ORIENTATION CHANGE HANDLER - CONFIRMED
+// ============================================
+function handleOrientationChange() {
+    
+  const player = channelLoader.getPlayer();
+  // Do nothing if no player is active or no orientation API
+  if (!player || !screen.orientation || !screen.orientation.type) {
+    return;
+  }
+  
+  const modal = document.getElementById("videoModal");
+  const isModalOpen = modal && modal.style.display === "flex";
+  if (!isModalOpen) {
+    return;
+  }
+  
+  const isLandscape = screen.orientation && screen.orientation.type.startsWith('landscape');
+  const isCurrentlyFullscreen = player.isFullscreen();
+
+    // Check if we're on mobile
+  const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+
+  if (isLandscape && !isCurrentlyFullscreen) {
+    // Landscape detected, but not fullscreen -> Enter Fullscreen
+    // This call is the one that triggered the security error, but 
+    // the corrected toggleFullscreen now handles the failure gracefully 
+    // by attempting screen.orientation.lock() instead.
+      if (isMobile && !hasUserInteracted) {
+      // On mobile, show prompt instead of auto-entering
+      console.log('📱 Mobile landscape detected - showing fullscreen prompt');
+      setTimeout(() => {
+        showFullscreenPrompt();
+      }, 1500);
+
+    } else {
+      // Desktop or mobile with user interaction - direct approach
+      //console.log('🔄 Auto-entering fullscreen');
+      //window.toggleFullscreen(); 
+    }
+
+  } else if (!isLandscape && isCurrentlyFullscreen) {
+    // Portrait detected, but is fullscreen -> Exit Fullscreen
+    // This is generally allowed and is the primary success case.
+    console.log('🔄 Exiting fullscreen (portrait detected)');
+    window.toggleFullscreen(); 
+  }
+}
+
+
+// ============================================
+// ✅ MINIMAL FULLSCREEN PROMPT FUNCTIONS
+// ============================================
+
+/**
+ * Show minimal fullscreen prompt for mobile users
+ */
+function showFullscreenPrompt() {
+  // Remove existing prompt first
+  removeFullscreenPrompt();
+  
+  const modal = document.getElementById("videoModal");
+  if (!modal || modal.style.display !== "flex") return;
+  
+  // Create minimal prompt element
+  fullscreenPrompt = document.createElement('div');
+  fullscreenPrompt.className = 'minimal-fullscreen-prompt';
+  fullscreenPrompt.innerHTML = `
+    <div class="prompt-backdrop">
+      <div class="prompt-card">
+        <div class="prompt-icon">
+          <i class="fas fa-expand"></i>
+        </div>
+        <div class="prompt-text">
+          <span>Tap for fullscreen</span>
+        </div>
+        <button class="prompt-close" onclick="removeFullscreenPrompt()">
+          <i class="fas fa-times"></i>
+        </button>
+      </div>
+    </div>
+  `;
+  
+  // Add click handler to enter fullscreen
+  fullscreenPrompt.addEventListener('click', function(e) {
+    if (e.target.closest('.prompt-close')) return; // Don't trigger on close button
+    windows.toggleFullscreen();
+  });
+  
+  modal.appendChild(fullscreenPrompt);
+  
+  // Auto-hide after 5 seconds (shorter for minimal design)
+  promptTimeout = setTimeout(() => {
+    removeFullscreenPrompt();
+  }, 5000);
+  
+  console.log('📱 Minimal fullscreen prompt shown');
+}
+
+/**
+ * Remove fullscreen prompt with smooth animation
+ */
+function removeFullscreenPrompt() {
+  if (fullscreenPrompt) {
+    // Add fade-out animation
+    fullscreenPrompt.classList.add('fade-out');
+    
+    // Remove after animation completes
+    setTimeout(() => {
+      if (fullscreenPrompt && fullscreenPrompt.parentNode) {
+        fullscreenPrompt.parentNode.removeChild(fullscreenPrompt);
+        fullscreenPrompt = null;
+      }
+    }, 250);
+  }
+  
+  if (promptTimeout) {
+    clearTimeout(promptTimeout);
+    promptTimeout = null;
+  }
+}
+
+
 function toggleFullscreen() {
     const player = channelLoader.getPlayer(); 
     const modal = document.getElementById("videoModal");
@@ -1437,9 +1540,9 @@ function toggleFullscreen() {
         return;
     }
     
-    // Mark user interaction for future auto-fullscreen attempts
+        // Mark user interaction for future auto-fullscreen attempts
     hasUserInteracted = true;
-    
+
     // Check current fullscreen status
     const isCurrentlyFullscreen = player.isFullscreen();
 
@@ -1456,19 +1559,37 @@ function toggleFullscreen() {
         try {
             player.requestFullscreen();
         } catch (e) {
-            console.warn('Failed to enter fullscreen automatically:', e.message);
-            // Try mobile-specific method
-            const videoElement = player.el().querySelector('video');
-            if (videoElement && videoElement.webkitEnterFullscreen) {
-                try {
-                    videoElement.webkitEnterFullscreen();
-                } catch (mobileError) {
-                    console.warn('Mobile fullscreen also failed:', mobileError.message);
-                }
-            }
+
+    // Try mobile-specific methods
+    const videoElement = player.el().querySelector('video');
+    
+    if (videoElement) {
+      // iOS Safari
+      if (videoElement.webkitEnterFullscreen) {
+        try {
+          videoElement.webkitEnterFullscreen();
+          return;
+        } catch (iosError) {
+          console.warn('iOS fullscreen failed:', iosError);
+        }
+      }
+      
+      // Android/Chrome
+      if (videoElement.requestFullscreen) {
+        try {
+          videoElement.requestFullscreen();
+          return;
+        } catch (androidError) {
+          console.warn('Android fullscreen failed:', androidError);
+        }
+      }
+    }
+    
+    console.warn('All fullscreen methods failed');
         }
     }
 }
+
 
 // ============================================
 // WATCH TIME MANAGEMENT
@@ -2572,12 +2693,9 @@ function stopAutoUpdateService() {
     console.log("Auto-update service stopped");
   }
 }
-
-
 // ============================================
-// ENHANCED SETTINGS MODAL WITH PREFERENCES
+// SETTINGS MODAL
 // ============================================
-
 function showSettingsModal() {
   const settingsModal = document.getElementById("settingsModal");
   if (!settingsModal) return;
@@ -2596,19 +2714,6 @@ function showSettingsModal() {
     updateIntervalSelect.value = updateIntervalHours.toString();
   }
 
-  // ✅ NEW: Load user preferences into settings
-  const preferences = getUserPreferences();
-  const autoRotateToggle = document.getElementById("autoRotateToggle");
-  const autoFullscreenToggle = document.getElementById("autoFullscreenToggle");
-  
-  if (autoRotateToggle) {
-    autoRotateToggle.checked = preferences.allowAutoRotate;
-  }
-  
-  if (autoFullscreenToggle) {
-    autoFullscreenToggle.checked = preferences.autoFullscreen;
-  }
-
   updateIntervalDescriptionText(updateIntervalHours);
   updateLastUpdateDisplay();
 
@@ -2618,28 +2723,7 @@ function showSettingsModal() {
   } else {
     updateStorageDisplay();
   }
-}
 
-// ✅ NEW: Toggle auto-rotate preference
-function toggleAutoRotate(enabled) {
-  updateUserPreference('allowAutoRotate', enabled);
-  showNotification(
-    enabled ? 
-    "Auto-rotate enabled" : 
-    "Auto-rotate disabled - manual control only",
-    "success"
-  );
-}
-
-// ✅ NEW: Toggle auto-fullscreen preference  
-function toggleAutoFullscreen(enabled) {
-  updateUserPreference('autoFullscreen', enabled);
-  showNotification(
-    enabled ?
-    "Auto-fullscreen on rotation enabled" :
-    "Auto-fullscreen disabled",
-    "success"
-  );
 }
 
 function hideSettingsModal() {
@@ -2737,10 +2821,6 @@ function setupSettingsModal() {
   const manualUpdateBtn = document.getElementById("manualUpdateBtn");
   const manageApiKeyBtn = document.getElementById("manageApiKeyBtn");
 
-      // ✅ NEW: Add preference toggles
-  const autoRotateToggle = document.getElementById("autoRotateToggle");
-  const autoFullscreenToggle = document.getElementById("autoFullscreenToggle");
-
   // --- Attach Event Listeners (Run Once) ---
   if (settingsBtn) {
     settingsBtn.addEventListener("click", showSettingsModal);
@@ -2772,20 +2852,6 @@ function setupSettingsModal() {
     manageApiKeyBtn.addEventListener("click", () => {
       hideSettingsModal();
       setTimeout(showAPIKeyModal, 300);
-    });
-  }
-
-
-
-  if (autoRotateToggle) {
-    autoRotateToggle.addEventListener("change", (e) => {
-      toggleAutoRotate(e.target.checked);
-    });
-  }
-
-  if (autoFullscreenToggle) {
-    autoFullscreenToggle.addEventListener("change", (e) => {
-      toggleAutoFullscreen(e.target.checked);
     });
   }
 
@@ -4017,246 +4083,6 @@ function updateStorageDisplay() {
 
 
 // ============================================
-// ✅ NEW: USER PREFERENCES MANAGEMENT
-// ============================================
-
-/**
- * Get user preferences with defaults
- */
-function getUserPreferences() {
-  try {
-    const stored = localStorage.getItem(USER_PREFERENCES_KEY);
-    if (stored) {
-      const parsed = JSON.parse(stored);
-      return { ...DEFAULT_PREFERENCES, ...parsed };
-    }
-  } catch (e) {
-    console.warn('Error loading user preferences, using defaults:', e);
-  }
-  return { ...DEFAULT_PREFERENCES };
-}
-
-/**
- * Save user preferences
- */
-function saveUserPreferences(preferences) {
-  try {
-    localStorage.setItem(USER_PREFERENCES_KEY, JSON.stringify(preferences));
-    return true;
-  } catch (e) {
-    console.error('Failed to save preferences:', e);
-    return false;
-  }
-}
-
-/**
- * Update a specific preference
- */
-function updateUserPreference(key, value) {
-  const preferences = getUserPreferences();
-  preferences[key] = value;
-  const success = saveUserPreferences(preferences);
-  
-  if (success) {
-    console.log(`✅ Preference updated: ${key} = ${value}`);
-    // Dispatch event for real-time updates
-    window.dispatchEvent(new CustomEvent('preferences-updated', {
-      detail: { key, value }
-    }));
-  }
-  
-  return success;
-}
-
-// ============================================
-// ✅ MINIMAL FULLSCREEN PROMPT FUNCTIONS
-// ============================================
-
-/**
- * Show minimal fullscreen prompt for mobile users
- */
-function showFullscreenPrompt() {
-  // Remove existing prompt first
-  removeFullscreenPrompt();
-  
-  const modal = document.getElementById("videoModal");
-  if (!modal || modal.style.display !== "flex") return;
-  
-  // Create minimal prompt element
-  fullscreenPrompt = document.createElement('div');
-  fullscreenPrompt.className = 'minimal-fullscreen-prompt';
-  fullscreenPrompt.innerHTML = `
-    <div class="prompt-backdrop">
-      <div class="prompt-card">
-        <div class="prompt-icon">
-          <i class="fas fa-expand"></i>
-        </div>
-        <div class="prompt-text">
-          <span>Tap for fullscreen</span>
-        </div>
-        <button class="prompt-close" onclick="removeFullscreenPrompt()">
-          <i class="fas fa-times"></i>
-        </button>
-      </div>
-    </div>
-  `;
-  
-  // Add click handler to enter fullscreen
-  fullscreenPrompt.addEventListener('click', function(e) {
-    if (e.target.closest('.prompt-close')) return; // Don't trigger on close button
-    enterFullscreenFromPrompt();
-  });
-  
-  modal.appendChild(fullscreenPrompt);
-  
-  // Auto-hide after 5 seconds (shorter for minimal design)
-  promptTimeout = setTimeout(() => {
-    removeFullscreenPrompt();
-  }, 5000);
-  
-  console.log('📱 Minimal fullscreen prompt shown');
-}
-
-/**
- * Remove fullscreen prompt
- */
-/**
- * Remove fullscreen prompt with smooth animation
- */
-function removeFullscreenPrompt() {
-  if (fullscreenPrompt) {
-    // Add fade-out animation
-    fullscreenPrompt.classList.add('fade-out');
-    
-    // Remove after animation completes
-    setTimeout(() => {
-      if (fullscreenPrompt && fullscreenPrompt.parentNode) {
-        fullscreenPrompt.parentNode.removeChild(fullscreenPrompt);
-        fullscreenPrompt = null;
-      }
-    }, 250);
-  }
-  
-  if (promptTimeout) {
-    clearTimeout(promptTimeout);
-    promptTimeout = null;
-  }
-}
-
-/**
- * Enter fullscreen from user interaction
- */
-function enterFullscreenFromPrompt() {
-  console.log('🎯 Fullscreen triggered via user interaction');
-  removeFullscreenPrompt();
-  hasUserInteracted = true;
-  
-  const player = channelLoader.getPlayer();
-  if (!player) return;
-  
-  // Try mobile-specific fullscreen methods first
-  const videoElement = player.el().querySelector('video');
-  
-  // iOS Safari
-  if (videoElement && videoElement.webkitEnterFullscreen) {
-    try {
-      videoElement.webkitEnterFullscreen();
-      return;
-    } catch (e) {
-      console.warn('iOS fullscreen failed:', e);
-    }
-  }
-  
-  // Standard fullscreen
-  if (player.requestFullscreen) {
-    try {
-      player.requestFullscreen();
-      return;
-    } catch (e) {
-      console.warn('Standard fullscreen failed:', e);
-    }
-  }
-}
-
-/**
- * Enhanced orientation handler with prompt support
- */
-function handleOrientationChange() {
-  const player = channelLoader.getPlayer();
-  const preferences = getUserPreferences();
-  
-  // Do nothing if auto-rotate is disabled or no player
-  if (!preferences.allowAutoRotate || !player || !screen.orientation || !screen.orientation.type) {
-    return;
-  }
-  
-  const modal = document.getElementById("videoModal");
-  const isModalOpen = modal && modal.style.display === "flex";
-  if (!isModalOpen) {
-    return;
-  }
-  
-  const isLandscape = screen.orientation.type.startsWith('landscape');
-  const isCurrentlyFullscreen = player.isFullscreen();
-
-  // Check if we're on mobile
-  const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-
-  if (isLandscape && !isCurrentlyFullscreen && preferences.autoFullscreen) {
-    if (isMobile && !hasUserInteracted) {
-      // On mobile, show prompt instead of auto-entering
-      console.log('📱 Mobile landscape detected - showing fullscreen prompt');
-      setTimeout(() => {
-        showFullscreenPrompt();
-      }, 1000);
-    } else {
-      // Desktop or mobile with user interaction - direct approach
-      console.log('🔄 Auto-entering fullscreen');
-      window.toggleFullscreen();
-    }
-  } else if (!isLandscape && isCurrentlyFullscreen) {
-    console.log('🔄 Exiting fullscreen (portrait detected)');
-    window.toggleFullscreen();
-  }
-}
-
-/**
- * Check conditions and enter fullscreen if appropriate
- */
-function checkAndEnterFullscreen() {
-  const player = channelLoader.getPlayer();
-  const modal = document.getElementById("videoModal");
-  const preferences = getUserPreferences();
-  
-  if (!player || !modal || modal.style.display !== "flex") {
-    return;
-  }
-  
-  const isCurrentlyFullscreen = player.isFullscreen();
-  
-  // Only auto-enter if not already in fullscreen and preference allows
-  if (!isCurrentlyFullscreen && preferences.autoFullscreen) {
-    // Check if we're on mobile
-    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-    const isLandscape = screen.orientation && screen.orientation.type.startsWith('landscape');
-    
-    if (isLandscape) {
-      if (isMobile && !hasUserInteracted) {
-        // On mobile without user interaction, show prompt
-        console.log('📱 Mobile - showing fullscreen prompt');
-        setTimeout(() => {
-          showFullscreenPrompt();
-        }, 1500);
-      } else {
-        // Desktop or mobile with user interaction
-        console.log('🔄 Auto-entering fullscreen');
-        enterFullscreenWithFallback();
-      }
-    }
-  }
-}
-
-// ============================================
 // EXPORT GLOBAL FUNCTIONS
 // ============================================
 window.selectChannel = selectChannel;
@@ -4278,6 +4104,3 @@ window.clearOldStorageData = clearOldStorageData;
 window.updateStorageDisplay = updateStorageDisplay;
 window.handleOrientationChange = handleOrientationChange;
 window.toggleFullscreen = toggleFullscreen; 
-window.checkAndEnterFullscreen = checkAndEnterFullscreen;
-window.enterFullscreenFromPrompt = enterFullscreenFromPrompt; // ✅ NEW
-window.removeFullscreenPrompt = removeFullscreenPrompt; // ✅ NEW

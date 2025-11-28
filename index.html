@@ -3,7 +3,7 @@
 
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
   <title>Live TV Player</title>
   <link rel="manifest" href="/LiveTV/manifest.json">
@@ -116,29 +116,6 @@
               Automatically check for new content every 8 hours
             </p>
           </div>
-
-
-          <!-- Add this to your settings modal content -->
-          <div class="setting-item">
-            <label>
-              <input type="checkbox" id="autoRotateToggle" checked>
-              Auto-rotate to fullscreen
-            </label>
-            <p class="setting-description">
-              Automatically enter fullscreen when rotating to landscape
-            </p>
-          </div>
-
-          <div class="setting-item">
-            <label>
-              <input type="checkbox" id="autoFullscreenToggle" checked>
-              Auto-exit fullscreen
-            </label>
-            <p class="setting-description">
-              Automatically exit fullscreen when rotating to portrait
-            </p>
-          </div>
-
           <div class="setting-item">
             <label for="updateInterval">Update interval</label>
             <select id="updateInterval">
@@ -153,9 +130,6 @@
               Now</button>
             <span id="lastUpdateDisplay"></span>
           </div>
-
-
-          
           <!-- ✅ NEW: API Key Management -->
           <div class="setting-item">
             <label for="manageApiKeyBtn">YouTube API Key</label>
@@ -217,7 +191,6 @@
             <p><strong>Why do we need this?</strong></p>
             <p>The YouTube API key allows us to detect which channels are currently live streaming.</p>
           </div>
-          
 
           <!-- Close Button -->
           <button id="closeApiKeyModal" class="btn-secondary">Close</button>
