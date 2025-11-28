@@ -1495,7 +1495,7 @@ function showFullscreenPrompt() {
   // Add click handler to enter fullscreen
   fullscreenPrompt.addEventListener('click', function(e) {
     if (e.target.closest('.prompt-close')) return; // Don't trigger on close button
-    windows.toggleFullscreen();
+    window.toggleFullscreen();
   });
   
   modal.appendChild(fullscreenPrompt);
@@ -1541,7 +1541,7 @@ function toggleFullscreen() {
     }
     
         // Mark user interaction for future auto-fullscreen attempts
-    hasUserInteracted = true;
+    hasUserInteracted = false;
 
     // Check current fullscreen status
     const isCurrentlyFullscreen = player.isFullscreen();
