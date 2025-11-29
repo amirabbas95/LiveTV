@@ -600,6 +600,7 @@ class ChannelLoader {
   async cleanupPlayer() {
     stopWatching();
     this.cleanupEventListeners();
+    
     if (this.playerInstance) {
       try {
         console.log('🧹 Cleaning up existing player...');
@@ -667,13 +668,13 @@ class ChannelLoader {
     }
 
 
-        // ✅✅✅ ADD THIS SECTION HERE ✅✅✅
+    // ✅✅✅ ADD THIS SECTION HERE ✅✅✅
     // Attach orientation change listener
     window.addEventListener('orientationchange', handleOrientationChange);
-    
+
     // Check orientation immediately on load
     handleOrientationChange();
-    
+
     // Add cleanup for the event listener
     this.eventCleanupCallbacks.push(() => {
       window.removeEventListener('orientationchange', handleOrientationChange);
@@ -687,6 +688,11 @@ class ChannelLoader {
     }
     await this.waitForPlayerReady(token);
     token.throwIfCancelled();
+
+    // ✅ THIS LINE WAS ADDED:
+    this.setupFullscreenCloseButton();
+
+
     showChannelInfoOverlay();
     await this.attemptAutoplay();
   }
@@ -1048,7 +1054,99 @@ transition: transform 0.2s;
   getPlayer() {
     return this.playerInstance;
   }
+
+  /**
+     * Sets up a dynamic close button that appears ONLY when the player is in Video.js fullscreen mode.
+     * This is necessary because Video.js creates a new stacking context that overlays the main modal's close button.
+     */
+  setupFullscreenCloseButton() {
+    if (!this.playerInstance) return;
+
+    const playerEl = this.playerInstance.el();
+
+    /**
+     * Creates and returns the button element.
+     * @param {videojs.Player} player - The VJS player instance.
+     */
+    const createCloseButton = (player) => {
+      // 1. Remove any existing instances attached to the player element
+      const existingBtn = document.getElementById('fullscreenCloseBtn');
+      if (existingBtn) existingBtn.remove();
+
+      const closeBtn = document.createElement('button');
+      closeBtn.id = 'fullscreenCloseBtn';
+      closeBtn.className = 'fullscreen-close-button';
+      closeBtn.innerHTML = '<i class="fas fa-minimize"></i>';
+      closeBtn.onclick = toggleFullscreen;
+      closeBtn.title = 'Close Video';
+
+
+      closeBtn.style.cssText = `
+        position: absolute;
+        top: 10px;
+        right: 10px;
+        z-index: 2000;
+        background: rgba(0, 0, 0, 0.5);
+        color: white;
+        border: none;
+        border-radius: 50%;
+        width: 40px;
+        height: 40px;
+        font-size: 18px;
+        cursor: pointer;
+        display: none; /* Keep this as the final initial state */
+        transition: background 0.2s;
+        /* These properties are used for layout but don't need 'display: flex' here */
+        align-items: center;
+        justify-content: center;
+      `;
+
+      // Hover effect
+      closeBtn.onmouseover = () => closeBtn.style.background = 'rgba(76, 175, 80, 0.7)';
+      closeBtn.onmouseout = () => closeBtn.style.background = 'rgba(0, 0, 0, 0.5)';
+
+      return closeBtn;
+    };
+
+    // Create the button once and append it to the player element
+    const closeBtnInstance = createCloseButton(this.playerInstance);
+    playerEl.appendChild(closeBtnInstance);
+
+    /**
+     * Handles showing/hiding the button based on fullscreen state.
+     */
+    const fullscreenChangeHandler = () => {
+      if (!this.playerInstance) return;
+
+
+      const isFullscreen = this.playerInstance.isFullscreen();
+
+      // Toggle visibility, which is more reliable than adding/removing elements constantly
+      closeBtnInstance.style.display = isFullscreen ? 'flex' : 'none';
+      console.log(`Fullscreen close button ${isFullscreen ? 'shown' : 'hidden'}.`);
+    };
+
+    // Listen to fullscreen change events
+    this.playerInstance.on('fullscreenchange', fullscreenChangeHandler);
+
+    // Initial state check (in case it's called after a quick toggle)
+    fullscreenChangeHandler();
+
+
+    // Cleanup: Remove event listener and the button element
+    this.eventCleanupCallbacks.push(() => {
+      if (this.playerInstance) {
+        this.playerInstance.off('fullscreenchange', fullscreenChangeHandler);
+      }
+      // Use the instance to remove it on cleanup
+      if (closeBtnInstance.parentNode) {
+        closeBtnInstance.remove();
+      }
+    });
+  }
+
 }
+
 
 const channelLoader = new ChannelLoader();
 
@@ -1078,10 +1176,10 @@ function log(message, isError = false) {
 function showNotification(message, type = "info") {
   console.log(`🔔 ${type.toUpperCase()}: ${message}`);
   const colors = {
-    info: '#2196F3',
-    success: '#4CAF50',
-    warning: '#FF9800',
-    error: '#F44336'
+    info: '#007BFF',   // Vibrant Blue
+    success: '#28A745', // Deep Green (Highly Recommended)
+    warning: '#FFC107',  // Golden Yellow
+    error: '#DC3545'   // Intense Red
   };
   const notification = document.createElement("div");
   notification.className = "notification";
@@ -1413,23 +1511,23 @@ function closeModal() {
 // ORIENTATION CHANGE HANDLER - CONFIRMED
 // ============================================
 function handleOrientationChange() {
-    
+
   const player = channelLoader.getPlayer();
   // Do nothing if no player is active or no orientation API
   if (!player || !screen.orientation || !screen.orientation.type) {
     return;
   }
-  
+
   const modal = document.getElementById("videoModal");
   const isModalOpen = modal && modal.style.display === "flex";
   if (!isModalOpen) {
     return;
   }
-  
-  const isLandscape = screen.orientation && screen.orientation.type.startsWith('landscape');
+
+  const isLandscape = screen.orientation.type.startsWith('landscape');
   const isCurrentlyFullscreen = player.isFullscreen();
 
-    // Check if we're on mobile
+  // Check if we're on mobile
   const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
 
   if (isLandscape && !isCurrentlyFullscreen) {
@@ -1437,12 +1535,12 @@ function handleOrientationChange() {
     // This call is the one that triggered the security error, but 
     // the corrected toggleFullscreen now handles the failure gracefully 
     // by attempting screen.orientation.lock() instead.
-      if (isMobile && !hasUserInteracted) {
+    if (isMobile && !hasUserInteracted) {
       // On mobile, show prompt instead of auto-entering
       console.log('📱 Mobile landscape detected - showing fullscreen prompt');
       setTimeout(() => {
         showFullscreenPrompt();
-      }, 1500);
+      }, 500);
 
     } else {
       // Desktop or mobile with user interaction - direct approach
@@ -1454,7 +1552,10 @@ function handleOrientationChange() {
     // Portrait detected, but is fullscreen -> Exit Fullscreen
     // This is generally allowed and is the primary success case.
     console.log('🔄 Exiting fullscreen (portrait detected)');
-    window.toggleFullscreen(); 
+    removeFullscreenPrompt();
+    window.toggleFullscreen();
+  } else if (isLandscape && isCurrentlyFullscreen) {
+    removeFullscreenPrompt();
   }
 }
 
@@ -1464,48 +1565,100 @@ function handleOrientationChange() {
 // ============================================
 
 /**
- * Show minimal fullscreen prompt for mobile users
+ * Show enhanced fullscreen prompt with controls for mobile users
  */
 function showFullscreenPrompt() {
   // Remove existing prompt first
   removeFullscreenPrompt();
-  
+
   const modal = document.getElementById("videoModal");
   if (!modal || modal.style.display !== "flex") return;
-  
-  // Create minimal prompt element
+
+  // Create enhanced prompt element with controls
   fullscreenPrompt = document.createElement('div');
   fullscreenPrompt.className = 'minimal-fullscreen-prompt';
   fullscreenPrompt.innerHTML = `
     <div class="prompt-backdrop">
       <div class="prompt-card">
-        <div class="prompt-icon">
-          <i class="fas fa-expand"></i>
+        <div class="prompt-header">
+          <div class="prompt-icon">
+            <i class="fas fa-expand"></i>
+          </div>
+          <div class="prompt-text">
+            <span>Video Controls</span>
+          </div>
+          <button class="prompt-close" onclick="removeFullscreenPrompt()">
+            <i class="fas fa-times"></i>
+          </button>
         </div>
-        <div class="prompt-text">
-          <span>Tap for fullscreen</span>
+        
+        <div class="prompt-controls">
+          <button class="control-btn" id="promptPrevBtn" title="Previous Channel">
+            <i class="fas fa-step-backward"></i>
+            <span>Previous</span>
+          </button>
+          
+          <button class="control-btn control-btn-primary" id="promptFullscreenBtn" title="Toggle Fullscreen">
+            <i class="fas fa-expand"></i>
+            <span>Fullscreen</span>
+          </button>
+          
+          <button class="control-btn" id="promptNextBtn" title="Next Channel">
+            <i class="fas fa-step-forward"></i>
+            <span>Next</span>
+          </button>
         </div>
-        <button class="prompt-close" onclick="removeFullscreenPrompt()">
-          <i class="fas fa-times"></i>
-        </button>
       </div>
     </div>
   `;
-  
-  // Add click handler to enter fullscreen
-  fullscreenPrompt.addEventListener('click', function(e) {
-    if (e.target.closest('.prompt-close')) return; // Don't trigger on close button
-    window.toggleFullscreen();
-  });
-  
+
+
+
   modal.appendChild(fullscreenPrompt);
-  
-  // Auto-hide after 5 seconds (shorter for minimal design)
+
+  // Event listeners for control buttons
+  const prevBtn = fullscreenPrompt.querySelector('#promptPrevBtn');
+  const nextBtn = fullscreenPrompt.querySelector('#promptNextBtn');
+  const fullscreenBtn = fullscreenPrompt.querySelector('#promptFullscreenBtn');
+
+  if (prevBtn) {
+    prevBtn.addEventListener('click', function (e) {
+      e.stopPropagation();
+      navigateToPreviousChannel();
+      removeFullscreenPrompt();
+    });
+  }
+
+  if (nextBtn) {
+    nextBtn.addEventListener('click', function (e) {
+      e.stopPropagation();
+      navigateToNextChannel();
+      removeFullscreenPrompt();
+    });
+  }
+
+  if (fullscreenBtn) {
+    fullscreenBtn.addEventListener('click', function (e) {
+      e.stopPropagation();
+      window.toggleFullscreen();
+      removeFullscreenPrompt();
+    });
+  }
+
+  /*   // Add a click handler to the backdrop to dismiss the prompt without action
+    fullscreenPrompt.querySelector('.prompt-backdrop').addEventListener('click', function (e) {
+        // Check if the click target is the backdrop itself, not an element inside prompt-card
+        if (e.target === this) {
+            removeFullscreenPrompt();
+        }
+    }); */
+
+  // Auto-hide after 8 seconds
   promptTimeout = setTimeout(() => {
     removeFullscreenPrompt();
-  }, 5000);
-  
-  console.log('📱 Minimal fullscreen prompt shown');
+  }, 8000);
+
+  console.log('📱 Enhanced fullscreen prompt shown');
 }
 
 /**
@@ -1515,7 +1668,9 @@ function removeFullscreenPrompt() {
   if (fullscreenPrompt) {
     // Add fade-out animation
     fullscreenPrompt.classList.add('fade-out');
-    
+    // Ensure hasUserInteracted is set to prevent reappearance if an action was taken
+    hasUserInteracted = true;
+
     // Remove after animation completes
     setTimeout(() => {
       if (fullscreenPrompt && fullscreenPrompt.parentNode) {
@@ -1524,7 +1679,7 @@ function removeFullscreenPrompt() {
       }
     }, 250);
   }
-  
+
   if (promptTimeout) {
     clearTimeout(promptTimeout);
     promptTimeout = null;
@@ -1533,61 +1688,61 @@ function removeFullscreenPrompt() {
 
 
 function toggleFullscreen() {
-    const player = channelLoader.getPlayer(); 
-    const modal = document.getElementById("videoModal");
+  const player = channelLoader.getPlayer();
+  const modal = document.getElementById("videoModal");
 
-    if (!player || !modal || modal.style.display !== "flex") {
-        return;
+  if (!player || !modal || modal.style.display !== "flex") {
+    return;
+  }
+
+  // Mark user interaction for future auto-fullscreen attempts
+  hasUserInteracted = true;
+
+  // Check current fullscreen status
+  const isCurrentlyFullscreen = player.isFullscreen();
+
+  if (isCurrentlyFullscreen) {
+    // EXIT FULLSCREEN
+    try {
+      player.exitFullscreen();
+    } catch (e) {
+      console.warn('Failed to exit fullscreen:', e);
     }
-    
-        // Mark user interaction for future auto-fullscreen attempts
-    hasUserInteracted = false;
 
-    // Check current fullscreen status
-    const isCurrentlyFullscreen = player.isFullscreen();
+  } else {
+    // ENTER FULLSCREEN
+    try {
+      player.requestFullscreen();
+    } catch (e) {
 
-    if (isCurrentlyFullscreen) {
-        // EXIT FULLSCREEN
-        try {
-            player.exitFullscreen();
-        } catch (e) {
-            console.warn('Failed to exit fullscreen:', e);
+      // Try mobile-specific methods
+      const videoElement = player.el().querySelector('video');
+
+      if (videoElement) {
+        // iOS Safari
+        if (videoElement.webkitEnterFullscreen) {
+          try {
+            videoElement.webkitEnterFullscreen();
+            return;
+          } catch (iosError) {
+            console.warn('iOS fullscreen failed:', iosError);
+          }
         }
-        
-    } else {
-        // ENTER FULLSCREEN
-        try {
-            player.requestFullscreen();
-        } catch (e) {
 
-    // Try mobile-specific methods
-    const videoElement = player.el().querySelector('video');
-    
-    if (videoElement) {
-      // iOS Safari
-      if (videoElement.webkitEnterFullscreen) {
-        try {
-          videoElement.webkitEnterFullscreen();
-          return;
-        } catch (iosError) {
-          console.warn('iOS fullscreen failed:', iosError);
+        // Android/Chrome
+        if (videoElement.requestFullscreen) {
+          try {
+            videoElement.requestFullscreen();
+            return;
+          } catch (androidError) {
+            console.warn('Android fullscreen failed:', androidError);
+          }
         }
       }
-      
-      // Android/Chrome
-      if (videoElement.requestFullscreen) {
-        try {
-          videoElement.requestFullscreen();
-          return;
-        } catch (androidError) {
-          console.warn('Android fullscreen failed:', androidError);
-        }
-      }
+
+      console.warn('All fullscreen methods failed');
     }
-    
-    console.warn('All fullscreen methods failed');
-        }
-    }
+  }
 }
 
 
@@ -3302,7 +3457,7 @@ function handleTouchEnd(e) {
     Math.abs(currentTouchX - touchStartX) < 10 &&
     Math.abs(currentTouchY - touchStartY) < 10) {
 
-    window.toggleFullscreen();
+    showFullscreenPrompt();
     lastTapTime = 0; // Reset to prevent accidental triple tap detection
     return; // Skip the swipe handler
   }

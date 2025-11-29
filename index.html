@@ -3,7 +3,7 @@
 
 <head>
   <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
   <title>Live TV Player</title>
   <link rel="manifest" href="/LiveTV/manifest.json">
@@ -199,7 +199,9 @@
   </main>
   <div id="videoModal" class="hidden fixed inset-0 bg-black bg-opacity-95 z-50 flex items-center justify-center">
     <div class="relative w-full h-full flex justify-center items-center">
-      <button onclick="closeModal()" class="absolute top-4 right-4 text-white text-4xl z-10">&times;</button>
+      <button onclick="closeModal()" class="closeModal" title="Close Video">
+        <i class="fas fa-xmark"></i>
+      </button>
       <!-- New location for channel number overlay -->
       <div id="channel-number-overlay"></div>
       <div id="player-container">
