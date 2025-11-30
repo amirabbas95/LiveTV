@@ -600,7 +600,7 @@ class ChannelLoader {
   async cleanupPlayer() {
     stopWatching();
     this.cleanupEventListeners();
-    
+
     if (this.playerInstance) {
       try {
         console.log('🧹 Cleaning up existing player...');
@@ -668,18 +668,18 @@ class ChannelLoader {
     }
 
 
-    // ✅✅✅ ADD THIS SECTION HERE ✅✅✅
+/*     // ✅✅✅ ADD THIS SECTION HERE ✅✅✅
     // Attach orientation change listener
     window.addEventListener('orientationchange', handleOrientationChange);
 
     // Check orientation immediately on load
-    handleOrientationChange();
+    windows.handleOrientationChange();
 
     // Add cleanup for the event listener
     this.eventCleanupCallbacks.push(() => {
       window.removeEventListener('orientationchange', handleOrientationChange);
     });
-    // ✅✅✅ END OF NEW SECTION ✅✅✅
+    // ✅✅✅ END OF NEW SECTION ✅✅✅ */
 
     this.setupPlayerEvents(name, isLive, streamConfig.type === 'youtube', token);
     token.throwIfCancelled();
@@ -1119,11 +1119,11 @@ transition: transform 0.2s;
       if (!this.playerInstance) return;
 
 
-      const isFullscreen = this.playerInstance.isFullscreen();
+      const isCurrentlyFullscreen = this.playerInstance.isFullscreen();
 
       // Toggle visibility, which is more reliable than adding/removing elements constantly
-      closeBtnInstance.style.display = isFullscreen ? 'flex' : 'none';
-      console.log(`Fullscreen close button ${isFullscreen ? 'shown' : 'hidden'}.`);
+      closeBtnInstance.style.display = isCurrentlyFullscreen ? 'flex' : 'none';
+      console.log(`Fullscreen close button ${isCurrentlyFullscreen ? 'shown' : 'hidden'}.`);
     };
 
     // Listen to fullscreen change events
@@ -1181,6 +1181,7 @@ function showNotification(message, type = "info") {
     warning: '#FFC107',  // Golden Yellow
     error: '#DC3545'   // Intense Red
   };
+
   const notification = document.createElement("div");
   notification.className = "notification";
   notification.style.cssText = `
@@ -1190,8 +1191,8 @@ left: 50%;
 transform: translateX(-50%);
 background: ${colors[type] || colors.info};
 color: white;
-padding: 12px 24px;
-border-radius: 8px;
+padding: 10px 20px;
+border-radius: 20px;
 z-index: 10001;
 font-weight: 500;
 box-shadow: 0 4px 6px rgba(0,0,0,0.3);
@@ -1709,6 +1710,17 @@ function toggleFullscreen() {
       console.warn('Failed to exit fullscreen:', e);
     }
 
+    // 🔥 NEW: UNLOCK SCREEN ORIENTATION ON EXIT
+    try {
+      // Check for API support and if the device is a mobile environment
+      if (screen.orientation && screen.orientation.unlock) {
+        screen.orientation.unlock();
+        console.log('Screen orientation unlocked.');
+      }
+    } catch (e) {
+      console.warn('Failed to unlock screen orientation:', e);
+    }
+
   } else {
     // ENTER FULLSCREEN
     try {
@@ -1723,7 +1735,8 @@ function toggleFullscreen() {
         if (videoElement.webkitEnterFullscreen) {
           try {
             videoElement.webkitEnterFullscreen();
-            return;
+            // In iOS, we typically proceed to lock after the request, 
+            // as the native player handles orientation initially.
           } catch (iosError) {
             console.warn('iOS fullscreen failed:', iosError);
           }
@@ -1733,7 +1746,6 @@ function toggleFullscreen() {
         if (videoElement.requestFullscreen) {
           try {
             videoElement.requestFullscreen();
-            return;
           } catch (androidError) {
             console.warn('Android fullscreen failed:', androidError);
           }
@@ -1741,6 +1753,21 @@ function toggleFullscreen() {
       }
 
       console.warn('All fullscreen methods failed');
+    }
+
+    // 🔥 NEW: LOCK SCREEN ORIENTATION TO LANDSCAPE
+    try {
+      if (screen.orientation && screen.orientation.lock) {
+        // 'landscape' locks to the widest orientation (landscape-primary or landscape-secondary)
+        screen.orientation.lock('landscape').then(() => {
+          console.log('Screen orientation locked to landscape.');
+        }).catch((e) => {
+          // This often fails if not run in a trusted, user-gesture environment
+          console.warn('Screen orientation lock failed (e.g., not supported or not a trusted context):', e.message);
+        });
+      }
+    } catch (e) {
+      console.warn('Screen orientation API not supported or error:', e);
     }
   }
 }
@@ -3452,18 +3479,45 @@ function handleTouchEnd(e) {
   touchEndX = currentTouchX;
   touchEndY = currentTouchY;
 
+  const player = channelLoader.getPlayer();
+
+  const modal = document.getElementById("videoModal");
+  const isModalOpen = modal && modal.style.display === "flex";
+  if (!isModalOpen) {
+    return;
+  }
+
+  const isCurrentlyFullscreen = player.isFullscreen();
+
+  // ===============================================
+  // 1. DOUBLE TAP CHECK
+  // ===============================================
   // Check if the current tap is within the time window AND the touch movement is negligible
   if (currentTime - lastTapTime < DOUBLE_TAP_DELAY &&
     Math.abs(currentTouchX - touchStartX) < 10 &&
     Math.abs(currentTouchY - touchStartY) < 10) {
 
-    showFullscreenPrompt();
+    if (!isCurrentlyFullscreen) {
+      // Allow double-tap action (your original logic)
+      showFullscreenPrompt();
+    } else {
+      window.toggleFullscreen();
+      // 🔥 PREVENT DOUBLE-TAP IN FULLSCREEN
+      showNotification("Exit full screen first to perform player actions. Please double-tap again!", "success");
+    }
+
     lastTapTime = 0; // Reset to prevent accidental triple tap detection
     return; // Skip the swipe handler
   }
 
   // If not a double tap, update the time for the next potential tap
   lastTapTime = currentTime;
+
+  // ===============================================
+  // 2. SWIPE CHECK
+  // ===============================================
+
+  // Only execute handleSwipe if not in fullscreen
   handleSwipe();
 }
 
