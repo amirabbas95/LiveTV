@@ -3,6 +3,41 @@
 // Integrated Favorites & Recently Watched improvements
 // ============================================
 
+// Use a single application state object
+const AppState = {
+  channels: {
+    all: [],
+    filtered: [],
+    items: []
+  },
+  player: {
+    currentId: "",
+    watchStartTime: 0,
+    loader: null
+  },
+  ui: {
+    focusedIndex: 0,
+    lastFocusedElement: null,
+    sortMethod: "none"
+  },
+  cache: {
+    rss: new Map(),
+    live: new Map()
+  },
+  intervals: {
+    watch: null,
+    autoUpdate: null
+  },
+  // Add getters/setters for controlled access
+  reset() {
+    this.intervals.watch && clearInterval(this.intervals.watch);
+    this.intervals.autoUpdate && clearInterval(this.intervals.autoUpdate);
+  }
+};
+
+// Export only what's needed
+window.AppState = AppState; // For debugging only
+
 // ============================================
 // CONSTANTS & CONFIGURATION
 // ============================================
@@ -37,12 +72,15 @@ const PLAYBACK_CONSTANTS = {
   TRANSITION_DELAY: 0,
 };
 
+const eventCleanupCallbacks = [];
+
 // ✅ NEW: Debounce configuration
 const DEBOUNCE_MS = 180;
 
 // ============================================
 // GLOBAL STATE VARIABLES
 // ============================================
+
 let allChannels = [];
 let allChannelItems = [];
 let currentChannelId = "";
@@ -59,17 +97,8 @@ let touchEndX = 0;
 let touchStartY = 0;
 let touchEndY = 0;
 let lastTapTime = 0;
-const DOUBLE_TAP_DELAY = 300;
-
-// Search state
 let searchQuery = "";
 let filteredChannels = [];
-
-// Caches
-const rssCache = new Map();
-const liveCache = new Map();
-
-// Intervals & Timeouts
 let watchInterval = null;
 let autoUpdateInterval = null;
 let overlayTimeoutShow = null;
@@ -77,6 +106,14 @@ let overlayTimeoutHide = null;
 let numberTimeout = null;
 let navigationDebounce = null;
 let numberBuffer = "";
+
+// Plus Map caches
+const rssCache = new Map();
+const liveCache = new Map();
+
+
+const DOUBLE_TAP_DELAY = 300;
+
 
 // ============================================
 // ✅ NEW: SAFE LOCALSTORAGE HELPERS
@@ -135,12 +172,33 @@ function writeArray(key, arr) {
 /**
  * Debounce function to limit rapid calls
  */
-function debounce(fn, wait = 200) {
+function debounce(fn, wait = 200, options = {}) {
   let timeout;
-  return function (...args) {
+  let lastCallTime = 0;
+  
+  const debounced = function (...args) {
+    const now = Date.now();
+    
+    // Immediate execution on leading edge
+    if (options.leading && now - lastCallTime > wait) {
+      lastCallTime = now;
+      return fn.apply(this, args);
+    }
+    
     clearTimeout(timeout);
-    timeout = setTimeout(() => fn.apply(this, args), wait);
+    timeout = setTimeout(() => {
+      lastCallTime = Date.now();
+      fn.apply(this, args);
+    }, wait);
   };
+  
+  // Add cancel method
+  debounced.cancel = () => {
+    clearTimeout(timeout);
+    timeout = null;
+  };
+  
+  return debounced;
 }
 
 // ============================================
@@ -607,7 +665,15 @@ class ChannelLoader {
         this.playerInstance.off();
         if (!this.playerInstance.paused()) {
           this.playerInstance.pause();
+
         }
+
+
+        const events = ['error', 'waiting', 'playing', 'pause',
+          'ended', 'loadedmetadata', 'retryplaylist'];
+        events.forEach(event => this.playerInstance.off(event));
+
+
         const playerId = this.playerInstance.id();
         this.playerInstance.dispose();
         this.playerInstance = null;
@@ -668,18 +734,18 @@ class ChannelLoader {
     }
 
 
-/*     // ✅✅✅ ADD THIS SECTION HERE ✅✅✅
-    // Attach orientation change listener
-    window.addEventListener('orientationchange', handleOrientationChange);
-
-    // Check orientation immediately on load
-    windows.handleOrientationChange();
-
-    // Add cleanup for the event listener
-    this.eventCleanupCallbacks.push(() => {
-      window.removeEventListener('orientationchange', handleOrientationChange);
-    });
-    // ✅✅✅ END OF NEW SECTION ✅✅✅ */
+    /*     // ✅✅✅ ADD THIS SECTION HERE ✅✅✅
+        // Attach orientation change listener
+        window.addEventListener('orientationchange', handleOrientationChange);
+    
+        // Check orientation immediately on load
+        windows.handleOrientationChange();
+    
+        // Add cleanup for the event listener
+        this.eventCleanupCallbacks.push(() => {
+          window.removeEventListener('orientationchange', handleOrientationChange);
+        });
+        // ✅✅✅ END OF NEW SECTION ✅✅✅ */
 
     this.setupPlayerEvents(name, isLive, streamConfig.type === 'youtube', token);
     token.throwIfCancelled();
@@ -1063,85 +1129,30 @@ transition: transform 0.2s;
     if (!this.playerInstance) return;
 
     const playerEl = this.playerInstance.el();
+    const closeBtn = document.createElement('button');
+    closeBtn.id = 'fullscreenCloseBtn';
+    closeBtn.className = 'fullscreen-close-button';
+    closeBtn.innerHTML = '<i class="fas fa-minimize"></i>';
+    closeBtn.onclick = () => window.toggleFullscreen();
 
-    /**
-     * Creates and returns the button element.
-     * @param {videojs.Player} player - The VJS player instance.
-     */
-    const createCloseButton = (player) => {
-      // 1. Remove any existing instances attached to the player element
-      const existingBtn = document.getElementById('fullscreenCloseBtn');
-      if (existingBtn) existingBtn.remove();
+    // Hide by default
+    closeBtn.style.display = 'none';
+    playerEl.appendChild(closeBtn);
 
-      const closeBtn = document.createElement('button');
-      closeBtn.id = 'fullscreenCloseBtn';
-      closeBtn.className = 'fullscreen-close-button';
-      closeBtn.innerHTML = '<i class="fas fa-minimize"></i>';
-      closeBtn.onclick = toggleFullscreen;
-      closeBtn.title = 'Close Video';
-
-
-      closeBtn.style.cssText = `
-        position: absolute;
-        top: 10px;
-        right: 10px;
-        z-index: 2000;
-        background: rgba(0, 0, 0, 0.5);
-        color: white;
-        border: none;
-        border-radius: 50%;
-        width: 40px;
-        height: 40px;
-        font-size: 18px;
-        cursor: pointer;
-        display: none; /* Keep this as the final initial state */
-        transition: background 0.2s;
-        /* These properties are used for layout but don't need 'display: flex' here */
-        align-items: center;
-        justify-content: center;
-      `;
-
-      // Hover effect
-      closeBtn.onmouseover = () => closeBtn.style.background = 'rgba(76, 175, 80, 0.7)';
-      closeBtn.onmouseout = () => closeBtn.style.background = 'rgba(0, 0, 0, 0.5)';
-
-      return closeBtn;
+    const updateButtonVisibility = () => {
+      closeBtn.style.display =
+        this.playerInstance.isFullscreen() ? 'flex' : 'none';
     };
 
-    // Create the button once and append it to the player element
-    const closeBtnInstance = createCloseButton(this.playerInstance);
-    playerEl.appendChild(closeBtnInstance);
+    // Listen to ALL fullscreen change events
+    this.playerInstance.on('fullscreenchange', updateButtonVisibility);
+    document.addEventListener('fullscreenchange', updateButtonVisibility);
 
-    /**
-     * Handles showing/hiding the button based on fullscreen state.
-     */
-    const fullscreenChangeHandler = () => {
-      if (!this.playerInstance) return;
-
-
-      const isCurrentlyFullscreen = this.playerInstance.isFullscreen();
-
-      // Toggle visibility, which is more reliable than adding/removing elements constantly
-      closeBtnInstance.style.display = isCurrentlyFullscreen ? 'flex' : 'none';
-      console.log(`Fullscreen close button ${isCurrentlyFullscreen ? 'shown' : 'hidden'}.`);
-    };
-
-    // Listen to fullscreen change events
-    this.playerInstance.on('fullscreenchange', fullscreenChangeHandler);
-
-    // Initial state check (in case it's called after a quick toggle)
-    fullscreenChangeHandler();
-
-
-    // Cleanup: Remove event listener and the button element
+    // Cleanup
     this.eventCleanupCallbacks.push(() => {
-      if (this.playerInstance) {
-        this.playerInstance.off('fullscreenchange', fullscreenChangeHandler);
-      }
-      // Use the instance to remove it on cleanup
-      if (closeBtnInstance.parentNode) {
-        closeBtnInstance.remove();
-      }
+      this.playerInstance.off('fullscreenchange', updateButtonVisibility);
+      document.removeEventListener('fullscreenchange', updateButtonVisibility);
+      closeBtn.remove();
     });
   }
 
@@ -1199,7 +1210,7 @@ box-shadow: 0 4px 6px rgba(0,0,0,0.3);
 min-width: 250px;
 transition: top 0.4s ease, opacity 0.4s ease;
 `;
-  notification.textContent = message;
+  notification.textContent = escapeHtml(message);
   document.body.appendChild(notification);
 
   requestAnimationFrame(() => {
@@ -1846,6 +1857,15 @@ function saveChannelsData(channels) {
   return success;
 }
 
+function promptDataExport() {
+  const shouldExport = confirm(
+    'Storage is full. Would you like to export your data as a backup?'
+  );
+  if (shouldExport) {
+    exportAllData();
+  }
+}
+
 // ============================================
 // ✅ ENHANCED CHANNEL UI FUNCTIONS
 // ============================================
@@ -1973,6 +1993,11 @@ function renderChannels(channels) {
   existingHeadings.forEach((heading) => heading.remove());
 
   const fragment = document.createDocumentFragment();
+
+    // But consider virtual scrolling for large lists
+  if (channels.length > 100) {
+    return renderVirtualizedChannels(channels);
+  }
 
   if (currentSortMethod === "none") {
     const categorizedChannels = channels.reduce((acc, channel) => {
@@ -2197,6 +2222,10 @@ function setupSearchBar() {
       }, 300);
     });
 
+    eventCleanupCallbacks.push(() => {
+      searchInput.removeEventListener("input", handler);
+    });
+
     searchInput.addEventListener("keydown", (e) => {
       if (e.key === "Escape") {
         clearSearchAll(searchInputs, resultMessages);
@@ -2221,6 +2250,7 @@ function setupSearchBar() {
       }
     });
   });
+
 }
 
 function performSearch(query, resultMessages) {
@@ -3273,6 +3303,10 @@ async function initialize() {
   setupSearchBar();
   setupTouchGestures();
   setupPWA();
+
+  // Call on initialization and periodically
+  setInterval(checkStorageHealth, 60000); // Every minute
+
   let savedChannels = localStorage.getItem(LS_KEYS.CHANNELS);
   if (savedChannels) {
     try {
@@ -3499,11 +3533,12 @@ function handleTouchEnd(e) {
 
     if (!isCurrentlyFullscreen) {
       // Allow double-tap action (your original logic)
-      showFullscreenPrompt();
+      window.showFullscreenPrompt();
     } else {
       window.toggleFullscreen();
       // 🔥 PREVENT DOUBLE-TAP IN FULLSCREEN
-      showNotification("Exit full screen first to perform player actions. Please double-tap again!", "success");
+      showNotification("Exit fullscreen to use player. Double‑tap again!", "success");
+
     }
 
     lastTapTime = 0; // Reset to prevent accidental triple tap detection
@@ -4291,6 +4326,106 @@ function updateStorageDisplay() {
 }
 
 
+function cleanupAllEventListeners() {
+  eventCleanupCallbacks.forEach(cleanup => cleanup());
+  eventCleanupCallbacks.length = 0;
+}
+
+function renderVirtualizedChannels(channels) {
+  // Implement using Intersection Observer
+  const container = document.getElementById("channels");
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        const item = entry.target;
+        // Load actual content here
+      }
+    });
+  }, { rootMargin: '200px' });
+
+  // Create placeholder items and observe them
+  channels.forEach(channel => {
+    const placeholder = document.createElement('div');
+    placeholder.className = 'content-card lazy';
+    placeholder.dataset.channelUrl = channel.url;
+    container.appendChild(placeholder);
+    observer.observe(placeholder);
+  });
+}
+
+// Add intersection observer for lazy loading
+function setupLazyLoading() {
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        const img = entry.target;
+        img.src = img.dataset.src;
+        observer.unobserve(img);
+      }
+    });
+  }, { rootMargin: '50px' });
+  
+  document.querySelectorAll('img[data-src]').forEach(img => {
+    observer.observe(img);
+  });
+}
+
+// ADD SANITIZATION:
+function escapeHtml(text) {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}
+
+// Add proactive monitoring
+function checkStorageHealth() {
+  const usage = getStorageUsage();
+  const percentUsed = (usage.totalBytes / (5 * 1024 * 1024)) * 100;
+
+  if (percentUsed > 80) {
+    showNotification('⚠️ Storage 80% full - consider exporting data', 'warning');
+    // Auto-cleanup non-critical data
+    clearOldStorageData();
+  }
+
+  if (percentUsed > 95) {
+    // Emergency cleanup
+    showNotification('🚨 Storage critical - forcing cleanup', 'error');
+    localStorage.removeItem(LS_KEYS.WATCH_TIME);
+    clearOldStorageData();
+  }
+}
+
+
+// Use Promise.allSettled for parallel requests with rate limiting
+async function fetchWithRateLimit(feeds, maxConcurrent = 3) {
+  const results = [];
+  
+  for (let i = 0; i < feeds.length; i += maxConcurrent) {
+    const batch = feeds.slice(i, i + maxConcurrent);
+    const batchPromises = batch.map(feed => 
+      fetch(feed.url)
+        .then(res => res.json())
+        .then(data => ({ feed, data, status: 'fulfilled' }))
+        .catch(error => ({ feed, error, status: 'rejected' }))
+    );
+    
+    const batchResults = await Promise.allSettled(batchPromises);
+    results.push(...batchResults);
+    
+    // Small delay between batches
+    if (i + maxConcurrent < feeds.length) {
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+  }
+  
+  return results;
+}
+
+
+
+
+
 // ============================================
 // EXPORT GLOBAL FUNCTIONS
 // ============================================
@@ -4311,5 +4446,5 @@ window.importBackupData = importBackupData;
 window.triggerImportDialog = triggerImportDialog;
 window.clearOldStorageData = clearOldStorageData;
 window.updateStorageDisplay = updateStorageDisplay;
-window.handleOrientationChange = handleOrientationChange;
+window.showFullscreenPrompt = showFullscreenPrompt;
 window.toggleFullscreen = toggleFullscreen; 
