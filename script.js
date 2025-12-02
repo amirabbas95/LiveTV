@@ -1995,9 +1995,9 @@ function renderChannels(channels) {
   const fragment = document.createDocumentFragment();
 
     // But consider virtual scrolling for large lists
-  if (channels.length > 100) {
+/*   if (channels.length > 100) {
     return renderVirtualizedChannels(channels);
-  }
+  } */
 
   if (currentSortMethod === "none") {
     const categorizedChannels = channels.reduce((acc, channel) => {
