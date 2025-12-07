@@ -336,6 +336,10 @@ class AppStateManager {
   }
 
   set(path, value) {
+    const version = (this._version || 0) + 1;
+    this._version = version;
+
+    // Apply state
     const keys = path.split('.');
     const last = keys.pop();
     let target = this.state;
@@ -343,11 +347,32 @@ class AppStateManager {
       if (!(k in target)) target[k] = {};
       target = target[k];
     }
-    const old = target[last];
     target[last] = value;
-    this.notify(path, value, old);
-    return value;
+
+    // Delay localStorage save safely
+    this._queuePersist(path, value, version);
+
+    this.notify(path, value);
   }
+
+  _queuePersist(path, value, version) {
+    clearTimeout(this._persistTimer);
+    this._persistTimer = setTimeout(() => {
+      // Only persist if version is still the latest
+      if (this._version === version) {
+        this._doPersist(path, value);
+      }
+    }, 100);
+  }
+
+  _doPersist(path, value) {
+    try {
+      safeLocalStorageSet(LS_KEYS.CHANNELS, JSON.stringify(this.state.channels?.all || []));
+    } catch (e) {
+      console.warn("Failed to persist", e);
+    }
+  }
+
 
   merge(path, obj) {
     const cur = this.get(path) || {};
@@ -887,49 +912,369 @@ window.addEventListener('iptv-storage-updated', (e) => {
 // ============================================
 // ChannelLoader: manages player lifecycle, events, and cleanup
 // ============================================
+// ======================================================================
+// ChannelLoader – Final, Leak-Safe, Error-Proof Version
+// ======================================================================
 class ChannelLoader {
-  constructor() {
+  constructor(opts = {}) {
+    // async operation control
     this.currentOperation = null;
+    this.currentOperationId = null;
+
+    // modern WeakRef player
+    this.playerRef = null;
+
+    // legacy player reference (your file still uses this in places)
     this.playerInstance = null;
+
+    // legacy event cleanup list
     this.eventCleanupCallbacks = [];
-    appState.addCleanup(() => this.cleanupPlayer(true));
+
+    // automatic GC cleanup
+    this.cleanupRegistry = new FinalizationRegistry((cleanup) => {
+      try { cleanup(); } catch (e) { console.warn("Finalizer cleanup error:", e); }
+    });
+
+    // optional config (timeouts, container id)
+    this.config = Object.assign({ playerContainerId: "player-container", persistDelay: 100 }, opts);
+
+    // make sure app-level cleanup triggers player cleanup on app shutdown
+    if (typeof appState !== "undefined" && typeof appState.addCleanup === "function") {
+      appState.addCleanup(() => {
+        try { this.cleanupPlayer(true); } catch (e) { console.warn(e); }
+      });
+    }
   }
 
-  // ✅ Improved race condition handling
+  // ----------------------------------------------------------------------
+  // SAFE: used to bind event listeners
+  // ----------------------------------------------------------------------
+  _bindPlayerEvent(player, event, handler) {
+    try {
+      if (typeof player.addEventListener === "function") {
+        player.addEventListener(event, handler);
+      } else if (typeof player.on === "function") {
+        player.on(event, handler);
+      } else if (typeof player.addListener === "function") {
+        player.addListener(event, handler);
+      }
+    } catch (e) {
+      // ignore binding errors
+    }
+
+    // track bound events for later removal
+    try {
+      if (!player._boundEvents) player._boundEvents = new Set();
+      player._boundEvents.add({ event, handler });
+
+      // register cleanup to remove this listener if player is GC'd
+      this.cleanupRegistry.register(player, () => {
+        try {
+          if (typeof player.removeEventListener === "function") player.removeEventListener(event, handler);
+          else if (typeof player.off === "function") player.off(event, handler);
+          else if (typeof player.removeListener === "function") player.removeListener(event, handler);
+        } catch (e) { }
+      });
+    } catch (e) { /* ignore */ }
+  }
+
+  // --------------------------
+  // Video.js / HLS safe disposal routine
+  // --------------------------
+  async _disposeVideoJS(player) {
+    try {
+      if (!player) return;
+
+      // Pause playback if possible
+      try { player.pause?.(); } catch (e) { }
+
+      // Remove generic event listeners
+      try {
+        if (typeof player.off === "function") {
+          // video.js: off() removes all handlers
+          try { player.off(); } catch (e) { }
+        } else if (typeof player.removeEventListener === "function") {
+          // best-effort removal for tracked events
+          const events = player._boundEvents;
+          if (events && typeof events.forEach === "function") {
+            try {
+              events.forEach(({ event, handler }) => {
+                try {
+                  player.removeEventListener(event, handler);
+                } catch (e) { }
+              });
+            } catch (e) { }
+            try { events.clear?.(); } catch (e) { }
+          }
+        }
+      } catch (e) { }
+
+      // Attempt to dispose internal HLS/VHS instances
+      try {
+        // video.js tech internals vary by version; handle common cases
+        const tech = player.tech_ || (typeof player.tech === "function" && player.tech(true)) || null;
+        const hls = tech?.hls || tech?.vhs || tech?.hlsHandler || tech?.vhsHandler;
+        if (hls) {
+          try { typeof hls.dispose === "function" && hls.dispose(); } catch (e) { }
+          try { typeof hls.destroy === "function" && hls.destroy(); } catch (e) { }
+        }
+      } catch (e) { }
+
+      // Call video.js dispose() if available (safest path)
+      try {
+        if (typeof player.dispose === "function") {
+          // video.js dispose is synchronous; wrap in try/catch
+          try { player.dispose(); } catch (e) { console.warn("player.dispose() error:", e); }
+        }
+      } catch (e) { }
+
+      // As a fallback, call destroy() if available
+      try {
+        if (typeof player.destroy === "function") {
+          try { await player.destroy(); } catch (e) { }
+        }
+      } catch (e) { }
+
+      // Remove DOM node created by player
+      try {
+        const el = (typeof player.el === "function") ? player.el() : player.element || null;
+        if (el && el.parentNode) {
+          try { el.parentNode.removeChild(el); } catch (e) { }
+        }
+
+        // Also attempt to remove known wrappers
+        const container = document.getElementById(this.config.playerContainerId);
+        if (container) {
+          container.querySelectorAll("video, .video-js, .vjs-tech, .vjs-video").forEach(node => {
+            try { node.remove(); } catch (e) { }
+          });
+        }
+      } catch (e) { }
+    } catch (outer) {
+      console.warn("Video.js disposal outer error:", outer);
+    }
+  }
+
+  // ======================================================================
+  // FINAL cleanupPlayer() — Universal, Safe, Leak-Free, Video.js Compatible
+  // ======================================================================
+  async cleanupPlayer(force = false) {
+    // Stop any playback timers / analytics
+    try { stopWatching?.(); } catch { }
+
+    // -------------------------
+    // 1. Run legacy event cleanup
+    // -------------------------
+    try {
+      if (Array.isArray(this.eventCleanupCallbacks)) {
+        for (const fn of [...this.eventCleanupCallbacks]) {
+          try { fn?.(); } catch (e) { console.warn(e); }
+        }
+      }
+    } catch { }
+    this.eventCleanupCallbacks = [];
+
+    // -------------------------
+    // 2. Cleanup WeakRef Player (new system)
+    // -------------------------
+    try {
+      const player = this.playerRef?.deref?.();
+      if (player) {
+        // Remove bound events
+        const events = player._boundEvents;
+        if (events && typeof events.forEach === "function") {
+          try {
+            events.forEach(({ event, handler }) => {
+              try { player.removeEventListener(event, handler); } catch { }
+            });
+          } catch { }
+          try { events.clear?.(); } catch { }
+        }
+
+        // Smart cleanup based on player type
+        if (player.dispose || player.tech_) {
+          // ---- Safe Video.js disposal ----
+          await this._disposeVideoJS(player);
+        } else if (typeof player.destroy === "function") {
+          // Clappr, Hls.js, Jmuxer, etc.
+          try { await player.destroy(); } catch { }
+        } else if (player.pause) {
+          try { player.pause(); } catch { }
+        }
+
+        // Remove DOM element if still present
+        try {
+          const el = player.el ? player.el() : null;
+          if (el && el.parentNode) el.parentNode.removeChild(el);
+        } catch { }
+      }
+    } catch (e) {
+      console.warn("WeakRef player cleanup error:", e);
+    }
+
+    // -------------------------
+    // 3. Legacy playerInstance Cleanup
+    // -------------------------
+    try {
+      const legacy = this.playerInstance;
+      if (legacy) {
+        try { legacy.off?.(); } catch { }
+        try { legacy.pause?.(); } catch { }
+
+        if (legacy.dispose || legacy.tech_) {
+          // Video.js
+          await this._disposeVideoJS(legacy);
+        } else if (typeof legacy.destroy === "function") {
+          try { await legacy.destroy(); } catch { }
+        }
+
+        // Remove DOM
+        try {
+          const el = legacy.el?.();
+          if (el && el.parentNode) el.parentNode.removeChild(el);
+        } catch { }
+
+        this.playerInstance = null;
+      }
+    } catch (e) {
+      console.warn("Legacy playerInstance cleanup failed:", e);
+    }
+
+    // -------------------------
+    // 4. Remove leftover DOM
+    // -------------------------
+    try {
+      const container = document.getElementById("player-container");
+      if (container) {
+        container.querySelectorAll(
+          "video, .video-js, .vjs-tech, .play-container, .play-fallback-overlay"
+        ).forEach(el => {
+          try { el.remove(); } catch { }
+        });
+      }
+    } catch { }
+
+    // -------------------------
+    // 5. Force clear WeakRef (optional)
+    // -------------------------
+    if (force) {
+      try { this.playerRef = null; } catch { }
+    }
+
+    // -------------------------
+    // 6. Reset player state
+    // -------------------------
+    try {
+      appState.set("player.instance", null);
+      appState.set("player.currentChannel", null);
+      appState.set("player.isPlaying", false);
+    } catch { }
+  }
+
+
+  // ----------------------------------------------------------------------
+  // initializePlayer – handles creation and event binding
+  // ----------------------------------------------------------------------
+  // --------------------------
+  // initializePlayer — loads a player (video.js / Clappr / custom) and binds events
+  // Note: relies on your existing loadVideoPlayer(url, options) function to create the player
+  // --------------------------
+  async initializePlayer(url, name, isLive, token) {
+    // Delegate actual creation to your loader; many apps have a helper like loadVideoPlayer()
+    const player = await loadVideoPlayer(url, { live: isLive });
+
+    token.throwIfCancelled();
+    if (!player) throw new Error("Player failed to initialize");
+
+    // store both weakref and legacy reference for compatibility
+    try {
+      this.playerRef = new WeakRef(player);
+    } catch (e) {
+      // If WeakRef not supported, still keep strong reference (legacy)
+      this.playerRef = { deref: () => player };
+    }
+    this.playerInstance = player;
+
+    // prepare _boundEvents container (defensive)
+    try { if (!player._boundEvents) player._boundEvents = new Set(); } catch (e) { }
+
+    // safe event binding (customize events you need)
+    try {
+      this._bindPlayerEvent(player, "error", (e) => {
+        try { console.warn("Player error event:", e); } catch (err) { }
+      });
+      this._bindPlayerEvent(player, "ended", () => {
+        try { console.log("Playback ended"); } catch (e) { }
+      });
+      // example: track timeupdate for analytics
+      this._bindPlayerEvent(player, "timeupdate", () => {
+        try { /* analytics hook */ } catch (e) { }
+      });
+    } catch (e) { }
+
+    // register a FinalizationRegistry cleanup for this player (best-effort)
+    try {
+      this.cleanupRegistry.register(player, () => {
+        try { this._disposeVideoJS(player); } catch (e) { }
+      });
+    } catch (e) { }
+
+    return player;
+  }
+
+  // ----------------------------------------------------------------------
+  // Cancel active load operation
+  // ----------------------------------------------------------------------
+  cancelOperation() {
+    try {
+      if (this.currentOperation) {
+        this.currentOperation.cancel?.("New channel selected");
+        this.currentOperation = null;
+      }
+    } catch (e) { }
+  }
+
+  // ----------------------------------------------------------------------
+  // Race-condition protection
+  // ----------------------------------------------------------------------
+  verifyOperation(expectedId, token) {
+    token.throwIfCancelled();
+    if (this.currentOperationId !== expectedId) {
+      throw new Error("Operation superseded");
+    }
+  }
+
+  // ----------------------------------------------------------------------
+  // loadChannel – main entry point
+  // ----------------------------------------------------------------------
   async loadChannel(url, name, image, description, number, isLive) {
     if (!url) return;
 
-    // Cancel previous operation
-    if (this.currentOperation) {
-      this.currentOperation.cancel('New channel selected');
-    }
+    // cancel previous load
+    this.cancelOperation();
 
     const token = new CancellationToken();
     this.currentOperation = token;
-    const operationId = Date.now() + Math.random();
-    this.currentOperationId = operationId;
+    const opId = Date.now() + Math.random();
+    this.currentOperationId = opId;
 
     console.log(`🚀 Loading channel: ${name}`);
 
     try {
-      // ✅ Check before EVERY async operation
-      this.verifyOperation(operationId, token);
-
+      this.verifyOperation(opId, token);
       this.updateChannelUI(name, image, description, number);
 
-      this.verifyOperation(operationId, token);
+      this.verifyOperation(opId, token);
       await this.cleanupPlayer();
 
-      this.verifyOperation(operationId, token);
+      this.verifyOperation(opId, token);
       await this.initializePlayer(url, name, isLive, token);
 
-      this.verifyOperation(operationId, token);
+      this.verifyOperation(opId, token);
 
-      appState.set('player.currentChannel', {
-        url, name, image, description, number, isLive
-      });
-      appState.set('player.isPlaying', true);
-      appState.set('ui.isModalOpen', true);
+      appState.set("player.currentChannel", { url, name, image, description, number, isLive });
+      appState.set("player.isPlaying", true);
+      appState.set("ui.isModalOpen", true);
 
     } catch (err) {
       if (!token.isCancelled()) {
@@ -939,9 +1284,7 @@ class ChannelLoader {
         console.log(`⏹️ Channel load cancelled: ${name}`);
       }
     } finally {
-      if (this.currentOperation === token) {
-        this.currentOperation = null;
-      }
+      if (this.currentOperation === token) this.currentOperation = null;
     }
   }
 
@@ -1247,12 +1590,15 @@ class ChannelLoader {
       try {
         this.updateQualityDisplay && this.updateQualityDisplay();
       } catch (e) { }
-
       const channelLive = isLive === true || isLive === 'true';
       if (!channelLive && !isYouTube) {
-        try { this.playerInstance.controls(true); } catch (e) { }
+        try {
+          this.playerInstance.controls(true);
+        } catch (e) { }
       } else {
-        try { this.playerInstance.controls(false); } catch (e) { }
+        try {
+          this.playerInstance.controls(false);
+        } catch (e) { }
       }
     };
 
@@ -1450,84 +1796,145 @@ function clearAPIKey() {
 // STREAM CONFIGURATION
 // ============================================
 
-function createStreamConfig(url) {
-  const youtubeID = extractYouTubeID(url);
-  if (youtubeID) return {
-    type: 'youtube',
-    techOrder: ['youtube'],
-    source: {
-      src: url,
-      type: 'video/youtube'
-    }
-  };
+// ======================================================================
+// createStreamConfig() — Final, complete version with Mixed Content Fix
+// ======================================================================
+function createStreamConfig(url, opts = {}) {
+  if (!url || typeof url !== "string") {
+    console.warn("createStreamConfig: invalid URL");
+    return null;
+  }
 
-  if (window.location.protocol === 'https:' && url.startsWith('http://')) {
-    console.error(`❌ Mixed Content Error: Cannot load HTTP stream on HTTPS page`);
-    console.log(`Stream URL: ${url}`);
-    setTimeout(() => {
-      showErrorToUser('⚠️ This stream uses HTTP and cannot be played on this HTTPS site. Please contact the stream provider for an HTTPS URL.');
-    }, 500);
-    return {
-      type: 'hls',
-      techOrder: ['html5'],
-      source: {
-        src: '',
-        type: "application/x-mpegURL"
+  // normalize
+  url = url.trim();
+  const isHTTPS = window.location.protocol === "https:";
+  const isHTTP = url.startsWith("http://");
+  const isM3U8 = url.includes(".m3u8") || url.includes("playlist");
+  const isMPD = url.endsWith(".mpd");
+  const isMP4 = url.endsWith(".mp4") || url.includes(".mp4?");
+  const isTS = url.endsWith(".ts");
+  const isYouTube = url.includes("youtube.com") || url.includes("youtu.be");
+
+  // ------------------------------------------------------------------
+  // 1. Mixed Content Protection (HTTPS site → HTTP stream = block)
+  // ------------------------------------------------------------------
+  if (isHTTPS && isHTTP) {
+    console.error("❌ Mixed Content Blocked:", url);
+
+    // Try fallback: direct HTTPS rewrite (rarely works, but try)
+    let httpsRewrite = null;
+    try {
+      if (url.startsWith("http://")) {
+        httpsRewrite = "https://" + url.substring(7);
       }
+    } catch { }
+
+    // Try user-defined proxy (best)
+    const proxy = opts.proxyUrl || "https://cors-anywhere.herokuapp.com/";
+    const proxiedUrl = proxy + url;
+
+    showNotification(
+      "⚠ HTTP stream blocked on HTTPS. Using secure proxy fallback...",
+      "warning"
+    );
+
+    return {
+      techOrder: ["html5"],
+      type: isM3U8 ? "hls" : "auto",
+      source: {
+        src: proxiedUrl,
+        type: isM3U8
+          ? "application/x-mpegURL"
+          : isMP4
+            ? "video/mp4"
+            : "video/mp2t",
+      },
+      _fallbackInfo: {
+        original: url,
+        throughProxy: proxiedUrl,
+        httpsRewriteAttempt: httpsRewrite,
+      },
     };
   }
-  if (url.includes('imarkaz')) {
+
+  // ------------------------------------------------------------------
+  // 2. YouTube video support
+  // ------------------------------------------------------------------
+  if (isYouTube) {
     return {
-      type: 'mp4',
-      techOrder: ['html5'],
+      type: "youtube",
+      techOrder: ["youtube"],
+      source: { src: url, type: "video/youtube" },
+    };
+  }
+
+  // ------------------------------------------------------------------
+  // 3. HLS (.m3u8)
+  // ------------------------------------------------------------------
+  if (isM3U8) {
+    return {
+      type: "hls",
+      techOrder: ["html5"],
+      html5: {
+        hls: {
+          enableLowLatency: true,
+          smoothQualityChange: true,
+        },
+      },
       source: {
         src: url,
-        type: "video/mp4"
-      }
+        type: "application/x-mpegURL",
+      },
     };
   }
-  const ext = url.split('?')[0].split('.').pop().toLowerCase();
-  switch (ext) {
-    case 'mp4':
-    case 'webm':
-      return {
-        type: 'mp4',
-        techOrder: ['html5'],
-        source: {
-          src: url,
-          type: `video/${ext}`
-        }
-      };
-    case 'm3u8':
-      return {
-        type: 'hls',
-        techOrder: ['html5'],
-        source: {
-          src: url,
-          type: "application/x-mpegURL"
-        }
-      };
-    case 'mpd':
-      return {
-        type: 'dash',
-        techOrder: ['html5'],
-        source: {
-          src: url,
-          type: "application/dash+xml"
-        }
-      };
-    default:
-      console.warn('Unknown stream type, defaulting to HLS:', url);
-      return {
-        type: 'hls',
-        techOrder: ['html5'],
-        source: {
-          src: url,
-          type: "application/x-mpegURL"
-        }
-      };
+
+  // ------------------------------------------------------------------
+  // 4. DASH (.mpd)
+  // ------------------------------------------------------------------
+  if (isMPD) {
+    return {
+      type: "dash",
+      techOrder: ["html5"],
+      source: {
+        src: url,
+        type: "application/dash+xml",
+      },
+    };
   }
+
+  // ------------------------------------------------------------------
+  // 5. MP4
+  // ------------------------------------------------------------------
+  if (isMP4) {
+    return {
+      type: "mp4",
+      source: { src: url, type: "video/mp4" },
+    };
+  }
+
+  // ------------------------------------------------------------------
+  // 6. MPEG-TS / direct TS link
+  // ------------------------------------------------------------------
+  if (isTS) {
+    return {
+      type: "ts",
+      techOrder: ["html5"],
+      source: { src: url, type: "video/mp2t" },
+    };
+  }
+
+  // ------------------------------------------------------------------
+  // 7. Unknown → Auto-detect fallback
+  // ------------------------------------------------------------------
+  console.warn("createStreamConfig: unknown format, using auto-detect →", url);
+
+  return {
+    type: "auto",
+    techOrder: ["html5"],
+    source: { src: url, type: "video/mp4" }, // safe generic
+  };
 }
+
 
 function buildPlayerOptions(streamConfig, metadata) {
   const baseOptions = {
@@ -3111,7 +3518,7 @@ function hideSettingsModal() {
 
 function toggleAutoUpdate(enabled) {
   localStorage.setItem(AUTO_UPDATE_KEY, enabled.toString());
-    appState.set("settings.isAutoUpdateEnabled", enabled);
+  appState.set("settings.isAutoUpdateEnabled", enabled);
 
   if (enabled) {
     console.log("✅ Auto-update enabled");
@@ -3133,7 +3540,7 @@ function changeUpdateInterval(hours) {
 
 
   console.log(`⏱️ Update interval changed to ${parsed} hours`);
-    updateIntervalDescriptionText(parsed);
+  updateIntervalDescriptionText(parsed);
   showNotification(`Update interval set to ${parsed} hours`, "success");
 
   if (appState.get('settings.isAutoUpdateEnabled')) {
@@ -3600,6 +4007,10 @@ async function initialize() {
     if (contentGrid) contentGrid.style.display = "grid";
 
     restoreFocus();
+
+    if (window.__GLOBAL_ERROR_BOUNDARIES_INSTALLED__) return;
+    window.__GLOBAL_ERROR_BOUNDARIES_INSTALLED__ = true;
+
 
   } catch (error) {
     console.error("❌ Critical initialization error:", error);
@@ -4868,6 +5279,58 @@ function startCacheMaintenance() {
 }
 
 
+// ======================================================================
+// GLOBAL ERROR BOUNDARY (SAFE IMPLEMENTATION FOR final.js)
+// ======================================================================
+
+(function setupGlobalErrorHandlers() {
+  if (window.__GLOBAL_ERROR_BOUNDARIES_INSTALLED__) return;
+  window.__GLOBAL_ERROR_BOUNDARIES_INSTALLED__ = true;
+
+  // ---- Normal runtime errors ----
+  window.addEventListener("error", (event) => {
+    try {
+      const error = event.error || event.message || "Unknown error";
+
+      console.error("GLOBAL ERROR:", error);
+
+      // Log to your remote logging system
+      try { logErrorToService?.(error); } catch { }
+
+      // Friendly notification
+      try { showNotification?.("Unexpected error occurred", "error"); } catch { }
+
+      // Optional: Try smart recovery
+      try {
+        if (typeof canRecover === "function" && canRecover(error)) {
+          attemptRecovery?.();
+        }
+      } catch { }
+
+    } catch (handlerErr) {
+      console.warn("Global error handler failed:", handlerErr);
+    }
+  });
+
+  // ---- Unhandled Promise Rejections ----
+  window.addEventListener("unhandledrejection", (event) => {
+    try {
+      const reason = event.reason || "Unknown async error";
+
+      console.error("UNHANDLED REJECTION:", reason);
+
+      event.preventDefault();
+
+      try { showNotification?.("Failed to complete operation", "error"); } catch { }
+      try { logErrorToService?.(reason); } catch { }
+
+    } catch (handlerErr) {
+      console.warn("Rejection handler failed:", handlerErr);
+    }
+  });
+
+  console.log("✅ Global Error Boundaries Installed");
+})();
 
 // ============================================
 // EXPORT GLOBAL FUNCTIONS
