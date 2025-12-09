@@ -57,12 +57,12 @@ class LRUCache {
     const now = Date.now();
     const size = this.estimateSize(data);
 
-        // ✅ Evict until we have space for new item
+    // ✅ Evict until we have space for new item
     while (this.getTotalSize() + size > this.maxBytes && this.cache.size > 0) {
       this.evictOldest();
     }
 
-        // If still can't fit, reject
+    // If still can't fit, reject
     if (size > this.maxBytes) {
       console.warn(`⚠️ Item too large for cache: ${size} bytes`);
       return false;
@@ -569,7 +569,7 @@ function safeLocalStorageSet(key, value, retryOnFail = true) {
   const actualSize = getActualStorageSize(value);
   const available = getAvailableSpace();
 
-   // ✅ Backup BEFORE any modifications
+  // ✅ Backup BEFORE any modifications
   const backup = localStorage.getItem(key);
 
   // ✅ Early check before attempting write
@@ -617,11 +617,11 @@ function safeLocalStorageSet(key, value, retryOnFail = true) {
     return true;
   } catch (e) {
 
-        // Restore backup on failure
+    // Restore backup on failure
     if (backup !== null) {
-      try { localStorage.setItem(key, backup); } catch {}
+      try { localStorage.setItem(key, backup); } catch { }
     }
-    
+
     if (e.name === 'QuotaExceededError' && retryOnFail) {
       clearOldStorageData();
       return safeLocalStorageSet(key, value, false);
@@ -1043,12 +1043,12 @@ class ChannelLoader {
   // Video.js / HLS safe disposal routine
   // --------------------------
 
-    /**
-   * Safely disposes video.js player with HLS cleanup
-   * @private
-   * @param {Object} player - Video.js player instance
-   * @returns {Promise<void>}
-   */
+  /**
+ * Safely disposes video.js player with HLS cleanup
+ * @private
+ * @param {Object} player - Video.js player instance
+ * @returns {Promise<void>}
+ */
   async _disposeVideoJS(player) {
     try {
       if (!player) return;
@@ -1163,88 +1163,103 @@ class ChannelLoader {
   // Note: relies on your existing loadVideoPlayer(url, options) function to create the player
   // --------------------------
   async initializePlayer(url, name, isLive, token) {
-    const container = await this.waitForElement('player-container');
-    token.throwIfCancelled();
+  // Wait for container
+  const container = await this.waitForElement("player-container");
+  token.throwIfCancelled();
 
-    const streamConfig = createStreamConfig(url);
-    const metadata = { isLive: !!isLive };
+  // Build stream + metadata
+  const streamConfig = createStreamConfig(url);
+  const metadata = { isLive: !!isLive };
 
-    const videoId = `player-${Date.now()}`;
-    const videoElement = this.createVideoElement(videoId);
-    container.innerHTML = '';
-    container.appendChild(videoElement);
+  // Create video element
+  const videoId = `player-${Date.now()}`;
+  const videoElement = this.createVideoElement(videoId);
+  container.innerHTML = "";
+  container.appendChild(videoElement);
 
-    await this.waitForElement(videoId);
-    token.throwIfCancelled();
+  await this.waitForElement(videoId);
+  token.throwIfCancelled();
 
-    const playerConfig = buildPlayerOptions(streamConfig, metadata);
-    console.log('🎬 Initializing Video.js player...');
+  // Build player config
+  const playerConfig = buildPlayerOptions(streamConfig, metadata);
+  console.log("🎬 Initializing Video.js player...");
 
-    // ✅ This is your actual player creation
-    try {
-      this.playerInstance = videojs(videoElement, playerConfig);
-    } catch (e) {
-      console.error('Player init failed', e);
-      throw e;
-    }
-
-
-
-    token.throwIfCancelled();
-    if (!player) throw new Error("Player failed to initialize");
-
-    // Store references
-    try {
-      this.playerRef = new WeakRef(player);
-    } catch (e) {
-      this.playerRef = { deref: () => player };
-    }
+  let player;
+  try {
+    player = videojs(videoElement, playerConfig);
     this.playerInstance = player;
+    appState.set("player.instance", player);
+  } catch (e) {
+    console.error("❌ Player init failed:", e);
+    throw e;
+  }
 
-    // prepare _boundEvents container (defensive)
-    try { if (!player._boundEvents) player._boundEvents = new Set(); } catch (e) { }
+  token.throwIfCancelled();
+  if (!player) throw new Error("Player failed to initialize");
 
-    // safe event binding (customize events you need)
-    try {
-      this._bindPlayerEvent(player, "error", (e) => {
-        try { console.warn("Player error event:", e); } catch (err) { }
-      });
-      this._bindPlayerEvent(player, "ended", () => {
-        try { console.log("Playback ended"); } catch (e) { }
-      });
-      // example: track timeupdate for analytics
-      this._bindPlayerEvent(player, "timeupdate", () => {
-        try { /* analytics hook */ } catch (e) { }
-      });
-    } catch (e) { }
+  // Store references safely
+  try {
+    this.playerRef = new WeakRef(player);
+  } catch {
+    this.playerRef = { deref: () => player };
+  }
 
+  // Defensive event container
+  if (!player._boundEvents) {
+    player._boundEvents = new Set();
+  }
 
-    // register a FinalizationRegistry cleanup for this player (best-effort)
-    try {
-      this.cleanupRegistry.register(player, () => {
-        try { this._disposeVideoJS(player); } catch (e) { }
-      });
-    } catch (e) { }
-    // Setup error recovery
-    if (streamConfig.type === 'hls' && player.tech({ IWillNotUseThisInPlugins: true })) {
+  // Safe event binding
+  try {
+    this._bindPlayerEvent(player, "error", (e) => {
+      try { console.warn("⚠️ Player error event:", e); } catch {}
+    });
+    this._bindPlayerEvent(player, "ended", () => {
+      try { console.log("ℹ️ Playback ended"); } catch {}
+    });
+    this._bindPlayerEvent(player, "timeupdate", () => {
+      try { /* analytics hook */ } catch {}
+    });
+  } catch (e) {
+    console.warn("Event binding failed:", e);
+  }
+
+  // Register cleanup
+  try {
+    this.cleanupRegistry.register(player, () => {
+      try { this._disposeVideoJS(player); } catch {}
+    });
+  } catch (e) {
+    console.warn("Cleanup registry failed:", e);
+  }
+
+  // Error recovery for HLS
+  try {
+    if (streamConfig.type === "hls" && player.tech({ IWillNotUseThisInPlugins: true })) {
       this.setupHLSErrorRecovery();
     }
-
-    appState.set('player.instance', this.playerInstance);
-
-    // Setup events and monitoring
-    this.setupPlayerEvents(name, isLive, streamConfig.type === 'youtube', token);
-    if (streamConfig.type === 'youtube') this.setupYouTubeQualityMonitoring(token);
-
-    await this.waitForPlayerReady(token);
-    token.throwIfCancelled();
-
-    showChannelInfoOverlay();
-    await this.attemptAutoplay();
-    this.setupFullscreenCloseButton();
-
-    return player;
+  } catch (e) {
+    console.warn("HLS recovery setup failed:", e);
   }
+
+  // Setup events and monitoring
+  this.setupPlayerEvents(name, isLive, streamConfig.type === "youtube", token);
+  if (streamConfig.type === "youtube") {
+    this.setupYouTubeQualityMonitoring(token);
+  }
+
+  // Wait for ready
+  await this.waitForPlayerReady(token);
+  token.throwIfCancelled();
+
+  // UI setup
+  showChannelInfoOverlay();
+  await this.attemptAutoplay();
+  this.setupFullscreenCloseButton();
+
+  return player;
+}
+
 
   // ----------------------------------------------------------------------
   // Cancel active load operation
@@ -5512,19 +5527,19 @@ function logErrorToService(error) {
     type: error?.type || 'unknown',
     url: window.location.href
   };
-  
+
   errorLog.push(entry);
-  
+
   // Keep only last 50 errors
   if (errorLog.length > 50) {
     errorLog.shift();
   }
-  
+
   // Optional: Send to analytics service
   try {
     // Example: Google Analytics, Sentry, etc.
     // gtag('event', 'exception', { description: entry.message });
-  } catch (e) {}
+  } catch (e) { }
 }
 
 
