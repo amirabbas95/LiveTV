@@ -2,14 +2,16 @@
 // IPTV CHANNEL MANAGER - ENHANCED VERSION
 // ============================================
 
+
 /**
  * LRU (Least Recently Used) Cache implementation
  */
 class LRUCache {
-  constructor(maxSize = 50, maxAge = 3600000) {
+  constructor(maxSize = 50, maxAge = 3600000, maxBytes = 5 * 1024 * 1024) {
     this.cache = new Map();
     this.maxSize = maxSize;
     this.maxAge = maxAge; // milliseconds
+    this.maxBytes = maxBytes;
     this.hits = 0;
     this.misses = 0;
   }
@@ -53,6 +55,18 @@ class LRUCache {
    */
   set(key, data, options = {}) {
     const now = Date.now();
+    const size = this.estimateSize(data);
+
+        // ✅ Evict until we have space for new item
+    while (this.getTotalSize() + size > this.maxBytes && this.cache.size > 0) {
+      this.evictOldest();
+    }
+
+        // If still can't fit, reject
+    if (size > this.maxBytes) {
+      console.warn(`⚠️ Item too large for cache: ${size} bytes`);
+      return false;
+    }
 
     // Remove oldest if at capacity
     if (this.cache.size >= this.maxSize && !this.cache.has(key)) {
@@ -259,6 +273,7 @@ const LS_KEYS = {
   LIVE: "liveChannelsData",
   FEEDS: "rssFeedsData",
   WATCH_TIME: "watchTimePerChannel",
+  YT_QUOTA: "__iptv_yt_quota"
 };
 
 const API_KEY_STORAGE_KEY = "youtube_api_key";
@@ -477,6 +492,7 @@ class AppStateManager {
 const appState = new AppStateManager();
 
 
+const pendingRequests = new Map();
 
 // ============================================
 // Utilities
@@ -553,11 +569,22 @@ function safeLocalStorageSet(key, value, retryOnFail = true) {
   const actualSize = getActualStorageSize(value);
   const available = getAvailableSpace();
 
+   // ✅ Backup BEFORE any modifications
+  const backup = localStorage.getItem(key);
+
   // ✅ Early check before attempting write
   if (actualSize > available) {
     console.warn('⚠️ Insufficient storage space');
 
     if (retryOnFail) {
+
+      // Attempt predictive cleanup (better targeted than full clear)
+      const predictive = predictiveCleanup();
+      if (predictive.freedBytes >= actualSize || getAvailableSpace() >= actualSize) {
+        // Try again
+        return safeLocalStorageSet(key, value, false);
+      }
+
       // ✅ Progressive cleanup strategy
       const cleanupStrategies = [
         () => localStorage.removeItem(LS_KEYS.WATCH_TIME),
@@ -589,6 +616,12 @@ function safeLocalStorageSet(key, value, retryOnFail = true) {
     localStorage.setItem(key, value);
     return true;
   } catch (e) {
+
+        // Restore backup on failure
+    if (backup !== null) {
+      try { localStorage.setItem(key, backup); } catch {}
+    }
+    
     if (e.name === 'QuotaExceededError' && retryOnFail) {
       clearOldStorageData();
       return safeLocalStorageSet(key, value, false);
@@ -608,17 +641,36 @@ function safeLocalStorageSet(key, value, retryOnFail = true) {
  */
 function debounce(fn, wait = DEBOUNCE_MS, options = {}) {
   let timeout;
+  let lastArgs, lastThis;
+  const { leading = false, trailing = true, maxWait } = options;
+
+  function invoke() {
+    fn.apply(lastThis, lastArgs);
+    timeout = null;
+  }
 
   const debounced = function (...args) {
-    const context = this; // Capture context
-    clearTimeout(timeout);
+    lastArgs = args;
+    lastThis = this;
 
+    const shouldInvokeLeading = leading && !timeout;
+
+    clearTimeout(timeout);
     timeout = setTimeout(() => {
-      fn.apply(context, args);
+      if (trailing) invoke();
     }, wait);
+
+    if (shouldInvokeLeading) invoke();
   };
 
   debounced.cancel = () => clearTimeout(timeout);
+  debounced.flush = () => {
+    if (timeout) {
+      clearTimeout(timeout);
+      invoke();
+    }
+  };
+
   return debounced;
 }
 
@@ -915,6 +967,13 @@ window.addEventListener('iptv-storage-updated', (e) => {
 // ======================================================================
 // ChannelLoader – Final, Leak-Safe, Error-Proof Version
 // ======================================================================
+/**
+ * Manages video player lifecycle with race condition protection
+ * @class ChannelLoader
+ * @param {Object} opts - Configuration options
+ * @param {string} opts.playerContainerId - DOM container ID
+ * @param {number} opts.persistDelay - Delay before persisting state
+ */
 class ChannelLoader {
   constructor(opts = {}) {
     // async operation control
@@ -978,9 +1037,18 @@ class ChannelLoader {
     } catch (e) { /* ignore */ }
   }
 
+
+
   // --------------------------
   // Video.js / HLS safe disposal routine
   // --------------------------
+
+    /**
+   * Safely disposes video.js player with HLS cleanup
+   * @private
+   * @param {Object} player - Video.js player instance
+   * @returns {Promise<void>}
+   */
   async _disposeVideoJS(player) {
     try {
       if (!player) return;
@@ -1062,113 +1130,28 @@ class ChannelLoader {
     // Stop any playback timers / analytics
     try { stopWatching?.(); } catch { }
 
-    // -------------------------
-    // 1. Run legacy event cleanup
-    // -------------------------
-    try {
-      if (Array.isArray(this.eventCleanupCallbacks)) {
-        for (const fn of [...this.eventCleanupCallbacks]) {
-          try { fn?.(); } catch (e) { console.warn(e); }
-        }
-      }
-    } catch { }
+    // Get player from either source
+    const player = this.playerRef?.deref?.() || this.playerInstance;
+
+    if (player) {
+      // Single unified cleanup
+      await this._disposeVideoJS(player);
+    }
+
+    // Clear all references
+    this.playerRef = null;
+    this.playerInstance = null;
     this.eventCleanupCallbacks = [];
 
-    // -------------------------
-    // 2. Cleanup WeakRef Player (new system)
-    // -------------------------
-    try {
-      const player = this.playerRef?.deref?.();
-      if (player) {
-        // Remove bound events
-        const events = player._boundEvents;
-        if (events && typeof events.forEach === "function") {
-          try {
-            events.forEach(({ event, handler }) => {
-              try { player.removeEventListener(event, handler); } catch { }
-            });
-          } catch { }
-          try { events.clear?.(); } catch { }
-        }
+    // Clear DOM
+    const container = document.getElementById(this.config.playerContainerId);
+    if (container) container.innerHTML = '';
 
-        // Smart cleanup based on player type
-        if (player.dispose || player.tech_) {
-          // ---- Safe Video.js disposal ----
-          await this._disposeVideoJS(player);
-        } else if (typeof player.destroy === "function") {
-          // Clappr, Hls.js, Jmuxer, etc.
-          try { await player.destroy(); } catch { }
-        } else if (player.pause) {
-          try { player.pause(); } catch { }
-        }
-
-        // Remove DOM element if still present
-        try {
-          const el = player.el ? player.el() : null;
-          if (el && el.parentNode) el.parentNode.removeChild(el);
-        } catch { }
-      }
-    } catch (e) {
-      console.warn("WeakRef player cleanup error:", e);
-    }
-
-    // -------------------------
-    // 3. Legacy playerInstance Cleanup
-    // -------------------------
-    try {
-      const legacy = this.playerInstance;
-      if (legacy) {
-        try { legacy.off?.(); } catch { }
-        try { legacy.pause?.(); } catch { }
-
-        if (legacy.dispose || legacy.tech_) {
-          // Video.js
-          await this._disposeVideoJS(legacy);
-        } else if (typeof legacy.destroy === "function") {
-          try { await legacy.destroy(); } catch { }
-        }
-
-        // Remove DOM
-        try {
-          const el = legacy.el?.();
-          if (el && el.parentNode) el.parentNode.removeChild(el);
-        } catch { }
-
-        this.playerInstance = null;
-      }
-    } catch (e) {
-      console.warn("Legacy playerInstance cleanup failed:", e);
-    }
-
-    // -------------------------
-    // 4. Remove leftover DOM
-    // -------------------------
-    try {
-      const container = document.getElementById("player-container");
-      if (container) {
-        container.querySelectorAll(
-          "video, .video-js, .vjs-tech, .play-container, .play-fallback-overlay"
-        ).forEach(el => {
-          try { el.remove(); } catch { }
-        });
-      }
-    } catch { }
-
-    // -------------------------
-    // 5. Force clear WeakRef (optional)
-    // -------------------------
-    if (force) {
-      try { this.playerRef = null; } catch { }
-    }
-
-    // -------------------------
-    // 6. Reset player state
-    // -------------------------
-    try {
-      appState.set("player.instance", null);
-      appState.set("player.currentChannel", null);
+    if (!force) {
+      appState.set('player.instance', null);
+      appState.set('player.currentChannel', null);
       appState.set("player.isPlaying", false);
-    } catch { }
+    }
   }
 
 
@@ -1180,17 +1163,40 @@ class ChannelLoader {
   // Note: relies on your existing loadVideoPlayer(url, options) function to create the player
   // --------------------------
   async initializePlayer(url, name, isLive, token) {
-    // Delegate actual creation to your loader; many apps have a helper like loadVideoPlayer()
-    const player = await loadVideoPlayer(url, { live: isLive });
+    const container = await this.waitForElement('player-container');
+    token.throwIfCancelled();
+
+    const streamConfig = createStreamConfig(url);
+    const metadata = { isLive: !!isLive };
+
+    const videoId = `player-${Date.now()}`;
+    const videoElement = this.createVideoElement(videoId);
+    container.innerHTML = '';
+    container.appendChild(videoElement);
+
+    await this.waitForElement(videoId);
+    token.throwIfCancelled();
+
+    const playerConfig = buildPlayerOptions(streamConfig, metadata);
+    console.log('🎬 Initializing Video.js player...');
+
+    // ✅ This is your actual player creation
+    try {
+      this.playerInstance = videojs(videoElement, playerConfig);
+    } catch (e) {
+      console.error('Player init failed', e);
+      throw e;
+    }
+
+
 
     token.throwIfCancelled();
     if (!player) throw new Error("Player failed to initialize");
 
-    // store both weakref and legacy reference for compatibility
+    // Store references
     try {
       this.playerRef = new WeakRef(player);
     } catch (e) {
-      // If WeakRef not supported, still keep strong reference (legacy)
       this.playerRef = { deref: () => player };
     }
     this.playerInstance = player;
@@ -1212,12 +1218,30 @@ class ChannelLoader {
       });
     } catch (e) { }
 
+
     // register a FinalizationRegistry cleanup for this player (best-effort)
     try {
       this.cleanupRegistry.register(player, () => {
         try { this._disposeVideoJS(player); } catch (e) { }
       });
     } catch (e) { }
+    // Setup error recovery
+    if (streamConfig.type === 'hls' && player.tech({ IWillNotUseThisInPlugins: true })) {
+      this.setupHLSErrorRecovery();
+    }
+
+    appState.set('player.instance', this.playerInstance);
+
+    // Setup events and monitoring
+    this.setupPlayerEvents(name, isLive, streamConfig.type === 'youtube', token);
+    if (streamConfig.type === 'youtube') this.setupYouTubeQualityMonitoring(token);
+
+    await this.waitForPlayerReady(token);
+    token.throwIfCancelled();
+
+    showChannelInfoOverlay();
+    await this.attemptAutoplay();
+    this.setupFullscreenCloseButton();
 
     return player;
   }
@@ -1247,6 +1271,17 @@ class ChannelLoader {
   // ----------------------------------------------------------------------
   // loadChannel – main entry point
   // ----------------------------------------------------------------------
+  /**
+ * Loads a channel with race-condition protection and cleanup
+ * @param {string} url - Stream URL (HLS/DASH/YouTube)
+ * @param {string} name - Channel display name
+ * @param {string} image - Channel thumbnail URL
+ * @param {string} description - Channel description
+ * @param {number} number - Channel number for direct access
+ * @param {boolean} isLive - Whether channel is live stream
+ * @returns {Promise<void>}
+ * @throws {Error} If player initialization fails
+ */
   async loadChannel(url, name, image, description, number, isLive) {
     if (!url) return;
 
@@ -1258,8 +1293,9 @@ class ChannelLoader {
     const opId = Date.now() + Math.random();
     this.currentOperationId = opId;
 
-    console.log(`🚀 Loading channel: ${name}`);
+    console.log(`🚀 Loading channel: ${name} (OpID: ${opId})`);
 
+    // Add token checks before EVERY async operation:
     try {
       this.verifyOperation(opId, token);
       this.updateChannelUI(name, image, description, number);
@@ -1271,7 +1307,6 @@ class ChannelLoader {
       await this.initializePlayer(url, name, isLive, token);
 
       this.verifyOperation(opId, token);
-
       appState.set("player.currentChannel", { url, name, image, description, number, isLive });
       appState.set("player.isPlaying", true);
       appState.set("ui.isModalOpen", true);
@@ -1284,7 +1319,11 @@ class ChannelLoader {
         console.log(`⏹️ Channel load cancelled: ${name}`);
       }
     } finally {
-      if (this.currentOperation === token) this.currentOperation = null;
+      // Only clear current op if it's strictly THIS operation finishing
+      if (this.currentOperationId === opId) {
+        this.currentOperation = null;
+      }
+
     }
   }
 
@@ -1315,108 +1354,6 @@ class ChannelLoader {
     appState.set('ui.lastFocusedElement', document.activeElement);
   }
 
-  async cleanupPlayer(skipStateReset = false) {
-    // stop watching
-    stopWatching();
-
-    // run registered cleanup callbacks
-    this.eventCleanupCallbacks.forEach(fn => {
-      try {
-        console.log('🧹 Cleaning up existing player...');
-        fn();
-      } catch (e) {
-        console.warn(e);
-      }
-    });
-
-    this.eventCleanupCallbacks = [];
-
-    if (this.playerInstance) {
-      try {
-        try {
-          this.playerInstance.off && this.playerInstance.off();
-        } catch (e) { }
-        try {
-          this.playerInstance.pause && this.playerInstance.pause();
-        } catch (e) { }
-        const id = this.playerInstance.id ? this.playerInstance.id() : null;
-        try {
-          this.playerInstance.dispose && this.playerInstance.dispose();
-        } catch (e) { }
-        this.playerInstance = null;
-        if (id) {
-          const el = document.getElementById(id);
-          if (el && el.parentNode) el.parentNode.removeChild(el);
-        }
-      } catch (e) {
-        console.warn('⚠️ Error during cleanupPlayer:', e);
-        this.playerInstance = null;
-      }
-    }
-
-    // remove orphaned DOM nodes inside player container
-    const container = document.getElementById('player-container');
-    if (container) {
-      container.querySelectorAll('video, .video-js, .play-fallback-overlay').forEach(el => {
-        try {
-          if (el.parentNode) el.parentNode.removeChild(el);
-        } catch (e) { }
-      });
-    }
-
-    if (!skipStateReset) {
-      appState.set('player.instance', null);
-      appState.set('player.currentChannel', null);
-      appState.set('player.isPlaying', false);
-    }
-  }
-
-  async initializePlayer(url, name, isLive, token) {
-    const container = await this.waitForElement('player-container');
-    token.throwIfCancelled();
-
-    const streamConfig = createStreamConfig(url);
-    const metadata = { isLive: !!isLive };
-
-    const videoId = `player-${Date.now()}`;
-    const videoElement = this.createVideoElement(videoId);
-    container.innerHTML = '';
-    container.appendChild(videoElement);
-    await this.waitForElement(videoId);
-    token.throwIfCancelled();
-
-    const playerConfig = buildPlayerOptions(streamConfig, metadata);
-    console.log('🎬 Initializing Video.js player...');
-    try {
-      this.playerInstance = videojs(videoElement, playerConfig);
-    } catch (e) {
-      console.error('Player init failed', e);
-      throw e;
-    }
-    // hls error recovery if available
-    if (streamConfig.type === 'hls' && this.playerInstance.tech({
-      IWillNotUseThisInPlugins: true
-    })) {
-      this.setupHLSErrorRecovery();
-    }
-
-    appState.set('player.instance', this.playerInstance);
-
-    /*     // hls error recovery if available
-        this.setupHLSErrorRecovery(); */
-
-    this.setupPlayerEvents(name, isLive, streamConfig.type === 'youtube', token);
-    if (streamConfig.type === 'youtube') this.setupYouTubeQualityMonitoring(token);
-
-    await this.waitForPlayerReady(token);
-    token.throwIfCancelled();
-
-
-    showChannelInfoOverlay();
-    await this.attemptAutoplay();
-
-    this.setupFullscreenCloseButton();
-  }
 
   setupHLSErrorRecovery() {
     if (!this.playerInstance) return;
@@ -1482,8 +1419,7 @@ class ChannelLoader {
   }
 
 
-
-  waitForPlayerReady(token) {
+  async waitForPlayerReady(token) {
     return new Promise((resolve, reject) => {
       if (!this.playerInstance) return reject(new Error('No player instance'));
       let done = false;
@@ -1811,7 +1747,7 @@ function createStreamConfig(url, opts = {}) {
   const isHTTP = url.startsWith("http://");
   const isM3U8 = url.includes(".m3u8") || url.includes("playlist");
   const isMPD = url.endsWith(".mpd");
-  const isMP4 = url.endsWith(".mp4") || url.includes(".mp4?");
+  const isMP4 = url.endsWith(".mp4") || url.includes(".mp4?") || url.includes("imarkaz");
   const isTS = url.endsWith(".ts");
   const isYouTube = url.includes("youtube.com") || url.includes("youtu.be");
 
@@ -2285,9 +2221,20 @@ function saveCurrentWatchTime() {
 
 function loadWatchTime() {
   try {
-    return JSON.parse(localStorage.getItem(LS_KEYS.WATCH_TIME)) || {};
+    const data = localStorage.getItem(LS_KEYS.WATCH_TIME);
+    if (!data) return {};
+
+    return JSON.parse(data);
   } catch (e) {
     console.error("Error loading watch time:", e);
+    logErrorToService({ type: 'storage_parse_error', key: LS_KEYS.WATCH_TIME, error: e });
+
+    // Try to recover
+    try {
+      localStorage.removeItem(LS_KEYS.WATCH_TIME);
+    } catch { }
+
+    showNotification('Watch history data corrupted - resetting', 'warning');
     return {};
   }
 }
@@ -2314,10 +2261,29 @@ function createChannelItem(channel) {
   const numberText = channel.number || '';
 
   item.className = 'content-card channel-item';
+
+
+  // Better ARIA attributes
   item.setAttribute('role', 'button');
-  item.setAttribute('aria-label', `Select channel ${channel.name}`);
-  item.setAttribute('tabindex', '0');
-  if (channel.isLive) item.setAttribute('aria-live', 'polite');
+  item.setAttribute('aria-label',
+    `${channel.name}, Channel ${channel.number}${channel.isLive ? ', Live' : ''}`
+  );
+  item.setAttribute('aria-pressed', 'false');
+  item.setAttribute('tabindex', '-1');
+
+  // Add live region for updates
+  if (channel.isLive) {
+    item.setAttribute('aria-live', 'polite');
+    item.setAttribute('aria-atomic', 'true');
+  }
+
+  // Keyboard support
+  item.addEventListener('keydown', (e) => {
+    if (e.key === ' ' || e.key === 'Enter') {
+      e.preventDefault();
+      item.click();
+    }
+  });
 
   // Store data attributes
   item.dataset.url = channel.url || '';
@@ -2466,52 +2432,93 @@ function cleanupChannelItems() {
   appState.set('uiCollections.allChannelItems', []);
 }
 
+function cleanupChannelItem(item) {
+  if (item._cleanupHandlers) {
+    item._cleanupHandlers.forEach(fn => {
+      try { fn(); } catch (e) { }
+    });
+    delete item._cleanupHandlers;
+  }
+  // Remove safely
+  try { item.remove(); } catch (e) { }
+}
+
+function createOrUpdateHeading(category, count) {
+  let heading = document.querySelector(`h2[data-category="${category}"]`);
+  if (!heading) {
+    heading = document.createElement("h2");
+    heading.dataset.category = category;
+    heading.className = "text-xl font-bold mt-6 mb-4 col-span-full dynamic-heading";
+    heading.textContent = `${category} (${count})`;
+  } else {
+    // Update count if heading already exists
+    heading.textContent = `${category} (${count})`;
+  }
+  return heading;
+}
+
+function createOrUpdateGrid(category) {
+  let grid = document.querySelector(`.content-grid[data-category="${category}"]`);
+  if (!grid) {
+    grid = document.createElement("div");
+    grid.className = "content-grid";
+    grid.dataset.category = category;
+  } else {
+    // Clear only dynamic children, keep reused items
+    grid.querySelectorAll(".channel-item").forEach(item => {
+      if (!item._keep) cleanupChannelItem(item);
+    });
+  }
+  return grid;
+}
+
+
 function renderChannels(channels) {
-  cleanupChannelItems();
   const main = document.getElementById('channels');
   if (!main) return;
 
-  // Only remove dynamically added content, preserve static UI
-  main.querySelectorAll('.content-grid, .dynamic-heading').forEach(el => el.remove());
+  const existingItems = new Map();
+  main.querySelectorAll('.channel-item').forEach(item => {
+    existingItems.set(item.dataset.url, item);
+  });
 
-  const frag = document.createDocumentFragment();
+  const fragment = document.createDocumentFragment();
   const sortMethod = appState.get('ui.sortMethod') || 'none';
   const isSearching = appState.get('channels.searchQuery') !== '';
 
-  if (sortMethod === 'none') {
-    const categorized = channels.reduce((acc, ch) => {
+  const categorized = sortMethod === 'none'
+    ? channels.reduce((acc, ch) => {
       const c = ch.category || 'Unknown';
       (acc[c] || (acc[c] = [])).push(ch);
       return acc;
-    }, {});
+    }, {})
+    : { All: channels };
 
-    for (const cat of Object.keys(categorized)) {
-      const chs = categorized[cat];
-      const heading = document.createElement('h2');
-      heading.textContent = `${cat} (${chs.length})`;
-      heading.className = 'text-xl font-bold mt-6 mb-4 col-span-full dynamic-heading';
+  for (const [category, categoryChannels] of Object.entries(categorized)) {
+    const heading = createOrUpdateHeading(category, categoryChannels.length);
+    const grid = createOrUpdateGrid(category);
 
-      const grid = document.createElement('div');
-      grid.className = 'content-grid';
-      chs.forEach(channel => grid.appendChild(createChannelItem(channel)));
+    categoryChannels.forEach(channel => {
+      const existing = existingItems.get(channel.url);
+      if (existing) {
+        grid.appendChild(existing);
+        existingItems.delete(channel.url);
+      } else {
+        grid.appendChild(createChannelItem(channel));
+      }
+    });
 
-      frag.appendChild(heading);
-      frag.appendChild(grid);
-    }
-  } else {
-    const heading = document.createElement('h2');
-    heading.textContent = `All Channels (${channels.length})`;
-    heading.className = 'text-xl font-bold mt-6 mb-4 col-span-full dynamic-heading';
-
-    const grid = document.createElement('div');
-    grid.className = 'content-grid';
-    channels.forEach(channel => grid.appendChild(createChannelItem(channel)));
-
-    frag.appendChild(heading);
-    frag.appendChild(grid);
+    fragment.appendChild(heading);
+    fragment.appendChild(grid);
   }
 
-  main.appendChild(frag);
+  // Remove items no longer needed
+  existingItems.forEach(item => cleanupChannelItem(item));
+
+  // ✅ Only remove dynamic content, not static UI
+  main.querySelectorAll('.content-grid, .dynamic-heading').forEach(el => el.remove());
+  main.appendChild(fragment);
+
   updateAllChannelItems();
   observeNewImages();
 
@@ -2524,6 +2531,7 @@ function renderChannels(channels) {
 
   console.log(`✅ Rendered ${channels.length} channels in ${sortMethod} view`);
 }
+
 
 
 // ✅ ENHANCED: Render favorites with new API
@@ -3472,6 +3480,13 @@ function showSettingsModal() {
   const autoUpdateToggle = document.getElementById("autoUpdateToggle");
   const updateIntervalSelect = document.getElementById("updateInterval");
 
+  // ✅ NEW: Sync Sort Dropdown state
+  const sortSelect = document.getElementById("sortSelect");
+  if (sortSelect) {
+    const currentSort = appState.get('ui.sortMethod') || localStorage.getItem("defaultSortMethod") || 'none';
+    sortSelect.value = currentSort;
+  }
+
   // 🔄 Restore values from localStorage
   const savedAutoUpdate = localStorage.getItem(AUTO_UPDATE_KEY);
   const savedInterval = localStorage.getItem(UPDATE_INTERVAL_KEY);
@@ -3500,11 +3515,6 @@ function showSettingsModal() {
   } else {
     updateStorageDisplay();
     updateStorageStatsDisplay();
-  }
-  if (!document.getElementById("cacheStats")) {
-    addCacheManagementToSettings();
-  } else {
-    updateCacheStatsDisplay();
   }
 }
 
@@ -3611,7 +3621,17 @@ function setupSettingsModal() {
   const manualUpdateBtn = document.getElementById("manualUpdateBtn");
   const manageApiKeyBtn = document.getElementById("manageApiKeyBtn");
 
+  // ✅ NEW: Reference the sort dropdown
+  const sortSelect = document.getElementById("sortSelect");
+
   // --- Attach Event Listeners ---
+  // ✅ NEW: Sort Listener
+  if (sortSelect) {
+    sortSelect.addEventListener("change", (e) => {
+      handleSortChange(e.target.value);
+    });
+  }
+
   if (settingsBtn) {
     settingsBtn.addEventListener("click", showSettingsModal);
   }
@@ -3649,11 +3669,6 @@ function setupSettingsModal() {
   if (!document.getElementById("storageUsageDisplay")) {
     addStorageInfoToSettings();
   }
-  if (!document.getElementById("cacheStats")) {
-    addCacheManagementToSettings();
-  }
-
-  updateCacheStatsDisplay();
   updateStorageDisplay();
 
   // --- Move Close Button to Bottom ---
@@ -3997,6 +4012,8 @@ async function initialize() {
     loadWatchTime();
     const savedSort = localStorage.getItem("defaultSortMethod") || "none";
     handleSortChange(savedSort);
+
+    addSkipLinks();
 
     renderFavorites();
     renderRecentlyWatched();
@@ -5142,14 +5159,26 @@ function checkStorageHealth() {
   if (percentUsed > 80) {
     showNotification('⚠️ Storage 80% full - consider exporting data', 'warning');
     // Auto-cleanup non-critical data
-    clearOldStorageData();
+    // Try predictive cleanup first (less aggressive than full clear)
+    const res = predictiveCleanup();
+    if (res.freedBytes > 0) {
+      showNotification(`🧹 Auto-cleaned ${Math.round(res.freedBytes / 1024)} KB`, 'info');
+    } else {
+      // fallback to legacy cleanup
+      clearOldStorageData();
+    }
   }
 
   if (percentUsed > 95) {
     // Emergency cleanup
     showNotification('🚨 Storage critical - forcing cleanup', 'error');
-    localStorage.removeItem(LS_KEYS.WATCH_TIME);
-    clearOldStorageData();
+    // attempt predictive cleanup first
+    const res = predictiveCleanup();
+    if (res.freedBytes <= 0) {
+      // remove the least-critical known keys explicitly
+      localStorage.removeItem(LS_KEYS.WATCH_TIME);
+      clearOldStorageData();
+    }
   }
 }
 
@@ -5199,14 +5228,16 @@ function initializeLazyLoading() {
     entries.forEach(entry => {
       if (entry.isIntersecting) {
         const img = entry.target;
-        loadImage(img);
-        observer.unobserve(img);
+        if (img.dataset.src && !img.classList.contains('loaded')) {
+          loadImage(img);
+          observer.unobserve(img);
+        }
       }
     });
   }, {
     root: null, // viewport
     rootMargin: '100px', // Start loading 100px before visible
-    threshold: 0.01 // Trigger when 1% visible
+    threshold: [0, 0.1, 0.5, 1] // Multiple thresholds for smoother loading
   });
 
   // Store globally
@@ -5329,12 +5360,179 @@ function startCacheMaintenance() {
     }
   });
 
-  console.log("✅ Global Error Boundaries Installed");
+  //console.log("✅ Global Error Boundaries Installed");
 })();
+
+
+/**
+ * Predictive cleanup - attempts to free storage by removing
+ * low-importance, large items first based on a size/importance ratio.
+ *
+ * This function is non-destructive for critical keys (channels / favorites)
+ * unless absolutely necessary: it uses the importance map to prefer
+ * removing watch-time, caches, recent lists, or the last-update cache.
+ *
+ * Returns: { freedBytes: number, removedKeys: string[] }
+ */
+function predictiveCleanup() {
+  try {
+    const usage = getStorageUsage();
+    if (!usage) return { freedBytes: 0, removedKeys: [] };
+
+    // threshold in bytes (4MB default, adjust if you want)
+    const threshold = 4 * 1024 * 1024;
+
+    // If under threshold, nothing to do
+    if (usage.totalBytes <= threshold) {
+      return { freedBytes: 0, removedKeys: [] };
+    }
+
+    // Importance map: higher = more important, less likely to be removed
+    const importance = {
+      [LS_KEYS.CHANNELS]: 10,    // critical: channel DB
+      [LS_KEYS.FAVORITES]: 9,    // very important
+      [LS_KEYS.FEEDS]: 8,        // important
+      [LS_KEYS.LIVE]: 7,         // live channels metadata
+      [LS_KEYS.RECENT]: 5,       // moderate
+      [LS_KEYS.WATCH_TIME]: 2,   // low
+      [CACHE_KEY]: 1             // lowest/ephemeral
+    };
+
+    // Build sortable list of items
+    const items = Object.entries(usage.items || {}).map(([key, size]) => {
+      const imp = importance.hasOwnProperty(key) ? importance[key] : 5;
+      return {
+        key,
+        size,
+        importance: imp,
+        ratio: size / imp
+      };
+    });
+
+    // Sort descending by ratio (largest size per importance first)
+    items.sort((a, b) => b.ratio - a.ratio);
+
+    const removedKeys = [];
+    let freedBytes = 0;
+    let totalBytes = usage.totalBytes;
+
+    for (const item of items) {
+      // stop if we're under threshold
+      if (totalBytes <= threshold) break;
+
+      // Never remove the app namespace by accident (defensive)
+      if (!item.key || item.key === '__iptv' || item.key.startsWith('__')) continue;
+
+      // Prefer not to remove channels/favorites unless absolutely required.
+      // importance map already biases against them, but add safety:
+      if (item.key === LS_KEYS.CHANNELS || item.key === LS_KEYS.FAVORITES) {
+        // only remove if we are still dramatically over threshold (> 150%)
+        if (totalBytes <= threshold * 1.5) continue;
+      }
+
+      try {
+        console.log(`🧹 predictiveCleanup: removing ${item.key} (~${Math.round(item.size / 1024)}KB)`);
+        localStorage.removeItem(item.key);
+        removedKeys.push(item.key);
+        freedBytes += item.size;
+        totalBytes -= item.size;
+
+        // notify UI of changes for keys we know about
+        if (item.key === LS_KEYS.RECENT) dispatchStorageUpdate('recent');
+        if (item.key === LS_KEYS.FAVORITES) dispatchStorageUpdate('favorites');
+        // caches: clear associated runtime caches too
+        if (item.key === CACHE_KEY) {
+          try { rssCache.clear(); liveCache.clear(); } catch (e) { /* ignore */ }
+        }
+
+      } catch (e) {
+        console.warn('predictiveCleanup: failed to remove', item.key, e);
+      }
+    }
+
+    console.log(`🧹 predictiveCleanup: Freed ~${Math.round(freedBytes / 1024)} KB, removed:`, removedKeys);
+    return { freedBytes, removedKeys };
+  } catch (err) {
+    console.warn('predictiveCleanup failed:', err);
+    return { freedBytes: 0, removedKeys: [] };
+  }
+}
+
+// Accessibility: Skip navigation link
+function addSkipLinks() {
+  const skipNav = document.createElement('a');
+  skipNav.href = '#channels';
+  skipNav.className = 'skip-link';
+  skipNav.textContent = 'Skip to channels';
+  skipNav.style.cssText = `
+    position: absolute;
+    top: -40px;
+    left: 0;
+    background: #000;
+    color: #fff;
+    padding: 8px;
+    z-index: 1000;
+    font-size: 14px;
+    text-decoration: none;
+  `;
+  skipNav.addEventListener('focus', () => {
+    skipNav.style.top = '0';
+  });
+  skipNav.addEventListener('blur', () => {
+    skipNav.style.top = '-40px';
+  });
+  document.body.insertBefore(skipNav, document.body.firstChild);
+}
+
+/**
+ * Deduplicates concurrent API requests
+ */
+function deduplicateRequest(key, requestFn) {
+  if (pendingRequests.has(key)) {
+    console.log(`📦 Returning existing request: ${key}`);
+    return pendingRequests.get(key);
+  }
+
+  const promise = requestFn().finally(() => {
+    pendingRequests.delete(key);
+  });
+
+  pendingRequests.set(key, promise);
+  return promise;
+}
+
+// Add this after your error handling utilities
+const errorLog = [];
+
+function logErrorToService(error) {
+  const entry = {
+    timestamp: Date.now(),
+    message: error?.message || String(error),
+    stack: error?.stack,
+    type: error?.type || 'unknown',
+    url: window.location.href
+  };
+  
+  errorLog.push(entry);
+  
+  // Keep only last 50 errors
+  if (errorLog.length > 50) {
+    errorLog.shift();
+  }
+  
+  // Optional: Send to analytics service
+  try {
+    // Example: Google Analytics, Sentry, etc.
+    // gtag('event', 'exception', { description: entry.message });
+  } catch (e) {}
+}
+
+
 
 // ============================================
 // EXPORT GLOBAL FUNCTIONS
 // ============================================
+
 // Build the namespace object
 window.__iptv = {
   // state / modules

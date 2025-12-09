@@ -62,7 +62,6 @@
       <div id="channel-number-overlay">
       </div>
 
-      <div id="loading-spinner"></div>
 
       <div class="p-4 max-w-7xl mx-auto">
 
@@ -80,25 +79,9 @@
         </div>
 
         <div id="channels" class="mb-12">
-          <div class="sort-container">
-            <h2 class="text-2xl font-bold mb-4 flex items-center gap-3">
-              <i class="fas fa-list text-blue-500"></i>Channels
-            </h2>
-            <div class="sort-controls">
-              <button onclick="handleSortChange('none')" title="No Sort">
-                <i class="fas fa-ban"></i>
-              </button>
-              <button onclick="handleSortChange('asc')" title="Sort Name A-Z">
-                <i class="fas fa-sort-alpha-down"></i>
-              </button>
-              <button onclick="handleSortChange('desc')" title="Sort Name Z-A">
-                <i class="fas fa-sort-alpha-up"></i>
-              </button>
-              <button onclick="handleSortChange('watchTime')" title="Sort by Watch Time">
-                <i class="fas fa-clock"></i>
-              </button>
-            </div>
-          </div>
+          <h2 class="text-2xl font-bold mb-4 flex items-center gap-3">
+            <i class="fas fa-list text-blue-500"></i>Channels
+          </h2>
         </div>
 
       </div>
@@ -129,6 +112,21 @@
             <button id="manualUpdateBtn" class="btn-primary">Update
               Now</button>
             <span id="lastUpdateDisplay"></span>
+          </div>
+
+          <div class="setting-item">
+            <label for="sortSelect">
+              <i class="fas fa-sort mr-2"></i> Sort Channels
+            </label>
+            <p class="setting-description">
+              Choose how channels are organized on the home screen
+            </p>
+            <select id="sortSelect">
+              <option value="none" onclick="handleSortChange('none')">Default (Category)</option>
+              <option value="asc" onclick="handleSortChange('asc')">Name (A-Z)</option>
+              <option value="desc" onclick="handleSortChange('desc')">Name (Z-A)</option>
+              <option value="watchTime" onclick="handleSortChange('watchTime')">Most Watched</option>
+            </select>
           </div>
           <!-- ✅ NEW: API Key Management -->
           <div class="setting-item">
