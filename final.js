@@ -2,7 +2,6 @@
 // IPTV CHANNEL MANAGER - ENHANCED VERSION
 // ============================================
 
-
 /**
  * LRU (Least Recently Used) Cache implementation
  */
@@ -176,11 +175,14 @@ class LRUCache {
    */
   estimateSize(data) {
     try {
-      return JSON.stringify(data).length;
+      // JSON length is char count; Blob gives byte size which is more accurate
+      const str = typeof data === 'string' ? data : JSON.stringify(data);
+      return new Blob([str]).size;
     } catch (e) {
       return 0;
     }
   }
+
 
   /**
    * Get total cache size in bytes (approximate)
@@ -382,11 +384,16 @@ class AppStateManager {
 
   _doPersist(path, value) {
     try {
-      safeLocalStorageSet(LS_KEYS.CHANNELS, JSON.stringify(this.state.channels?.all || []));
+      if (path === 'channels.all') {
+        safeLocalStorageSet(LS_KEYS.CHANNELS, JSON.stringify(this.state.channels?.all || []));
+      } else {
+        // keep legacy behavior if needed for other paths (no-op)
+      }
     } catch (e) {
       console.warn("Failed to persist", e);
     }
   }
+
 
 
   merge(path, obj) {
@@ -1009,6 +1016,7 @@ class ChannelLoader {
   // SAFE: used to bind event listeners
   // ----------------------------------------------------------------------
   _bindPlayerEvent(player, event, handler) {
+    // Bind listener with whatever API exists
     try {
       if (typeof player.addEventListener === "function") {
         player.addEventListener(event, handler);
@@ -1017,25 +1025,28 @@ class ChannelLoader {
       } else if (typeof player.addListener === "function") {
         player.addListener(event, handler);
       }
-    } catch (e) {
-      // ignore binding errors
-    }
+    } catch (e) { /* ignore */ }
 
-    // track bound events for later removal
+    // Track for manual disposal
     try {
-      if (!player._boundEvents) player._boundEvents = new Set();
-      player._boundEvents.add({ event, handler });
+      if (!player._boundEvents) player._boundEvents = [];
+      player._boundEvents.push({ event, handler });
 
-      // register cleanup to remove this listener if player is GC'd
+      // GC-based cleanup
       this.cleanupRegistry.register(player, () => {
         try {
-          if (typeof player.removeEventListener === "function") player.removeEventListener(event, handler);
-          else if (typeof player.off === "function") player.off(event, handler);
-          else if (typeof player.removeListener === "function") player.removeListener(event, handler);
+          if (typeof player.removeEventListener === "function") {
+            player.removeEventListener(event, handler);
+          } else if (typeof player.off === "function") {
+            player.off(event, handler);
+          } else if (typeof player.removeListener === "function") {
+            player.removeListener(event, handler);
+          }
         } catch (e) { }
       });
     } catch (e) { /* ignore */ }
   }
+
 
 
 
@@ -1163,102 +1174,104 @@ class ChannelLoader {
   // Note: relies on your existing loadVideoPlayer(url, options) function to create the player
   // --------------------------
   async initializePlayer(url, name, isLive, token) {
-  // Wait for container
-  const container = await this.waitForElement("player-container");
-  token.throwIfCancelled();
+    // Wait for container
+    const container = await this.waitForElement("player-container");
+    token.throwIfCancelled();
 
-  // Build stream + metadata
-  const streamConfig = createStreamConfig(url);
-  const metadata = { isLive: !!isLive };
+    // Build stream + metadata
+    const streamConfig = createStreamConfig(url);
+    const metadata = { isLive: !!isLive };
 
-  // Create video element
-  const videoId = `player-${Date.now()}`;
-  const videoElement = this.createVideoElement(videoId);
-  container.innerHTML = "";
-  container.appendChild(videoElement);
+    // Create video element
+    const videoId = `player-${Date.now()}`;
+    const videoElement = this.createVideoElement(videoId);
+    container.innerHTML = "";
+    container.appendChild(videoElement);
 
-  await this.waitForElement(videoId);
-  token.throwIfCancelled();
+    await this.waitForElement(videoId);
+    token.throwIfCancelled();
 
-  // Build player config
-  const playerConfig = buildPlayerOptions(streamConfig, metadata);
-  console.log("🎬 Initializing Video.js player...");
+    // Build player config
+    const playerConfig = buildPlayerOptions(streamConfig, metadata);
+    console.log('🎬 Initializing Video.js player...');
 
-  let player;
-  try {
-    player = videojs(videoElement, playerConfig);
-    this.playerInstance = player;
-    appState.set("player.instance", player);
-  } catch (e) {
-    console.error("❌ Player init failed:", e);
-    throw e;
-  }
+    // ✅ This is your actual player creation
 
-  token.throwIfCancelled();
-  if (!player) throw new Error("Player failed to initialize");
-
-  // Store references safely
-  try {
-    this.playerRef = new WeakRef(player);
-  } catch {
-    this.playerRef = { deref: () => player };
-  }
-
-  // Defensive event container
-  if (!player._boundEvents) {
-    player._boundEvents = new Set();
-  }
-
-  // Safe event binding
-  try {
-    this._bindPlayerEvent(player, "error", (e) => {
-      try { console.warn("⚠️ Player error event:", e); } catch {}
-    });
-    this._bindPlayerEvent(player, "ended", () => {
-      try { console.log("ℹ️ Playback ended"); } catch {}
-    });
-    this._bindPlayerEvent(player, "timeupdate", () => {
-      try { /* analytics hook */ } catch {}
-    });
-  } catch (e) {
-    console.warn("Event binding failed:", e);
-  }
-
-  // Register cleanup
-  try {
-    this.cleanupRegistry.register(player, () => {
-      try { this._disposeVideoJS(player); } catch {}
-    });
-  } catch (e) {
-    console.warn("Cleanup registry failed:", e);
-  }
-
-  // Error recovery for HLS
-  try {
-    if (streamConfig.type === "hls" && player.tech({ IWillNotUseThisInPlugins: true })) {
-      this.setupHLSErrorRecovery();
+    let player;
+    try {
+      player = videojs(videoElement, playerConfig);
+      this.playerInstance = player;
+      appState.set("player.instance", player);
+    } catch (e) {
+      console.error("❌ Player init failed:", e);
+      throw e;
     }
-  } catch (e) {
-    console.warn("HLS recovery setup failed:", e);
+
+    token.throwIfCancelled();
+    if (!player) throw new Error("Player failed to initialize");
+
+    // Store references safely
+    try {
+      this.playerRef = new WeakRef(player);
+    } catch {
+      this.playerRef = { deref: () => player };
+    }
+
+    // Defensive event container
+    if (!player._boundEvents) {
+      player._boundEvents = new Set();
+    }
+
+    // Safe event binding
+    try {
+      this._bindPlayerEvent(player, "error", (e) => {
+        try { console.warn("⚠️ Player error event:", e); } catch { }
+      });
+      this._bindPlayerEvent(player, "ended", () => {
+        try { console.log("ℹ️ Playback ended"); } catch { }
+      });
+      this._bindPlayerEvent(player, "timeupdate", () => {
+        try { /* analytics hook */ } catch { }
+      });
+    } catch (e) {
+      console.warn("Event binding failed:", e);
+    }
+
+    // Register cleanup
+    try {
+      this.cleanupRegistry.register(player, () => {
+        try { this._disposeVideoJS(player); } catch { }
+      });
+    } catch (e) {
+      console.warn("Cleanup registry failed:", e);
+    }
+
+    // Error recovery for HLS
+    try {
+      if (streamConfig.type === "hls" && player.tech({ IWillNotUseThisInPlugins: true })) {
+        this.setupHLSErrorRecovery();
+      }
+    } catch (e) {
+      console.warn("HLS recovery setup failed:", e);
+    }
+
+    appState.set('player.instance', player);
+
+    // Setup events and monitoring
+    this.setupPlayerEvents(name, isLive, streamConfig.type === 'youtube', token);
+    if (streamConfig.type === 'youtube') this.setupYouTubeQualityMonitoring(token);
+
+    // Wait for ready
+    await this.waitForPlayerReady(token);
+    token.throwIfCancelled();
+
+    // UI setup
+    showChannelInfoOverlay();
+    await this.attemptAutoplay();
+    this.setupFullscreenCloseButton();
+
+    return player;
   }
-
-  // Setup events and monitoring
-  this.setupPlayerEvents(name, isLive, streamConfig.type === "youtube", token);
-  if (streamConfig.type === "youtube") {
-    this.setupYouTubeQualityMonitoring(token);
-  }
-
-  // Wait for ready
-  await this.waitForPlayerReady(token);
-  token.throwIfCancelled();
-
-  // UI setup
-  showChannelInfoOverlay();
-  await this.attemptAutoplay();
-  this.setupFullscreenCloseButton();
-
-  return player;
-}
 
 
   // ----------------------------------------------------------------------
@@ -1342,13 +1355,6 @@ class ChannelLoader {
     }
   }
 
-  // ✅ Add verification helper
-  verifyOperation(expectedId, token) {
-    token.throwIfCancelled();
-    if (this.currentOperationId !== expectedId) {
-      throw new Error('Operation superseded');
-    }
-  }
 
 
 
@@ -3121,212 +3127,233 @@ function processRSSData(data, feed) {
 /**
  * Enhanced cache usage in RSS feed loading
  */
-async function loadYouTubeLatestFeeds() {
-  const storedFeeds = localStorage.getItem(LS_KEYS.FEEDS);
-  if (!storedFeeds) {
-    showNotification("No RSS feeds found in localStorage.", "warning");
-    return;
-  }
-
-  let feeds = [];
-  try {
-    feeds = JSON.parse(storedFeeds);
-  } catch (error) {
-    console.error("Failed to parse RSS feeds:", error);
-    showNotification("Error loading RSS feeds data.", "error");
-    return;
-  }
-
-  if (!feeds || feeds.length === 0) return;
-
-  for (const [index, feed] of feeds.entries()) {
-    try {
-      if (index > 0) {
-        await new Promise((resolve) => setTimeout(resolve, 200));
-      }
-
-      const cacheKey = `rss_${feed.url}`;
-
-      // ✅ Use LRU cache with .has() check
-      if (rssCache.has(cacheKey)) {
-        const cached = rssCache.get(cacheKey);
-        console.log(`📦 Cache hit for ${feed.name} (${rssCache.getStats().hitRate} hit rate)`);
-        processRSSData(cached, feed);
-        continue;
-      }
-
-      // Cache miss - fetch from network
-      const feedUrl = "https://api.rss2json.com/v1/api.json?rss_url=" +
-        encodeURIComponent(feed.url);
-      const res = await fetch(feedUrl);
-
-      if (!res.ok) {
-        throw new Error(`HTTP ${res.status}`);
-      }
-
-      const data = await res.json();
-
-      // ✅ Store in LRU cache (auto-evicts if full)
-      rssCache.set(cacheKey, data);
-
-      processRSSData(data, feed);
-
-    } catch (e) {
-      console.log(`❌ Error loading RSS feed for ${feed.name}: ${e.message}`);
+async function loadYouTubeLatestFeeds({ force = false } = {}) {
+  return deduplicateRequest('loadYouTubeLatestFeeds', async ({ signal } = {}) => {
+    const storedFeeds = localStorage.getItem(LS_KEYS.FEEDS);
+    if (!storedFeeds) {
+      showNotification("No RSS feeds found in localStorage.", "warning");
+      return;
     }
-  }
 
-  // ✅ Prune expired entries periodically
-  rssCache.pruneExpired();
+    let feeds = [];
+    try {
+      feeds = JSON.parse(storedFeeds);
+    } catch (error) {
+      console.error("Failed to parse RSS feeds:", error);
+      showNotification("Error loading RSS feeds data.", "error");
+      return;
+    }
 
-  // ✅ Log cache statistics
-  console.log('📊 RSS Cache Stats:', rssCache.getStats());
+    if (!feeds || feeds.length === 0) return;
+
+    let successful = 0;
+    let failed = 0;
+    let cacheHits = 0;
+
+    for (const [index, feed] of feeds.entries()) {
+      try {
+        // small spacing to reduce parallel load
+        if (index > 0) await new Promise(r => setTimeout(r, 200));
+
+        const cacheKey = `rss_${feed.url}`;
+
+        // LRU cache hit
+        if (rssCache.has(cacheKey)) {
+          const cached = rssCache.get(cacheKey);
+          console.log(`📦 Cache hit for ${feed.name}`);
+          cacheHits++;
+          processRSSData(cached, feed);
+          successful++;
+          continue;
+        }
+
+        // Fetch via rss2json proxy
+        const feedUrl = "https://api.rss2json.com/v1/api.json?rss_url=" + encodeURIComponent(feed.url);
+
+        const res = await fetchWithTimeout(feedUrl, { timeout: 12000, json: true });
+
+        if (!res.ok) {
+          throw new Error(`HTTP ${res.status}`);
+        }
+
+        const data = await res.json();
+
+        // store in cache
+        rssCache.set(cacheKey, data);
+
+        // process
+        processRSSData(data, feed);
+        successful++;
+
+      } catch (e) {
+        failed++;
+        console.log(`❌ Error loading RSS feed for ${feed.name}: ${e && e.message ? e.message : e}`);
+      }
+    }
+
+    // prune and log
+    try { rssCache.pruneExpired(); } catch (e) { /* ignore */ }
+    console.log(`RSS update: ${successful} successful, ${failed} failed, ${cacheHits} cache hits`);
+    console.log('📊 RSS Cache Stats:', rssCache.getStats());
+
+    return { successful, failed, cacheHits };
+  }, { timeout: 20000, ttl: 2 * 60 * 1000, force });
 }
 
 /**
  * Enhanced cache usage in live feed loading
  */
 async function loadYouTubeLiveFeeds() {
-
-  if (!appState.get('settings.apiKey')) {
-    appState.set('settings.apiKey', getStoredAPIKey());
-  }
-
-  if (!appState.get('settings.apiKey') || !hasValidAPIKey()) {
-    console.log("🔒 No valid API key found, prompting user...");
-    showAPIKeyModal();
-    return;
-  }
-
-  const storedLive = localStorage.getItem(LS_KEYS.LIVE);
-  if (!storedLive) {
-    showNotification("No live channels found in localStorage.", "warning");
-    return;
-  }
-
-  let live = [];
-  try {
-    live = JSON.parse(storedLive);
-  } catch (error) {
-    console.error("Failed to parse live channels:", error);
-    showNotification("Error loading live channels data.", "error");
-    return;
-  }
-
-  if (!live || live.length === 0) return;
-
-  let apiQuotaExceeded = false;
-  let successfulUpdates = 0;
-  let failedUpdates = 0;
-  let cacheHits = 0;
-
-  for (const [index, feed] of live.entries()) {
-    try {
-      if (index > 0) {
-        await new Promise((resolve) => setTimeout(resolve, 200));
-      }
-
-      if (apiQuotaExceeded) {
-        console.log(`⏸️ Skipping ${feed.name} - API quota exceeded`);
-        failedUpdates++;
-        continue;
-      }
-
-      const channelId = extractChannelId(feed.url);
-      if (!channelId) {
-        console.warn("No channelId found in feed:", feed.url);
-        continue;
-      }
-
-      const cacheKey = `live_${channelId}`;
-
-      // ✅ Use LRU cache
-      if (liveCache.has(cacheKey)) {
-        const cached = liveCache.get(cacheKey);
-        console.log(`📦 Cache hit for ${feed.name}`);
-        cacheHits++;
-
-        if (cached && cached.videoId) {
-          const channelObj = youtubeItemToChannel(
-            cached.videoId,
-            cached.title,
-            feed
-          );
-          updateOrAddChannel(channelObj);
-          successfulUpdates++;
-        }
-        continue;
-      }
-
-      // Fetch from API
-      const apiUrl =
-        `https://www.googleapis.com/youtube/v3/search?` +
-        `part=snippet&channelId=${channelId}&eventType=live&` +
-        `type=video&order=date&maxResults=1&key=${appState.get('settings.apiKey')}`;
-
-      const res = await fetch(apiUrl);
-
-      if (!res.ok) {
-        if (res.status === 403) {
-          apiQuotaExceeded = true;
-          failedUpdates++;
-          continue;
-        }
-        throw new Error(`API returned status ${res.status}`);
-      }
-
-      const data = await res.json();
-
-      if (data.error) {
-        if (data.error.code === 403) {
-          apiQuotaExceeded = true;
-          failedUpdates++;
-          continue;
-        }
-        throw new Error(`YouTube API Error: ${data.error.message}`);
-      }
-
-      let cacheData = null;
-
-      if (data.items && data.items.length > 0) {
-        const item = data.items[0];
-        const videoId = item.id.videoId;
-        const title = item.snippet.title;
-
-        cacheData = { videoId, title };
-
-        const channelObj = youtubeItemToChannel(videoId, title, feed);
-        updateOrAddChannel(channelObj);
-        successfulUpdates++;
-        console.log(`✅ ${feed.name} Successfully updated`);
-      } else {
-        console.log(`ℹ️ No live stream found for ${feed.name}`);
-        cacheData = null;
-      }
-
-      // ✅ Store in LRU cache
-      liveCache.set(cacheKey, cacheData);
-
-    } catch (e) {
-      failedUpdates++;
-      if (e.message.includes("quota") || e.message.includes("403")) {
-        apiQuotaExceeded = true;
-      }
-      console.log(`❌ Error loading live feed for ${feed.name}: ${e.message}`);
+  return deduplicateRequest('loadYouTubeLiveFeeds', async () => {
+    // Ensure appState has API key loaded
+    if (!appState.get('settings.apiKey')) {
+      appState.set('settings.apiKey', getStoredAPIKey());
     }
-  }
 
-  // ✅ Prune expired entries
-  liveCache.pruneExpired();
+    if (!appState.get('settings.apiKey') || !hasValidAPIKey()) {
+      console.log("🔒 No valid API key found, prompting user...");
+      showAPIKeyModal();
+      return; // caller expects no exception for missing API key
+    }
 
-  // ✅ Log statistics
-  console.log(`Live streams update: ${successfulUpdates} successful, ${failedUpdates} failed, ${cacheHits} cache hits`);
-  console.log('📊 Live Cache Stats:', liveCache.getStats());
+    const storedLive = localStorage.getItem(LS_KEYS.LIVE);
+    if (!storedLive) {
+      showNotification("No live channels found in localStorage.", "warning");
+      return;
+    }
 
-  if (successfulUpdates === 0 && failedUpdates > 0 && apiQuotaExceeded) {
-    throw new Error("YouTube API quota exceeded - no live streams updated");
-  }
+    let live = [];
+    try {
+      live = JSON.parse(storedLive);
+    } catch (error) {
+      console.error("Failed to parse live channels:", error);
+      showNotification("Error loading live channels data.", "error");
+      return;
+    }
+
+    if (!live || live.length === 0) return;
+
+    let apiQuotaExceeded = false;
+    let successfulUpdates = 0;
+    let failedUpdates = 0;
+    let cacheHits = 0;
+
+    for (const [index, feed] of live.entries()) {
+      try {
+        // small spacing to avoid rapid quota hits
+        if (index > 0) await new Promise(r => setTimeout(r, 200));
+
+        if (apiQuotaExceeded) {
+          console.log(`⏸️ Skipping ${feed.name} - API quota exceeded`);
+          failedUpdates++;
+          continue;
+        }
+
+        const channelId = extractChannelId(feed.url);
+        if (!channelId) {
+          console.warn("No channelId found in feed:", feed.url);
+          continue;
+        }
+
+        const cacheKey = `live_${channelId}`;
+
+        // Use LRU cache if present
+        if (liveCache.has(cacheKey)) {
+          const cached = liveCache.get(cacheKey);
+          console.log(`📦 Cache hit for ${feed.name}`);
+          cacheHits++;
+          if (cached && cached.videoId) {
+            const channelObj = youtubeItemToChannel(cached.videoId, cached.title, feed);
+            updateOrAddChannel(channelObj);
+            successfulUpdates++;
+          }
+          continue;
+        }
+
+        // Build API url
+        const apiUrl =
+          `https://www.googleapis.com/youtube/v3/search?` +
+          `part=snippet&channelId=${encodeURIComponent(channelId)}&eventType=live&` +
+          `type=video&order=date&maxResults=1&key=${encodeURIComponent(appState.get('settings.apiKey'))}`;
+
+        const res = await fetch(apiUrl);
+
+        if (!res.ok) {
+          if (res.status === 403) {
+            apiQuotaExceeded = true;
+            failedUpdates++;
+            continue;
+          }
+          throw new Error(`API returned status ${res.status}`);
+        }
+
+        const data = await res.json();
+
+        if (data.error) {
+          if (data.error.code === 403) {
+            apiQuotaExceeded = true;
+            failedUpdates++;
+            continue;
+          }
+          throw new Error(`YouTube API Error: ${data.error.message}`);
+        }
+
+        let cacheData = null;
+
+        if (data.items && data.items.length > 0) {
+          const item = data.items[0];
+          const videoId = item.id && item.id.videoId ? item.id.videoId : null;
+          const title = item.snippet && item.snippet.title ? item.snippet.title : '';
+
+          if (videoId) {
+            cacheData = { videoId, title };
+            const channelObj = youtubeItemToChannel(videoId, title, feed);
+            updateOrAddChannel(channelObj);
+            successfulUpdates++;
+            console.log(`✅ ${feed.name} Successfully updated`);
+          } else {
+            // No live videoId found
+            console.log(`ℹ️ No live stream id for ${feed.name}`);
+            cacheData = null;
+          }
+        } else {
+          // No items → not live
+          console.log(`ℹ️ No live stream found for ${feed.name}`);
+          cacheData = null;
+        }
+
+        // Store in LRU cache (may be null for "not live" to avoid refetch spike)
+        liveCache.set(cacheKey, cacheData);
+
+      } catch (e) {
+        failedUpdates++;
+        if (typeof e.message === 'string' && (e.message.includes("quota") || e.message.includes("403"))) {
+          apiQuotaExceeded = true;
+        }
+        console.log(`❌ Error loading live feed for ${feed.name}: ${e && e.message ? e.message : e}`);
+      }
+    }
+
+    // cleanup & stats
+    try { liveCache.pruneExpired(); } catch (e) { /* ignore */ }
+    console.log(`Live streams update: ${successfulUpdates} successful, ${failedUpdates} failed, ${cacheHits} cache hits`);
+    console.log('📊 Live Cache Stats:', liveCache.getStats());
+
+    if (successfulUpdates === 0 && failedUpdates > 0 && apiQuotaExceeded) {
+      // Surface quota error to caller (optional)
+      throw new Error("YouTube API quota exceeded - no live streams updated");
+    }
+
+    // Return summary for callers/tests
+    return {
+      success: successfulUpdates,
+      failed: failedUpdates,
+      cacheHits
+    };
+  }, { ttl: 30_000, timeout: 15000, force: false });
 }
+
+
 
 
 async function loadAllChannelFeeds() {
@@ -5502,18 +5529,53 @@ function addSkipLinks() {
 /**
  * Deduplicates concurrent API requests
  */
-function deduplicateRequest(key, requestFn) {
-  if (pendingRequests.has(key)) {
-    console.log(`📦 Returning existing request: ${key}`);
-    return pendingRequests.get(key);
+function deduplicateRequest(key, requestFn, options = {}) {
+  const { ttl = 0, timeout = 15000, force = false } = options;
+
+  // If already have an in-flight or cached entry and not forcing
+  if (pendingRequests.has(key) && !force) {
+    const entry = pendingRequests.get(key);
+    // if cached resolved value still fresh, return Promise.resolve(value)
+    if (entry && entry.resolved && (ttl <= 0 || (Date.now() - entry.resolvedAt) < ttl)) {
+      return Promise.resolve(entry.value);
+    }
+    // return the in-flight promise
+    if (entry && entry.promise) return entry.promise;
   }
 
-  const promise = requestFn().finally(() => {
-    pendingRequests.delete(key);
-  });
+  // Use AbortController for timeout
+  const controller = new AbortController();
+  const signal = controller.signal;
+  let timedOut = false;
 
-  pendingRequests.set(key, promise);
-  return promise;
+  const p = (async () => {
+    try {
+      // requestFn may optionally accept signal
+      const result = await Promise.race([
+        (typeof requestFn === 'function') ? requestFn({ signal }) : Promise.reject(new Error('requestFn not a function')),
+        new Promise((_, rej) => setTimeout(() => { timedOut = true; controller.abort(); rej(new Error('timeout')); }, timeout))
+      ]);
+      // store resolved snapshot (for ttl)
+      pendingRequests.set(key, { resolved: true, resolvedAt: Date.now(), value: result, promise: Promise.resolve(result) });
+      return result;
+    } catch (err) {
+      // Always remove pending entry on error to allow retry
+      pendingRequests.delete(key);
+      throw err;
+    } finally {
+      // if there is a non-cached pending entry and not storing for ttl, ensure removal
+      const cur = pendingRequests.get(key);
+      if (cur && !cur.resolved) {
+        pendingRequests.delete(key);
+      }
+    }
+  })();
+
+  // store as in-flight
+  pendingRequests.set(key, { resolved: false, promise: p });
+  // If caller wants to access controller (for manual abort), attach it
+  p.abortController = controller;
+  return p;
 }
 
 // Add this after your error handling utilities
@@ -5542,7 +5604,27 @@ function logErrorToService(error) {
   } catch (e) { }
 }
 
+function fetchWithTimeout(url, options = {}, meta = {}) {
+  const { timeout = 15000, json = true } = options;
+  const controller = new AbortController();
+  const signal = controller.signal;
 
+  const fetchPromise = fetch(url, Object.assign({}, options, { signal })).then(async (res) => {
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return json ? res.json() : res.text();
+  });
+
+  const timer = setTimeout(() => controller.abort(), timeout);
+
+  return fetchPromise.finally(() => clearTimeout(timer));
+}
+
+// Global error hooks - call your log send utility (non-blocking)
+window.addEventListener('error', (ev) => {
+  try { logErrorToService(ev.error || { message: ev.message, stack: ev.error?.stack }); } catch (e) { /* ignore */ }});
+
+window.addEventListener('unhandledrejection', (ev) => {
+  try { logErrorToService(ev.reason || { message: String(ev) }); } catch (e) { /* ignore */ }});
 
 // ============================================
 // EXPORT GLOBAL FUNCTIONS
@@ -5553,7 +5635,6 @@ window.__iptv = {
   // state / modules
   appState,
   channelLoader,
-
   // UI / actions
   selectChannel,
   handleSortChange,
@@ -5584,3 +5665,6 @@ window.__iptv = {
 // Optionally make it immutable to avoid accidental reassignment
 Object.freeze(window.__iptv);
 
+// Ensure global namespace exists
+// Export for debugging
+window.__iptv.getErrorLog = () => [...errorLog];
