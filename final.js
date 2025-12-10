@@ -566,79 +566,67 @@ function getAvailableSpace() {
 }
 
 /**
- * Safely sets data in localStorage with quota error handling
+ * Safely sets data in localStorage with quota error handling and backup protection
  * @param {string} key - Storage key
  * @param {string} value - Value to store (should be stringified JSON)
- * @param {boolean} retryOnFail - Whether to clear old data and retry
+ * @param {boolean} retryOnFail - Whether to clear old data and retry once
  * @returns {boolean} - Success status
  */
 function safeLocalStorageSet(key, value, retryOnFail = true) {
   const actualSize = getActualStorageSize(value);
   const available = getAvailableSpace();
 
-  // ✅ Backup BEFORE any modifications
+  // 1. Get backup just in case we need to roll back
   const backup = localStorage.getItem(key);
 
-  // ✅ Early check before attempting write
+  // 2. Pre-check: If we already know it won't fit, clean up first
   if (actualSize > available) {
-    console.warn('⚠️ Insufficient storage space');
+    console.warn(`⚠️ Data size (${actualSize}) exceeds available space (${available})`);
 
     if (retryOnFail) {
+      // Try smart cleanup first
+      predictiveCleanup();
 
-      // Attempt predictive cleanup (better targeted than full clear)
-      const predictive = predictiveCleanup();
-      if (predictive.freedBytes >= actualSize || getAvailableSpace() >= actualSize) {
-        // Try again
-        return safeLocalStorageSet(key, value, false);
+      // If still not enough, try aggressive cleanup
+      if (getAvailableSpace() < actualSize) {
+        clearOldStorageData();
       }
-
-      // ✅ Progressive cleanup strategy
-      const cleanupStrategies = [
-        () => localStorage.removeItem(LS_KEYS.WATCH_TIME),
-        () => {
-          const recent = readArray(LS_KEYS.RECENT);
-          writeArray(LS_KEYS.RECENT, recent.slice(0, 5)); // Keep only 5
-        },
-        () => rssCache.clear(),
-        () => liveCache.clear()
-      ];
-
-      for (const cleanup of cleanupStrategies) {
-        try {
-          cleanup();
-          if (getAvailableSpace() >= actualSize) {
-            return safeLocalStorageSet(key, value, false);
-          }
-        } catch (e) {
-          console.warn('Cleanup step failed:', e);
-        }
-      }
+    } else {
+      // If we already retried and it still doesn't fit, fail early
+      return false;
     }
-
-    showNotification('Storage full - please export your data', 'error');
-    return false;
   }
 
   try {
+    // 3. Attempt Write
     localStorage.setItem(key, value);
     return true;
   } catch (e) {
+    console.warn("Storage write failed:", e);
 
-    // Restore backup on failure
+    // 4. Restore Backup (Critical: Wrap in try-catch to prevent crash)
     if (backup !== null) {
-      try { localStorage.setItem(key, backup); } catch { }
+      try {
+        localStorage.setItem(key, backup);
+      } catch (backupErr) {
+        console.error("CRITICAL: Failed to restore backup!", backupErr);
+        // Data is likely lost for this key, but app won't crash
+      }
     }
 
-    if (e.name === 'QuotaExceededError' && retryOnFail) {
+    // 5. Handle Quota Error specifically
+    if ((e.name === 'QuotaExceededError' || e.code === 22) && retryOnFail) {
+      console.log("Quota exceeded, attempting aggressive cleanup and retry...");
       clearOldStorageData();
+      // Retry exactly once (pass false to prevent infinite recursion)
       return safeLocalStorageSet(key, value, false);
     }
 
-    console.error('❌ Storage error:', e);
     showNotification('Failed to save data', 'error');
     return false;
   }
 }
+
 // ============================================
 // ✅ NEW: DEBOUNCE UTILITY
 // ============================================
@@ -2494,63 +2482,106 @@ function createOrUpdateGrid(category) {
 }
 
 
+/**
+ * Renders channels with intelligent DOM reuse for performance,
+ * but forces fresh rebuilds during search to ensure clickability.
+ */
 function renderChannels(channels) {
   const main = document.getElementById('channels');
   if (!main) return;
 
+  const isSearching = appState.get('channels.searchQuery') !== '';
+  const sortMethod = appState.get('ui.sortMethod') || 'none';
+
+  // ✅ FIX: Only reuse DOM elements when NOT searching.
+  // Recreating a small list of search results is fast and guarantees listeners work.
+  const shouldReuseDOM = !isSearching && channels.length > 50;
+
+  // Map of existing items for reuse (only populated if we are reusing)
   const existingItems = new Map();
-  main.querySelectorAll('.channel-item').forEach(item => {
-    existingItems.set(item.dataset.url, item);
-  });
+  if (shouldReuseDOM) {
+    main.querySelectorAll('.channel-item').forEach(item => {
+      // Only store if it has a valid URL key
+      if (item.dataset.url) {
+        existingItems.set(item.dataset.url, item);
+      }
+    });
+  }
 
   const fragment = document.createDocumentFragment();
-  const sortMethod = appState.get('ui.sortMethod') || 'none';
-  const isSearching = appState.get('channels.searchQuery') !== '';
 
-  const categorized = sortMethod === 'none'
+  // Categorize channels (Search results usually go into one category)
+  const categorized = (sortMethod === 'none' && !isSearching)
     ? channels.reduce((acc, ch) => {
       const c = ch.category || 'Unknown';
       (acc[c] || (acc[c] = [])).push(ch);
       return acc;
     }, {})
-    : { All: channels };
+    : { [isSearching ? 'Search Results' : 'All Channels']: channels };
 
+  // If we are forcing a rebuild (Search), clear the container immediately
+  if (!shouldReuseDOM) {
+    main.innerHTML = '';
+  }
+
+  // Build the new Grid
   for (const [category, categoryChannels] of Object.entries(categorized)) {
+    if (categoryChannels.length === 0) continue;
+
+    // Use helper functions to create structure
     const heading = createOrUpdateHeading(category, categoryChannels.length);
     const grid = createOrUpdateGrid(category);
 
     categoryChannels.forEach(channel => {
-      const existing = existingItems.get(channel.url);
-      if (existing) {
-        grid.appendChild(existing);
-        existingItems.delete(channel.url);
-      } else {
-        grid.appendChild(createChannelItem(channel));
+      let itemNode = null;
+
+      // 1. Try to reuse existing DOM node
+      if (shouldReuseDOM && channel.url) {
+        itemNode = existingItems.get(channel.url);
+        if (itemNode) {
+          existingItems.delete(channel.url); // Mark as used so we don't delete it later
+        }
       }
+
+      // 2. If no reusable node found (or searching), create NEW one
+      if (!itemNode) {
+        itemNode = createChannelItem(channel);
+      }
+
+      grid.appendChild(itemNode);
     });
 
     fragment.appendChild(heading);
     fragment.appendChild(grid);
   }
 
-  // Remove items no longer needed
-  existingItems.forEach(item => cleanupChannelItem(item));
+  // Final DOM Updates
+  if (shouldReuseDOM) {
+    // If reusing, we need to explicitly remove items that weren't in the new list
+    existingItems.forEach(item => cleanupChannelItem(item));
 
-  // ✅ Only remove dynamic content, not static UI
-  main.querySelectorAll('.content-grid, .dynamic-heading').forEach(el => el.remove());
-  main.appendChild(fragment);
+    // Remove old structural elements (grids/headings)
+    main.querySelectorAll('.content-grid, .dynamic-heading').forEach(el => el.remove());
 
+    // Append the new structure
+    main.appendChild(fragment);
+  } else {
+    // If not reusing (Search mode), we already cleared innerHTML, so just append
+    main.appendChild(fragment);
+  }
+
+  // Post-render updates
   updateAllChannelItems();
   observeNewImages();
 
-  // ✅ Auto-manage favorites and recent visibility based on search state
+  // Toggle visibility of other sections
   if (isSearching) {
     hideFavoritesAndRecent();
   } else {
     showFavoritesAndRecent();
   }
 
-  console.log(`✅ Rendered ${channels.length} channels in ${sortMethod} view`);
+  // console.log(`✅ Rendered ${channels.length} channels in ${sortMethod} view`);
 }
 
 
@@ -2722,11 +2753,6 @@ function setupSearchBar() {
   });
 }
 
-function escapeHtml(text) {
-  const div = document.createElement('div');
-  div.textContent = text;
-  return div.innerHTML;
-}
 
 // ============================================
 // Sorting & keyboard navigation
@@ -3765,105 +3791,74 @@ function hideAPIKeyModal() {
   }
 }
 
-// Replace your setupAPIKeyModalEvents() function with this updated version:
 
 function setupAPIKeyModalEvents() {
   const submitBtn = document.getElementById("submitApiKey");
   const skipBtn = document.getElementById("skipApiKey");
-  const closeBtn = document.getElementById("closeApiKeyModal"); // NEW
+  const closeBtn = document.getElementById("closeApiKeyModal");
   const apiKeyInput = document.getElementById("apiKeyInput");
   const toggleVisibilityBtn = document.getElementById("toggleApiKeyVisibility");
   const apiModal = document.getElementById("apiKeyModal");
 
+  // Handler functions defined to allow clean removal
+  const handleSubmit = () => {
+    const apiKey = apiKeyInput.value.trim();
+    const remember = document.getElementById("rememberKey")?.checked;
+
+    if (!apiKey || apiKey.length < 30) {
+      apiKeyInput.classList.add("invalid");
+      showNotification("Invalid API Key", "error");
+      setTimeout(() => apiKeyInput.classList.remove("invalid"), 400);
+      return;
+    }
+
+    if (remember) saveAPIKey(apiKey);
+    else appState.set('settings.apiKey', apiKey);
+
+    hideAPIKeyModal();
+    showNotification("✅ API Key saved successfully!", "success");
+    console.log("🔄 Starting live feeds update with new API key...");
+    loadYouTubeLiveFeeds().catch(console.error);
+  };
+
+  const handleSkip = () => {
+    hideAPIKeyModal();
+    showNotification("⭕️ Live channels update skipped", "info");
+    console.log("ℹ️ User skipped API key configuration");
+  };
+
+  // 1. Remove old listeners (if any exist from previous opens)
+  // Note: This requires storing these functions externally or simply assuming
+  // the modal DOM isn't destroyed/recreated constantly. 
+  // A better way for simple apps: use on-click attributes OR ensure this setup runs ONLY ONCE.
+
+  // SIMPLEST FIX: Ensure setupAPIKeyModalEvents is called only ONCE in initialize(), 
+  // not every time the modal opens.
+  if (submitBtn.dataset.bound) return; // Prevent double binding
+
   if (submitBtn) {
-    const newSubmitBtn = submitBtn.cloneNode(true);
-    submitBtn.parentNode.replaceChild(newSubmitBtn, submitBtn);
-    newSubmitBtn.addEventListener("click", function () {
-      const apiKey = apiKeyInput.value.trim();
-      const remember = document.getElementById("rememberKey")?.checked;
-      if (!apiKey) {
-        apiKeyInput.classList.add("invalid");
-        showNotification("Please enter a valid API key", "error");
-        setTimeout(() => apiKeyInput.classList.remove("invalid"), 400);
-        return;
-      }
-      if (apiKey.length < 30) {
-        apiKeyInput.classList.add("invalid");
-        showNotification("API key seems too short. Please check it.", "error");
-        setTimeout(() => apiKeyInput.classList.remove("invalid"), 400);
-        return;
-      }
-      if (remember) {
-        saveAPIKey(apiKey);
-      } else {
-        API_KEY = apiKey;
-      }
-      hideAPIKeyModal();
-      showNotification("✅ API Key saved successfully!", "success");
-      setTimeout(() => {
-        console.log("🔄 Starting live feeds update with new API key...");
-        loadYouTubeLiveFeeds().catch(console.error);
-      }, 1000);
-    });
+    submitBtn.addEventListener("click", handleSubmit);
+    submitBtn.dataset.bound = "true";
   }
 
-  if (skipBtn) {
-    const newSkipBtn = skipBtn.cloneNode(true);
-    skipBtn.parentNode.replaceChild(newSkipBtn, skipBtn);
-    newSkipBtn.addEventListener("click", function () {
-      hideAPIKeyModal();
-      showNotification("⭕️ Live channels update skipped", "info");
-      console.log("ℹ️ User skipped API key configuration");
-    });
-  }
+  if (skipBtn) skipBtn.addEventListener("click", handleSkip);
 
-  // NEW: Close button handler
-  if (closeBtn) {
-    const newCloseBtn = closeBtn.cloneNode(true);
-    closeBtn.parentNode.replaceChild(newCloseBtn, closeBtn);
-    newCloseBtn.addEventListener("click", function () {
-      hideAPIKeyModal();
-      console.log("ℹ️ API Key modal closed");
-    });
-  }
+  if (closeBtn) closeBtn.addEventListener("click", () => hideAPIKeyModal());
 
   if (toggleVisibilityBtn && apiKeyInput) {
-    const newToggleBtn = toggleVisibilityBtn.cloneNode(true);
-    toggleVisibilityBtn.parentNode.replaceChild(newToggleBtn, toggleVisibilityBtn);
-    newToggleBtn.addEventListener("click", function () {
-      if (apiKeyInput.type === "password") {
-        apiKeyInput.type = "text";
-        newToggleBtn.textContent = "🙈 Hide";
-      } else {
-        apiKeyInput.type = "password";
-        newToggleBtn.textContent = "👁️ Show";
-      }
+    toggleVisibilityBtn.addEventListener("click", () => {
+      const isPass = apiKeyInput.type === "password";
+      apiKeyInput.type = isPass ? "text" : "password";
+      toggleVisibilityBtn.textContent = isPass ? "🙈 Hide" : "👁️ Show";
     });
   }
 
+  // Input Enter key
   if (apiKeyInput) {
-    apiKeyInput.addEventListener("keypress", function (e) {
-      if (e.key === "Enter") {
-        e.preventDefault();
-        document.getElementById("submitApiKey").click();
-      }
+    apiKeyInput.addEventListener("keypress", (e) => {
+      if (e.key === "Enter") handleSubmit();
     });
   }
-
-  if (apiModal) {
-    apiModal.addEventListener("click", (e) => {
-      if (e.target === apiModal) {
-        hideAPIKeyModal();
-      }
-    });
-  }
-
-  document.addEventListener("keydown", function escapeHandler(e) {
-    if (e.key === "Escape" && apiModal && apiModal.style.display === "flex") {
-      hideAPIKeyModal();
-      document.removeEventListener("keydown", escapeHandler);
-    }
-  });
 }
 
 // ============================================
@@ -5147,44 +5142,6 @@ function cleanupAllEventListeners() {
   eventCleanupCallbacks.length = 0;
 }
 
-function renderVirtualizedChannels(channels) {
-  // Implement using Intersection Observer
-  const container = document.getElementById("channels");
-  const observer = new IntersectionObserver((entries) => {
-    entries.forEach(entry => {
-      if (entry.isIntersecting) {
-        const item = entry.target;
-        // Load actual content here
-      }
-    });
-  }, { rootMargin: '200px' });
-
-  // Create placeholder items and observe them
-  channels.forEach(channel => {
-    const placeholder = document.createElement('div');
-    placeholder.className = 'content-card lazy';
-    placeholder.dataset.channelUrl = channel.url;
-    container.appendChild(placeholder);
-    observer.observe(placeholder);
-  });
-}
-
-// Add intersection observer for lazy loading
-function setupLazyLoading() {
-  const observer = new IntersectionObserver((entries) => {
-    entries.forEach(entry => {
-      if (entry.isIntersecting) {
-        const img = entry.target;
-        img.src = img.dataset.src;
-        observer.unobserve(img);
-      }
-    });
-  }, { rootMargin: '50px' });
-
-  document.querySelectorAll('img[data-src]').forEach(img => {
-    observer.observe(img);
-  });
-}
 
 // ADD SANITIZATION:
 function escapeHtml(text) {
@@ -5621,10 +5578,12 @@ function fetchWithTimeout(url, options = {}, meta = {}) {
 
 // Global error hooks - call your log send utility (non-blocking)
 window.addEventListener('error', (ev) => {
-  try { logErrorToService(ev.error || { message: ev.message, stack: ev.error?.stack }); } catch (e) { /* ignore */ }});
+  try { logErrorToService(ev.error || { message: ev.message, stack: ev.error?.stack }); } catch (e) { /* ignore */ }
+});
 
 window.addEventListener('unhandledrejection', (ev) => {
-  try { logErrorToService(ev.reason || { message: String(ev) }); } catch (e) { /* ignore */ }});
+  try { logErrorToService(ev.reason || { message: String(ev) }); } catch (e) { /* ignore */ }
+});
 
 // ============================================
 // EXPORT GLOBAL FUNCTIONS
