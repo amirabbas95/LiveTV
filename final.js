@@ -5561,20 +5561,20 @@ function logErrorToService(error) {
   } catch (e) { }
 }
 
-function fetchWithTimeout(url, options = {}, meta = {}) {
-  const { timeout = 15000, json = true } = options;
+function fetchWithTimeout(url, options = {}) {
+  const { timeout = 15000 } = options;
+
   const controller = new AbortController();
-  const signal = controller.signal;
+  const id = setTimeout(() => controller.abort(), timeout);
 
-  const fetchPromise = fetch(url, Object.assign({}, options, { signal })).then(async (res) => {
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    return json ? res.json() : res.text();
-  });
+  const cleanOptions = { ...options };
+  delete cleanOptions.json;
+  cleanOptions.signal = controller.signal;
 
-  const timer = setTimeout(() => controller.abort(), timeout);
-
-  return fetchPromise.finally(() => clearTimeout(timer));
+  return fetch(url, cleanOptions)
+    .finally(() => clearTimeout(id));
 }
+
 
 // Global error hooks - call your log send utility (non-blocking)
 window.addEventListener('error', (ev) => {
