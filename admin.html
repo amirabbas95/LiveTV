@@ -1094,7 +1094,8 @@
         }
       }
 
-      categoriesData = [...new Set(channelsData.map((c) => c.category))];
+      categoriesData = [...new Set(channelsData.map(c => c.category).filter(Boolean))];
+
       hasUnsavedChanges = false;
       updateSaveButtonState();
     }
@@ -1188,7 +1189,7 @@
         reader.onload = (event) => {
           try {
             const importedData = JSON.parse(event.target.result);
-            
+
             // Validate and prepare data
             let importChannels = [];
             let importLive = [];
@@ -1317,7 +1318,8 @@
       localStorage.setItem(STORAGE_KEYS.feeds, JSON.stringify(rssFeedsData));
 
       // Update UI
-      categoriesData = [...new Set(channelsData.map((c) => c.category))];
+      categoriesData = [...new Set(channelsData.map(c => c.category).filter(Boolean))];
+
       renderUI();
       updateStats();
 
@@ -1407,7 +1409,8 @@
           parsedData.forEach((channel) => delete channel.number);
         }
         channelsData = parsedData;
-        categoriesData = [...new Set(channelsData.map((c) => c.category))];
+        categoriesData = [...new Set(channelsData.map(c => c.category).filter(Boolean))];
+
         renderUI();
         showNotification("✅ Data loaded from JSON successfully!", "success");
       } catch (e) {
@@ -1597,29 +1600,55 @@
 
     function renderCategoryPreview() {
       els.categoryListPreview.innerHTML = "";
+
       categoriesData.forEach((cat, index) => {
         const item = document.createElement("div");
         item.className = "category-preview-item";
-        item.innerHTML = `
-           <span>${cat}</span>
-           <div class="actions">
-             <button class="btn-secondary channel-item-button" onclick="moveCategoryUp(${index})" title="Move Up">
-               <i class="fas fa-arrow-up"></i>
-             </button>
-             <button class="btn-secondary channel-item-button" onclick="moveCategoryDown(${index})" title="Move Down">
-               <i class="fas fa-arrow-down"></i>
-             </button>
-             <button class="btn-secondary channel-item-button" onclick="editCategoryPrompt('${cat.replace(/'/g, "\\'")})" title="Edit">
-               <i class="fas fa-edit"></i>
-             </button>
-             <button class="btn-danger channel-item-button" onclick="deleteCategory('${cat.replace(/'/g, "\\'")}'" title="Delete">
-               <i class="fas fa-trash"></i>
-             </button>
-           </div>
-         `;
+
+        const nameSpan = document.createElement("span");
+        nameSpan.textContent = cat;
+
+        const actionsDiv = document.createElement("div");
+        actionsDiv.className = "actions";
+
+        // Move Up
+        const btnUp = document.createElement("button");
+        btnUp.className = "btn-secondary channel-item-button";
+        btnUp.title = "Move Up";
+        btnUp.innerHTML = '<i class="fas fa-arrow-up"></i>';
+        btnUp.addEventListener("click", () => moveCategoryUp(index));
+        actionsDiv.appendChild(btnUp);
+
+        // Move Down
+        const btnDown = document.createElement("button");
+        btnDown.className = "btn-secondary channel-item-button";
+        btnDown.title = "Move Down";
+        btnDown.innerHTML = '<i class="fas fa-arrow-down"></i>';
+        btnDown.addEventListener("click", () => moveCategoryDown(index));
+        actionsDiv.appendChild(btnDown);
+
+        // Edit
+        const btnEdit = document.createElement("button");
+        btnEdit.className = "btn-secondary channel-item-button";
+        btnEdit.title = "Edit";
+        btnEdit.innerHTML = '<i class="fas fa-edit"></i>';
+        btnEdit.addEventListener("click", () => editCategoryPrompt(cat));
+        actionsDiv.appendChild(btnEdit);
+
+        // Delete
+        const btnDelete = document.createElement("button");
+        btnDelete.className = "btn-danger channel-item-button";
+        btnDelete.title = "Delete";
+        btnDelete.innerHTML = '<i class="fas fa-trash"></i>';
+        btnDelete.addEventListener("click", () => deleteCategory(cat));
+        actionsDiv.appendChild(btnDelete);
+
+        item.appendChild(nameSpan);
+        item.appendChild(actionsDiv);
         els.categoryListPreview.appendChild(item);
       });
     }
+
 
     function addCategory() {
       const newCategoryName = document.getElementById("newCategoryName").value.trim();
@@ -1746,48 +1775,88 @@
 
     function renderChannelPreview() {
       els.channelListPreview.innerHTML = "";
-      categoriesData.forEach((category) => {
-        const categorySection = document.createElement("div");
-        categorySection.innerHTML = `
-         <div style="display: flex; justify-content: space-between; align-items: center;">
-         <h3>${category}</h3>
-         <button class="btn-secondary" onclick="sortChannelsByName('${category.replace(/'/g, "\\'")}'" title="Sort A-Z">
-           <i class="fas fa-sort-alpha-down"></i>
-         </button>
-         </div>
-         <div class="channel-list-category"></div>
-         `;
 
-        els.channelListPreview.appendChild(categorySection);
+      categoriesData.forEach((category) => {
+        // Category container
+        const categorySection = document.createElement("div");
+
+        // Header: title + sort button
+        const header = document.createElement("div");
+        header.style.display = "flex";
+        header.style.justifyContent = "space-between";
+        header.style.alignItems = "center";
+
+        const h3 = document.createElement("h3");
+        h3.textContent = category;
+
+        const sortBtn = document.createElement("button");
+        sortBtn.className = "btn-secondary";
+        sortBtn.title = "Sort A-Z";
+        sortBtn.innerHTML = '<i class="fas fa-sort-alpha-down"></i>';
+        sortBtn.addEventListener("click", () => sortChannelsByName(category));
+
+        header.appendChild(h3);
+        header.appendChild(sortBtn);
+
+        categorySection.appendChild(header);
+
+        const container = document.createElement("div");
+        container.className = "channel-list-category";
 
         const channelsInCategory = channelsData.filter((c) => c.category === category);
-        const categoryChannelContainer = categorySection.querySelector(".channel-list-category");
 
         channelsInCategory.forEach((channel) => {
           const index = channelsData.indexOf(channel);
           const item = document.createElement("div");
           item.className = "channel-preview-item";
-          const liveIndicator = channel.isLive === true || channel.isLive === "true" ? " 🔴" : "";
-          item.innerHTML = `
-                   <img src="${channel.image || "placeholder.png"}" alt="${channel.name} logo">
-                   <div>
-                     <strong>${channel.name}${liveIndicator}</strong><br>
-                     <small>${channel.category}</small>
-                   </div>
-                   <div class="actions">
-                     <button class="btn-secondary channel-item-button" onclick="moveChannelUp(${index})" title="Move Up">
-                       <i class="fas fa-arrow-up"></i>
-                     </button>
-                     <button class="btn-secondary channel-item-button" onclick="moveChannelDown(${index})" title="Move Down">
-                       <i class="fas fa-arrow-down"></i>
-                     </button>
-                     <button class="btn-secondary channel-item-button" onclick="editChannel(${index})" title="Edit">
-                       <i class="fas fa-edit"></i>
-                     </button>
-                   </div>
-                 `;
-          categoryChannelContainer.appendChild(item);
+
+          const img = document.createElement("img");
+          img.src = channel.image || "placeholder.png";
+          img.alt = `${channel.name} logo`;
+
+          const infoDiv = document.createElement("div");
+          const strong = document.createElement("strong");
+          strong.textContent = channel.name + ((channel.isLive === true || channel.isLive === "true") ? " 🔴" : "");
+          const small = document.createElement("small");
+          small.textContent = channel.category;
+
+          infoDiv.appendChild(strong);
+          infoDiv.appendChild(document.createElement("br"));
+          infoDiv.appendChild(small);
+
+          const actions = document.createElement("div");
+          actions.className = "actions";
+
+          const upBtn = document.createElement("button");
+          upBtn.className = "btn-secondary channel-item-button";
+          upBtn.title = "Move Up";
+          upBtn.innerHTML = '<i class="fas fa-arrow-up"></i>';
+          upBtn.addEventListener("click", () => moveChannelUp(index));
+          actions.appendChild(upBtn);
+
+          const downBtn = document.createElement("button");
+          downBtn.className = "btn-secondary channel-item-button";
+          downBtn.title = "Move Down";
+          downBtn.innerHTML = '<i class="fas fa-arrow-down"></i>';
+          downBtn.addEventListener("click", () => moveChannelDown(index));
+          actions.appendChild(downBtn);
+
+          const editBtn = document.createElement("button");
+          editBtn.className = "btn-secondary channel-item-button";
+          editBtn.title = "Edit";
+          editBtn.innerHTML = '<i class="fas fa-edit"></i>';
+          editBtn.addEventListener("click", () => editChannel(index));
+          actions.appendChild(editBtn);
+
+          item.appendChild(img);
+          item.appendChild(infoDiv);
+          item.appendChild(actions);
+
+          container.appendChild(item);
         });
+
+        categorySection.appendChild(container);
+        els.channelListPreview.appendChild(categorySection);
       });
     }
 
