@@ -700,28 +700,42 @@ function getTimeAgo(timestamp) {
 // Notifications & error helpers
 // ============================================
 function showNotification(message, type = 'info') {
-  const colors = {
-    info: '#007BFF',
-    success: '#28A745',
-    warning: '#FFC107',
-    error: '#DC3545'
-  };
+  const colors = { info: '#007BFF', success: '#28A745', warning: '#FFC107', error: '#DC3545' };
+  // Dedup: remove any existing notification
+  document.querySelectorAll('.iptv-notification').forEach(n => n.remove());
 
   const el = document.createElement('div');
   el.className = 'iptv-notification';
-  el.style.cssText = `position:fixed;top:-100px;left:50%;transform:translateX(-50%);background:${colors[type] || colors.info};color:white;padding:10px 18px;border-radius:20px;z-index:10001;transition:top .4s,opacity .4s;font-weight:600;`;
+  el.setAttribute('role', 'status');
+  el.setAttribute('aria-live', 'polite');
+  el.style.background = colors[type] || colors.info;
+  el.style.cssText += 'position:fixed;top:-100px;left:50%;transform:translateX(-50%);color:white;padding:10px 18px;border-radius:20px;z-index:10001;transition:top .4s,opacity .4s;font-weight:600;opacity:0;';
   el.textContent = message;
+
   document.body.appendChild(el);
+
+  const prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   requestAnimationFrame(() => {
-    el.style.top = '20px';
-    el.style.opacity = '1';
+    if (prefersReduced) {
+      el.style.top = '20px';
+      el.style.opacity = '1';
+    } else {
+      el.style.top = '20px';
+      el.style.opacity = '1';
+    }
   });
-  setTimeout(() => {
+
+  const hide = () => {
+    if (!el.isConnected) return;
     el.style.top = '-100px';
     el.style.opacity = '0';
-    setTimeout(() => el.remove(), 400);
-  }, 3000);
+    setTimeout(() => { if (el.isConnected) el.remove(); }, 400);
+  };
+
+  const t = setTimeout(hide, 3000);
+  // Optional: register t in AppStateManager for cleanup on route changes or modals
 }
+
 
 function showErrorToUser(message) {
   const errorDiv = document.createElement("div");
@@ -741,6 +755,7 @@ function showErrorToUser(message) {
   document.body.appendChild(errorDiv);
   setTimeout(() => {
     errorDiv.style.opacity = '0';
+    navigateToNextChannel();
     setTimeout(() => errorDiv.remove(), 350);
   }, PLAYBACK_CONSTANTS.PLAYER_READY_TIMEOUT);
 }
@@ -1515,6 +1530,12 @@ class ChannelLoader {
     const waitingHandler = () => {
       if (token.isCancelled()) return;
       console.log('⏱ Buffering...');
+      const isOnline = appState.get('settings.isOnline');
+      if (isOnline) {
+        showNotification("⏱ Buffering...", "info");
+      } else {
+        console.warn("Player waiting while network is reported as offline. Waiting for network recovery...");
+      }
     };
     const playingHandler = () => {
       if (token.isCancelled()) return;
@@ -1824,6 +1845,8 @@ function createStreamConfig(url, opts = {}) {
         hls: {
           enableLowLatency: true,
           smoothQualityChange: true,
+          enableLowInitialPlaylist: true,
+          withCredentials: false
         },
       },
       source: {
@@ -1911,37 +1934,37 @@ function buildPlayerOptions(streamConfig, metadata) {
         controls: 0,
         mute: 0,
         rel: 0,
-        modestbranding: 1,
-        iv_load_policy: 3,
-        enablejsapi: 1,
-        origin: (window && window.location && window.location.origin) ? window.location.origin : undefined
+        modestbranding: 1
+        /*         iv_load_policy: 3,
+                enablejsapi: 1,
+                origin: (window && window.location && window.location.origin) ? window.location.origin : undefined */
       }
     };
   }
 
   if (streamConfig.type === 'hls') {
     baseOptions.html5 = baseOptions.html5 || {};
-    baseOptions.html5.vhs = Object.assign({}, baseOptions.html5.vhs || {}, {
-      overrideNative: true,
-      enableLowInitialPlaylist: true,
-      smoothQualityChange: true,
-      bandwidth: 4194304,
-      withCredentials: false,
-      limitRenditionByPlayerDimensions: false,
-      useDevicePixelRatio: false,
-      useNetworkInformationApi: false,
-      maxPlaylistRetries: 5,
-      experimentalBufferBasedABR: false,
-      experimentalLLHLS: false,
-      handleManifestRedirects: true,
-      useBandwidthFromLocalStorage: false,
-      timeout: 45000,
-      enablePlaylistRefresh: true,
-      playlistRefreshInterval: 30000,
-      maxBufferLength: 30,
-      maxBufferSize: 60 * 1024 * 1024,
-      bufferBehind: 30
-    });
+    /*     baseOptions.html5.vhs = Object.assign({}, baseOptions.html5.vhs || {}, {
+          overrideNative: true,
+          enableLowInitialPlaylist: true,
+          smoothQualityChange: true,
+          bandwidth: 4194304,
+          withCredentials: false,
+          limitRenditionByPlayerDimensions: false,
+          useDevicePixelRatio: false,
+          useNetworkInformationApi: false,
+          maxPlaylistRetries: 5,
+          experimentalBufferBasedABR: false,
+          experimentalLLHLS: false,
+          handleManifestRedirects: true,
+          useBandwidthFromLocalStorage: false,
+          timeout: 45000,
+          enablePlaylistRefresh: true,
+          playlistRefreshInterval: 30000,
+          maxBufferLength: 30,
+          maxBufferSize: 60 * 1024 * 1024,
+          bufferBehind: 30
+        }); */
     baseOptions.html5.nativeAudioTracks = false;
     baseOptions.html5.nativeVideoTracks = false;
   }
@@ -3866,44 +3889,105 @@ function setupAPIKeyModalEvents() {
 // ============================================
 
 function setupNetworkMonitoring() {
+  // Ensure we don't bind listeners twice
+  if (window._networkSetupDone) return;
+  
   window.addEventListener("online", handleNetworkRestored);
   window.addEventListener("offline", handleNetworkLost);
+  
+  // Use a named interval reference if you need to clear it later (good practice)
+  window._connectionQualityInterval = setInterval(checkConnectionQuality, 30000); 
+
+  window._networkSetupDone = true;
 }
 
+
+// Function: checkConnectionQuality
+function checkConnectionQuality() {
+  // 1. Check navigator.onLine first (fast fail)
+  if (!navigator.onLine) return;
+
+  const start = Date.now();
+  
+  // 2. Use a dedicated, low-bandwidth, and highly available endpoint for health checks.
+  // Google favicon is fine, but fetch options should be explicit for robustness.
+  fetch("https://www.google.com/favicon.ico", {
+    method: "GET",
+    mode: "no-cors",
+    cache: "no-cache",
+    // Use a small timeout, like 5 seconds (5000ms), to avoid hanging
+    signal: AbortSignal.timeout(5000) 
+  })
+    .then(() => {
+      const latency = Date.now() - start;
+      // 3. Use your existing notification system
+      if (latency > 2500) { // Slightly increased threshold for warning
+        showNotification("⚠️ Poor connection detected. Playback may buffer.", "warning");
+      }
+    })
+    .catch((error) => {
+        // Only log serious errors (e.g., actual fetch failure, not just a no-cors error)
+        if (error.name === 'AbortError') return; // Ignore timeout
+        console.warn("Connection quality check failed:", error.message);
+    });
+}
+
+
+// Function: handleNetworkLost
 function handleNetworkLost() {
-  // 🔄 Update appState instead of global variable
+  // Update appState status
   appState.set("settings.isOnline", false);
-
-  showNotification("📡 Network Connection lost", "error");
-
+  console.log("📴 Network connection lost");
+  
+  // Use the global channelLoader instance
   const player = channelLoader.getPlayer();
+  
   if (player && !player.paused()) {
     try {
       player.pause();
-      showNotification("Connection lost - video paused", "error");
+      // Ensure the error notification is visible and clear
+      showNotification("📴 Network Connection lost", "error", 10000); 
     } catch (e) {
       console.error("Error pausing player on network loss:", e);
     }
   }
 }
 
+// Function: handleNetworkRestored
 function handleNetworkRestored() {
-  // 🔄 Update appState instead of global variable
+  // Update appState status
   appState.set("settings.isOnline", true);
+  showNotification("📶 Network Connection restored", "success");
 
-  showNotification("📡 Network Connection restored", "success");
-
+  // Use the global channelLoader instance
   const player = channelLoader.getPlayer();
+
   if (player && player.paused()) {
+    // 1. Use the player.play() promise for cleaner error handling
+    // 2. Use a constant/utility for the timeout (assuming a CONSTANT like 1000ms exists)
+    const RESUME_DELAY = 1000; // Define locally or use a global constant
+
     setTimeout(() => {
+      // Check if player is still valid/modal is open
+      if (!player || !appState.get('ui.isModalOpen')) return; 
+
       player.play()
         .then(() => {
           showNotification("▶️ Resuming playback...", "success");
         })
         .catch((error) => {
-          console.warn("❌ Could not auto-resume playback:", error);
+          // Check for user-driven errors (like 'NotAllowedError' for unmuted play)
+          if (error.name === 'NotAllowedError' || error.name === 'AbortError') {
+             console.warn("Could not auto-resume playback due to browser policy or interruption:", error.message);
+             // Since playback failed, show the fallback play button
+             channelLoader.showPlayButton();
+             showNotification("Playback failed: Please click the 'Play' button.", "warning");
+          } else {
+             console.error("Critical error during auto-resume:", error);
+             showNotification("Error resuming stream. Please re-select the channel.", "error");
+          }
         });
-    }, 1000);
+    }, RESUME_DELAY);
   }
 }
 // ============================================
