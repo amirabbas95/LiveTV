@@ -1781,6 +1781,7 @@ function createStreamConfig(url, opts = {}) {
   const isTS = url.endsWith(".ts");
   const isYouTube = url.includes("youtube.com") || url.includes("youtu.be");
 
+
   // ------------------------------------------------------------------
   // 1. Mixed Content Protection (HTTPS site → HTTP stream = block)
   // ------------------------------------------------------------------
@@ -1843,10 +1844,13 @@ function createStreamConfig(url, opts = {}) {
       techOrder: ["html5"],
       html5: {
         hls: {
+          overrideNative: true,
           enableLowLatency: true,
           smoothQualityChange: true,
           enableLowInitialPlaylist: true,
-          withCredentials: false
+          withCredentials: false,
+          maxPlaylistRetries: 5,
+          bufferBehind: 30
         },
       },
       source: {
@@ -1943,8 +1947,8 @@ function buildPlayerOptions(streamConfig, metadata) {
   }
 
   if (streamConfig.type === 'hls') {
-    baseOptions.html5 = baseOptions.html5 || {};
-    /*     baseOptions.html5.vhs = Object.assign({}, baseOptions.html5.vhs || {}, {
+/*     baseOptions.html5 = baseOptions.html5 || {};
+     baseOptions.html5.vhs = Object.assign({}, baseOptions.html5.vhs || {}, {
           overrideNative: true,
           enableLowInitialPlaylist: true,
           smoothQualityChange: true,
@@ -1964,9 +1968,9 @@ function buildPlayerOptions(streamConfig, metadata) {
           maxBufferLength: 30,
           maxBufferSize: 60 * 1024 * 1024,
           bufferBehind: 30
-        }); */
+        });
     baseOptions.html5.nativeAudioTracks = false;
-    baseOptions.html5.nativeVideoTracks = false;
+    baseOptions.html5.nativeVideoTracks = false; */
   }
 
   if (streamConfig.type === 'dash') {
@@ -2984,15 +2988,22 @@ function handleNavigationKeys(event) {
     if (isModalOpen) {
       if (event.key === "Enter" || event.key === "OK") {
         event.preventDefault();
-        toggleFullscreen();
+        //toggleFullscreen();
         return;
       }
 
-      if (event.key === "Escape" || event.key === "ArrowLeft") {
+      if (
+        event.key === "Escape" ||
+        event.key === "ArrowLeft" ||
+        event.key === "Backspace" || // sometimes used as back
+        event.key === "BrowserBack" || // some remotes or browsers
+        event.key === "GoBack" // Android TV or custom remotes
+      ) {
         event.preventDefault();
         closeModal();
         return;
       }
+
 
       if (event.key === "ArrowRight") {
         event.preventDefault();
@@ -3891,12 +3902,12 @@ function setupAPIKeyModalEvents() {
 function setupNetworkMonitoring() {
   // Ensure we don't bind listeners twice
   if (window._networkSetupDone) return;
-  
+
   window.addEventListener("online", handleNetworkRestored);
   window.addEventListener("offline", handleNetworkLost);
-  
+
   // Use a named interval reference if you need to clear it later (good practice)
-  window._connectionQualityInterval = setInterval(checkConnectionQuality, 30000); 
+  window._connectionQualityInterval = setInterval(checkConnectionQuality, 30000);
 
   window._networkSetupDone = true;
 }
@@ -3908,7 +3919,7 @@ function checkConnectionQuality() {
   if (!navigator.onLine) return;
 
   const start = Date.now();
-  
+
   // 2. Use a dedicated, low-bandwidth, and highly available endpoint for health checks.
   // Google favicon is fine, but fetch options should be explicit for robustness.
   fetch("https://www.google.com/favicon.ico", {
@@ -3916,7 +3927,7 @@ function checkConnectionQuality() {
     mode: "no-cors",
     cache: "no-cache",
     // Use a small timeout, like 5 seconds (5000ms), to avoid hanging
-    signal: AbortSignal.timeout(5000) 
+    signal: AbortSignal.timeout(5000)
   })
     .then(() => {
       const latency = Date.now() - start;
@@ -3926,9 +3937,9 @@ function checkConnectionQuality() {
       }
     })
     .catch((error) => {
-        // Only log serious errors (e.g., actual fetch failure, not just a no-cors error)
-        if (error.name === 'AbortError') return; // Ignore timeout
-        console.warn("Connection quality check failed:", error.message);
+      // Only log serious errors (e.g., actual fetch failure, not just a no-cors error)
+      if (error.name === 'AbortError') return; // Ignore timeout
+      console.warn("Connection quality check failed:", error.message);
     });
 }
 
@@ -3938,15 +3949,15 @@ function handleNetworkLost() {
   // Update appState status
   appState.set("settings.isOnline", false);
   console.log("📴 Network connection lost");
-  
+
   // Use the global channelLoader instance
   const player = channelLoader.getPlayer();
-  
+
   if (player && !player.paused()) {
     try {
       player.pause();
       // Ensure the error notification is visible and clear
-      showNotification("📴 Network Connection lost", "error", 10000); 
+      showNotification("📴 Network Connection lost", "error", 10000);
     } catch (e) {
       console.error("Error pausing player on network loss:", e);
     }
@@ -3969,7 +3980,7 @@ function handleNetworkRestored() {
 
     setTimeout(() => {
       // Check if player is still valid/modal is open
-      if (!player || !appState.get('ui.isModalOpen')) return; 
+      if (!player || !appState.get('ui.isModalOpen')) return;
 
       player.play()
         .then(() => {
@@ -3978,13 +3989,13 @@ function handleNetworkRestored() {
         .catch((error) => {
           // Check for user-driven errors (like 'NotAllowedError' for unmuted play)
           if (error.name === 'NotAllowedError' || error.name === 'AbortError') {
-             console.warn("Could not auto-resume playback due to browser policy or interruption:", error.message);
-             // Since playback failed, show the fallback play button
-             channelLoader.showPlayButton();
-             showNotification("Playback failed: Please click the 'Play' button.", "warning");
+            console.warn("Could not auto-resume playback due to browser policy or interruption:", error.message);
+            // Since playback failed, show the fallback play button
+            channelLoader.showPlayButton();
+            showNotification("Playback failed: Please click the 'Play' button.", "warning");
           } else {
-             console.error("Critical error during auto-resume:", error);
-             showNotification("Error resuming stream. Please re-select the channel.", "error");
+            console.error("Critical error during auto-resume:", error);
+            showNotification("Error resuming stream. Please re-select the channel.", "error");
           }
         });
     }, RESUME_DELAY);
