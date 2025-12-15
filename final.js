@@ -2,6 +2,79 @@
 // IPTV CHANNEL MANAGER - ENHANCED VERSION
 // ============================================
 
+// ============================================
+// USER AGENT OVERRIDE - MUST BE FIRST!
+// ============================================
+(function initUserAgentOverride() {
+  const _originalUserAgent = navigator.userAgent;
+  const UA_STORAGE_KEY = "custom-useragent-string-ua";
+
+  try {
+    Object.defineProperty(navigator, "userAgent", {
+      get: function () {
+        const customUA = localStorage.getItem(UA_STORAGE_KEY);
+        return customUA ? customUA : _originalUserAgent;
+      },
+      configurable: true
+    });
+
+    console.log('✅ User Agent override initialized');
+  } catch (error) {
+    console.error('❌ Failed to override User Agent:', error);
+  }
+
+  window.UserAgentManager = {
+    get current() { return navigator.userAgent; },
+    get original() { return _originalUserAgent; },
+    get isCustom() { return localStorage.getItem(UA_STORAGE_KEY) !== null; },
+
+    set(ua) {
+      if (!ua || typeof ua !== 'string') return false;
+      try {
+        localStorage.setItem(UA_STORAGE_KEY, ua);
+        console.log('✅ Custom User Agent set. Reload to apply.');
+        return true;
+      } catch (error) {
+        console.error('❌ Failed to set User Agent:', error);
+        return false;
+      }
+    },
+
+    reset() {
+      try {
+        localStorage.removeItem(UA_STORAGE_KEY);
+        console.log('✅ User Agent reset. Reload to apply.');
+        return true;
+      } catch (error) {
+        return false;
+      }
+    },
+
+    presets: {
+      chromeWindows: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      iPhoneSafari: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
+      androidChrome: 'Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.6099.144 Mobile Safari/537.36',
+      androidTV: 'Mozilla/5.0 (Linux; Android 9; SHIELD Android TV) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.164 Safari/537.36',
+      samsungTV: 'Mozilla/5.0 (SMART-TV; Linux; Tizen 6.0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/85.0.4183.93 TV Safari/537.36'
+    },
+    usePreset(presetName) {
+      if (!this.presets[presetName]) {
+        console.error('Unknown preset:', presetName);
+        return false;
+      }
+      return this.set(this.presets[presetName]);
+    },
+
+    info() {
+      console.group('🔍 User Agent Info');
+      console.log('Current:', this.current);
+      console.log('Original:', this.original);
+      console.log('Is Custom:', this.isCustom);
+      console.groupEnd();
+    }
+  };
+})();
+
 /**
  * LRU (Least Recently Used) Cache implementation
  */
@@ -293,6 +366,8 @@ const PLAYBACK_CONSTANTS = {
 // ✅ NEW: Debounce configuration
 const DEBOUNCE_MS = 180;
 
+const pendingRequests = new Map();
+
 
 class AppStateManager {
   constructor() {
@@ -336,7 +411,11 @@ class AppStateManager {
         isOnline: navigator.onLine,
         apiKey: '',
         isAutoUpdateEnabled: true,
-        updateIntervalHours: 8
+        updateIntervalHours: 8,
+        userAgent: {
+          current: navigator.userAgent,
+          isCustom: UserAgentManager.isCustom
+        }
       },
       uiCollections: {
         allChannelItems: []
@@ -346,6 +425,14 @@ class AppStateManager {
     this.cleanupCallbacks = new Set();
   }
 
+
+  get userAgent() {
+    return this._state.system.userAgent.current;
+  }
+
+  get isCustomUserAgent() {
+    return this._state.system.userAgent.isCustom;
+  }
 
   get(path) {
     if (!path) return this.state;
@@ -499,7 +586,7 @@ class AppStateManager {
 const appState = new AppStateManager();
 
 
-const pendingRequests = new Map();
+
 
 // ============================================
 // Utilities
@@ -553,7 +640,7 @@ function getActualStorageSize(str) {
 
 
 function getAvailableSpace() {
-  const MAX_BYTES = 5 * 1024 * 1024; // 5 MB quota
+  const MAX_BYTES = 8 * 1024 * 1024; // 5 MB quota
   const usage = getStorageUsage();   // { totalBytes, totalKB, totalMB, itemCount, items }
 
   if (!usage || typeof usage.totalBytes !== "number") {
@@ -1947,30 +2034,30 @@ function buildPlayerOptions(streamConfig, metadata) {
   }
 
   if (streamConfig.type === 'hls') {
-/*     baseOptions.html5 = baseOptions.html5 || {};
-     baseOptions.html5.vhs = Object.assign({}, baseOptions.html5.vhs || {}, {
-          overrideNative: true,
-          enableLowInitialPlaylist: true,
-          smoothQualityChange: true,
-          bandwidth: 4194304,
-          withCredentials: false,
-          limitRenditionByPlayerDimensions: false,
-          useDevicePixelRatio: false,
-          useNetworkInformationApi: false,
-          maxPlaylistRetries: 5,
-          experimentalBufferBasedABR: false,
-          experimentalLLHLS: false,
-          handleManifestRedirects: true,
-          useBandwidthFromLocalStorage: false,
-          timeout: 45000,
-          enablePlaylistRefresh: true,
-          playlistRefreshInterval: 30000,
-          maxBufferLength: 30,
-          maxBufferSize: 60 * 1024 * 1024,
-          bufferBehind: 30
-        });
-    baseOptions.html5.nativeAudioTracks = false;
-    baseOptions.html5.nativeVideoTracks = false; */
+    /*     baseOptions.html5 = baseOptions.html5 || {};
+         baseOptions.html5.vhs = Object.assign({}, baseOptions.html5.vhs || {}, {
+              overrideNative: true,
+              enableLowInitialPlaylist: true,
+              smoothQualityChange: true,
+              bandwidth: 4194304,
+              withCredentials: false,
+              limitRenditionByPlayerDimensions: false,
+              useDevicePixelRatio: false,
+              useNetworkInformationApi: false,
+              maxPlaylistRetries: 5,
+              experimentalBufferBasedABR: false,
+              experimentalLLHLS: false,
+              handleManifestRedirects: true,
+              useBandwidthFromLocalStorage: false,
+              timeout: 45000,
+              enablePlaylistRefresh: true,
+              playlistRefreshInterval: 30000,
+              maxBufferLength: 30,
+              maxBufferSize: 60 * 1024 * 1024,
+              bufferBehind: 30
+            });
+        baseOptions.html5.nativeAudioTracks = false;
+        baseOptions.html5.nativeVideoTracks = false; */
   }
 
   if (streamConfig.type === 'dash') {
@@ -2986,11 +3073,14 @@ function handleNavigationKeys(event) {
     // MODAL OPEN NAVIGATION
     // ===========================
     if (isModalOpen) {
+
       if (event.key === "Enter" || event.key === "OK") {
         event.preventDefault();
-        //toggleFullscreen();
+        event.stopPropagation();
+        toggleFullscreen();
         return;
       }
+
 
       if (
         event.key === "Escape" ||
@@ -3000,6 +3090,7 @@ function handleNavigationKeys(event) {
         event.key === "GoBack" // Android TV or custom remotes
       ) {
         event.preventDefault();
+        event.stopPropagation();
         closeModal();
         return;
       }
@@ -3772,6 +3863,8 @@ function setupSettingsModal() {
     addStorageInfoToSettings();
   }
   updateStorageDisplay();
+  // ✅ ADD THIS:
+  addUserAgentSettings();
 
   // --- Move Close Button to Bottom ---
   const settingsContent = settingsModal.querySelector(".settings-content");
@@ -3793,6 +3886,129 @@ function setupSettingsModal() {
   });
 }
 
+
+// ============================================
+// USER AGENT SETTINGS UI
+// ============================================
+function addUserAgentSettings() {
+  const settingsContent = document.querySelector('.settings-content');
+  if (!settingsContent || document.getElementById('userAgentSection')) return;
+
+  const userAgentSection = document.createElement('div');
+  userAgentSection.id = 'userAgentSection';
+  userAgentSection.className = 'setting-item';
+  userAgentSection.innerHTML = `
+    <h3>User Agent Override</h3>
+    
+    <div class="setting-description" style="margin-bottom: 10px;">
+      <strong>Current:</strong><br>
+      <span id="currentUserAgent" style="font-family: monospace; font-size: 11px; word-break: break-all;"></span>
+    </div>
+    
+    <div style="margin-bottom: 10px;">
+      <label for="userAgentPreset">Quick Presets:</label>
+      <select id="userAgentPreset" style="width: 100%; padding: 8px; background: #2a2a2a; color: white; border: 1px solid #444; border-radius: 4px;">
+        <option value="">-- Select Preset --</option>
+        <optgroup label="Desktop">
+          <option value="chromeWindows">Chrome (Windows)</option>
+        </optgroup>
+        <optgroup label="Mobile">
+          <option value="iPhoneSafari">iPhone Safari</option>
+                    <option value="androidChrome">Android Chrome</option>
+        </optgroup>
+        <optgroup label="Smart TV">
+          <option value="androidTV">Android TV</option>
+          <option value="samsungTV">Samsung TV</option>
+        </optgroup>
+      </select>
+    </div>
+    
+    <div style="margin-bottom: 10px;">
+      <label for="customUserAgent">Custom:</label>
+      <textarea 
+        id="customUserAgent" 
+        style="width: 100%; padding: 8px; background: #2a2a2a; color: white; border: 1px solid #444; border-radius: 4px; font-family: monospace; font-size: 11px;"
+        rows="3"
+        placeholder="Enter custom user agent..."
+      ></textarea>
+    </div>
+    
+    <div style="display: flex; gap: 10px;">
+      <button id="applyUserAgent" class="btn-primary" style="flex: 1;">
+        Apply & Reload
+      </button>
+      <button id="resetUserAgent" class="btn-secondary" style="flex: 1;">
+        Reset
+      </button>
+    </div>
+    
+    <p class="setting-description" style="margin-top: 10px; color: #ff9800; font-size: 12px;">
+      <i class="fas fa-info-circle"></i> Page will reload after changes
+    </p>
+  `;
+
+  const closeBtn = document.getElementById('closeSettings');
+  if (closeBtn && closeBtn.parentNode) {
+    closeBtn.parentNode.insertBefore(userAgentSection, closeBtn);
+  }
+
+  updateUserAgentDisplay();
+  setupUserAgentControls();
+}
+
+function updateUserAgentDisplay() {
+  const display = document.getElementById('currentUserAgent');
+  if (display) {
+    const currentUA = navigator.userAgent;
+    display.textContent = currentUA;
+    display.style.color = UserAgentManager.isCustom ? '#4caf50' : '#888';
+  }
+}
+
+function setupUserAgentControls() {
+  const presetSelect = document.getElementById('userAgentPreset');
+  const customInput = document.getElementById('customUserAgent');
+  const applyBtn = document.getElementById('applyUserAgent');
+  const resetBtn = document.getElementById('resetUserAgent');
+
+  if (presetSelect && customInput) {
+    presetSelect.addEventListener('change', (e) => {
+      const presetName = e.target.value;
+      if (presetName) {
+        customInput.value = UserAgentManager.presets[presetName];
+      }
+    });
+  }
+
+  if (applyBtn && customInput) {
+    applyBtn.addEventListener('click', () => {
+      const customUA = customInput.value.trim();
+
+      if (!customUA) {
+        showNotification('Please enter a user agent string', 'warning');
+        return;
+      }
+
+      if (UserAgentManager.set(customUA)) {
+        showNotification('User Agent updated! Reloading...', 'success');
+        setTimeout(() => location.reload(), 1000);
+      } else {
+        showNotification('Failed to update User Agent', 'error');
+      }
+    });
+  }
+
+  if (resetBtn) {
+    resetBtn.addEventListener('click', () => {
+      if (UserAgentManager.reset()) {
+        showNotification('User Agent reset! Reloading...', 'success');
+        setTimeout(() => location.reload(), 1000);
+      } else {
+        showNotification('Failed to reset User Agent', 'error');
+      }
+    });
+  }
+}
 // ============================================
 // API KEY MODAL
 // ============================================
@@ -5248,7 +5464,7 @@ function escapeHtml(text) {
 // Add proactive monitoring
 function checkStorageHealth() {
   const usage = getStorageUsage();
-  const percentUsed = (usage.totalBytes / (5 * 1024 * 1024)) * 100;
+  const percentUsed = (usage.totalBytes / (8 * 1024 * 1024)) * 100;
 
   if (percentUsed > 80) {
     showNotification('⚠️ Storage 80% full - consider exporting data', 'warning');
@@ -5474,7 +5690,7 @@ function predictiveCleanup() {
     if (!usage) return { freedBytes: 0, removedKeys: [] };
 
     // threshold in bytes (4MB default, adjust if you want)
-    const threshold = 4 * 1024 * 1024;
+    const threshold = 8 * 1024 * 1024;
 
     // If under threshold, nothing to do
     if (usage.totalBytes <= threshold) {
@@ -5722,3 +5938,5 @@ Object.freeze(window.__iptv);
 // Ensure global namespace exists
 // Export for debugging
 window.__iptv.getErrorLog = () => [...errorLog];
+window.addUserAgentSettings = addUserAgentSettings;
+window.updateUserAgentDisplay = updateUserAgentDisplay;
