@@ -405,7 +405,8 @@ class AppStateManager {
         overlayShow: null,
         overlayHide: null,
         promptTimeout: null,
-        numberTimeout: null
+        numberTimeout: null,
+        navigationDebounce: 180
       },
       settings: {
         isOnline: navigator.onLine,
@@ -911,7 +912,16 @@ function toggleFavoriteStatus(channelData) {
   if (!channelData || !channelData.url) return false;
   return isFavorite(channelData.url) ? removeFavorite(channelData.url) : addFavorite(channelData);
 }
-function clearAllFavorites() { const ok = writeArray(LS_KEYS.FAVORITES, []); if (ok) dispatchStorageUpdate('favorites'); return ok; }
+
+
+
+function clearAllFavorites() { 
+    if (confirm('Are you sure you want to clear ALL favorites? This cannot be undone!')) {
+  const ok = writeArray(LS_KEYS.FAVORITES, []); 
+  if (ok) dispatchStorageUpdate('favorites'); 
+  return ok; 
+}
+}
 
 /**
  * Get recently watched channels with timestamp validation
@@ -982,9 +992,11 @@ function removeFromRecentlyWatched(url) {
  * Clear all recently watched
  */
 function clearRecentlyWatched() {
+  if (confirm('Are you sure you want to clear your recently watched history?')) {
   const ok = writeArray(LS_KEYS.RECENT, []);
   if (ok) dispatchStorageUpdate('recent');
   return ok;
+}
 }
 
 function saveRecentlyWatched(channel) {
@@ -3056,89 +3068,118 @@ function handleNumberKeyPress(e) {
  * Handle arrow keys and navigation keys
  */
 function handleNavigationKeys(event) {
-  // ✅ Clear previous timeout first
-  const prevTimeout = appState.get('intervals.navigationDebounce');
-  if (prevTimeout) clearTimeout(prevTimeout);
+  const GRID_COLUMNS = getGridColumns();
+  const modal = document.getElementById("videoModal");
+  const isModalOpen = appState.get('ui.isModalOpen') || (modal && modal.style.display === "flex");
 
-  const timeoutId = setTimeout(() => {
-    const GRID_COLUMNS = getGridColumns();
-    const modal = document.getElementById("videoModal");
-    const isModalOpen = appState.get('ui.isModalOpen') || (modal && modal.style.display === "flex");
+  const allChannelItems = appState.get('uiCollections.allChannelItems') || [];
+  const focusedElement = document.activeElement;
+  let currentFocusedIndex = allChannelItems.findIndex((item) => item === focusedElement);
 
-    const allChannelItems = appState.get('uiCollections.allChannelItems') || [];
-    const focusedElement = document.activeElement;
-    let currentFocusedIndex = allChannelItems.findIndex((item) => item === focusedElement);
+  // ===========================
+  // MODAL OPEN NAVIGATION
+  // ===========================
+  if (isModalOpen) {
+    // ✅ FIX: Only toggle fullscreen if modal was ALREADY open for a while
+    // This prevents immediate fullscreen on channel open
+    if (event.key === "Enter" || event.key === "OK") {
+      event.preventDefault();
+      event.stopPropagation();
 
-    // ===========================
-    // MODAL OPEN NAVIGATION
-    // ===========================
-    if (isModalOpen) {
+      // Check if modal has been open for at least 300ms
+      const modalOpenTime = appState.get('ui.modalOpenTimestamp') || 0;
+      const timeSinceOpen = Date.now() - modalOpenTime;
 
-      if (event.key === "Enter" || event.key === "OK") {
-        event.preventDefault();
-        event.stopPropagation();
+      // Only trigger fullscreen if modal has been open for a bit
+      if (timeSinceOpen > 300) {
         toggleFullscreen();
-        return;
-      }
-
-
-      if (
-        event.key === "Escape" ||
-        event.key === "ArrowLeft" ||
-        event.key === "Backspace" || // sometimes used as back
-        event.key === "BrowserBack" || // some remotes or browsers
-        event.key === "GoBack" // Android TV or custom remotes
-      ) {
-        event.preventDefault();
-        event.stopPropagation();
-        closeModal();
-        return;
-      }
-
-
-      if (event.key === "ArrowRight") {
-        event.preventDefault();
-        showChannelInfoOverlay();
-        return;
-      }
-
-      if (["ArrowUp", "ArrowDown", "PageUp", "PageDown"].includes(event.key)) {
-        event.preventDefault();
-
-        const lastFocusedElement = appState.get('ui.lastFocusedElement');
-        if (!lastFocusedElement || allChannelItems.length === 0) return;
-
-        const currentChannelIndex = allChannelItems.findIndex(
-          (item) => item === lastFocusedElement
-        );
-
-        if (currentChannelIndex === -1) return;
-
-        let newIndex = currentChannelIndex;
-        if (event.key === "ArrowDown" || event.key === "PageDown") {
-          newIndex = (currentChannelIndex + 1) % allChannelItems.length;
-        } else if (event.key === "ArrowUp" || event.key === "PageUp") {
-          newIndex = (currentChannelIndex - 1 + allChannelItems.length) % allChannelItems.length;
-        }
-
-        const newChannelCard = allChannelItems[newIndex];
-        const { url, name, image, description, number, isLive = "false", category = "Unknown" } = newChannelCard.dataset;
-
-        newChannelCard.scrollIntoView({ behavior: "smooth", block: "center" });
-        selectChannel(url, name, image, description, number, isLive);
-        saveRecentlyWatched({ name, url, image, description, number, isLive, category });
-
-        appState.set('ui.lastFocusedElement', newChannelCard);
       }
       return;
     }
 
-    // ===========================
-    // NORMAL NAVIGATION (GRID)
-    // ===========================
-    if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)) {
+    if (
+      event.key === "Escape" ||
+      event.key === "ArrowLeft" ||
+      event.key === "Backspace" ||
+      event.key === "BrowserBack" ||
+      event.key === "GoBack"
+    ) {
+      event.preventDefault();
+      event.stopPropagation();
+      closeModal();
+      return;
+    }
+
+    if (event.key === "ArrowRight") {
+      event.preventDefault();
+      showChannelInfoOverlay();
+      return;
+    }
+
+    if (["ArrowUp", "ArrowDown", "PageUp", "PageDown"].includes(event.key)) {
       event.preventDefault();
 
+      const lastFocusedElement = appState.get('ui.lastFocusedElement');
+      if (!lastFocusedElement || allChannelItems.length === 0) return;
+
+      const currentChannelIndex = allChannelItems.findIndex(
+        (item) => item === lastFocusedElement
+      );
+
+      if (currentChannelIndex === -1) return;
+
+      let newIndex = currentChannelIndex;
+      if (event.key === "ArrowDown" || event.key === "PageDown") {
+        newIndex = (currentChannelIndex + 1) % allChannelItems.length;
+      } else if (event.key === "ArrowUp" || event.key === "PageUp") {
+        newIndex = (currentChannelIndex - 1 + allChannelItems.length) % allChannelItems.length;
+      }
+
+      const newChannelCard = allChannelItems[newIndex];
+      const { url, name, image, description, number, isLive = "false", category = "Unknown" } = newChannelCard.dataset;
+
+      newChannelCard.scrollIntoView({ behavior: "smooth", block: "center" });
+      selectChannel(url, name, image, description, number, isLive);
+      saveRecentlyWatched({ name, url, image, description, number, isLive, category });
+
+      appState.set('ui.lastFocusedElement', newChannelCard);
+    }
+    return;
+  }
+
+  // ===========================
+  // ENTER KEY - SELECT CHANNEL
+  // ===========================
+  if (event.key === "Enter" && currentFocusedIndex !== -1) {
+    event.preventDefault();
+    event.stopPropagation();
+
+    const card = allChannelItems[currentFocusedIndex];
+    if (!card) return;
+
+    const { url, name, image, description, number, isLive = "false", category = "Unknown" } = card.dataset;
+
+    card.scrollIntoView({ behavior: "smooth", block: "center" });
+
+    // ✅ Set timestamp when modal opens to prevent immediate fullscreen
+    appState.set('ui.modalOpenTimestamp', Date.now());
+
+    selectChannel(url, name, image, description, number, isLive);
+    saveRecentlyWatched({ name, url, image, description, number, isLive, category });
+    return;
+  }
+
+  // ===========================
+  // ARROW NAVIGATION (WITH DEBOUNCE)
+  // ===========================
+  if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)) {
+    event.preventDefault();
+
+    // ✅ Clear previous debounce timeout
+    const prevTimeout = appState.get('intervals.navigationDebounce');
+    if (prevTimeout) clearTimeout(prevTimeout);
+
+    const timeoutId = setTimeout(() => {
       if (allChannelItems.length === 0) return;
 
       // If nothing focused, focus first item
@@ -3167,65 +3208,48 @@ function handleNavigationKeys(event) {
         newCard.scrollIntoView({ behavior: "smooth", block: "center" });
         appState.set('ui.focusedIndex', newIndex);
       }
+
+      appState.setTimeoutRef('navigationDebounce', null);
+    }, 50);
+
+    appState.setTimeoutRef('navigationDebounce', timeoutId);
+    return;
+  }
+
+  // ===========================
+  // PAGE/HOME/END NAVIGATION
+  // ===========================
+  if (["PageUp", "PageDown", "Home", "End"].includes(event.key)) {
+    event.preventDefault();
+
+    if (allChannelItems.length === 0) return;
+
+    if (currentFocusedIndex === -1) {
+      allChannelItems[0].focus();
+      allChannelItems[0].scrollIntoView({ behavior: "smooth", block: "center" });
+      appState.set('ui.focusedIndex', 0);
+      return;
     }
 
-    // ===========================
-    // PAGE/HOME/END NAVIGATION
-    // ===========================
-    else if (["PageUp", "PageDown", "Home", "End"].includes(event.key)) {
-      event.preventDefault();
+    let newIndex = currentFocusedIndex;
 
-      if (allChannelItems.length === 0) return;
-
-      if (currentFocusedIndex === -1) {
-        allChannelItems[0].focus();
-        allChannelItems[0].scrollIntoView({ behavior: "smooth", block: "center" });
-        appState.set('ui.focusedIndex', 0);
-        return;
-      }
-
-      let newIndex = currentFocusedIndex;
-
-      if (event.key === "PageUp") {
-        newIndex = Math.max(currentFocusedIndex - GRID_COLUMNS * 3, 0);
-      } else if (event.key === "PageDown") {
-        newIndex = Math.min(currentFocusedIndex + GRID_COLUMNS * 3, allChannelItems.length - 1);
-      } else if (event.key === "Home") {
-        newIndex = 0;
-      } else if (event.key === "End") {
-        newIndex = allChannelItems.length - 1;
-      }
-
-      const newCard = allChannelItems[newIndex];
-      if (newCard) {
-        newCard.focus();
-        newCard.scrollIntoView({ behavior: "smooth", block: "center" });
-        appState.set('ui.focusedIndex', newIndex);
-      }
+    if (event.key === "PageUp") {
+      newIndex = Math.max(currentFocusedIndex - GRID_COLUMNS * 3, 0);
+    } else if (event.key === "PageDown") {
+      newIndex = Math.min(currentFocusedIndex + GRID_COLUMNS * 3, allChannelItems.length - 1);
+    } else if (event.key === "Home") {
+      newIndex = 0;
+    } else if (event.key === "End") {
+      newIndex = allChannelItems.length - 1;
     }
 
-    // ===========================
-    // ENTER KEY - SELECT CHANNEL
-    // ===========================
-    else if (event.key === "Enter" && currentFocusedIndex !== -1) {
-      event.preventDefault();
-
-      const card = allChannelItems[currentFocusedIndex];
-      if (!card) return;
-
-      const { url, name, image, description, number, isLive = "false", category = "Unknown" } = card.dataset;
-
-      card.scrollIntoView({ behavior: "smooth", block: "center" });
-      selectChannel(url, name, image, description, number, isLive);
-      saveRecentlyWatched({ name, url, image, description, number, isLive, category });
+    const newCard = allChannelItems[newIndex];
+    if (newCard) {
+      newCard.focus();
+      newCard.scrollIntoView({ behavior: "smooth", block: "center" });
+      appState.set('ui.focusedIndex', newIndex);
     }
-
-    // ✅ Clear the timeout reference after execution
-    appState.setTimeoutRef('navigationDebounce', null);
-  }, 50);
-
-
-  appState.setTimeoutRef('navigationDebounce', timeoutId);
+  }
 }
 
 // ============================================
@@ -3700,15 +3724,14 @@ function showSettingsModal() {
   if (updateIntervalSelect) updateIntervalSelect.value = updateIntervalHours.toString();
 
   updateIntervalDescriptionText(updateIntervalHours);
+
+      // Update all dynamic displays
+  updateUserAgentDisplay();
+  updateStorageDisplay();
+  updateCacheStatsDisplay();
+  updateTotalChannelsDisplay();
   updateLastUpdateDisplay();
 
-  // Storage/cache sections
-  if (!document.getElementById("storageUsageDisplay")) {
-    addStorageInfoToSettings();
-  } else {
-    updateStorageDisplay();
-    updateStorageStatsDisplay();
-  }
 }
 
 
@@ -3791,7 +3814,7 @@ function updateLastUpdateDisplay() {
     const timeAgo = getTimeAgo(lastUpdate);
     const date = new Date(lastUpdate);
     const formattedDate = date.toLocaleString();
-    lastUpdateEl.textContent = `Last updated: ${timeAgo} (${formattedDate})`;
+    lastUpdateEl.textContent = `${timeAgo} (${formattedDate})`;
     lastUpdateEl.style.color = "#4caf50";
   }
 }
@@ -3813,24 +3836,27 @@ function setupSettingsModal() {
   const updateIntervalSelect = document.getElementById("updateInterval");
   const manualUpdateBtn = document.getElementById("manualUpdateBtn");
   const manageApiKeyBtn = document.getElementById("manageApiKeyBtn");
-
-  // ✅ NEW: Reference the sort dropdown
   const sortSelect = document.getElementById("sortSelect");
 
-  // --- Attach Event Listeners ---
-  // ✅ NEW: Sort Listener
-  if (sortSelect) {
-    sortSelect.addEventListener("change", (e) => {
-      handleSortChange(e.target.value);
+  // --- SHOW/HIDE MODAL ---
+  if (settingsBtn) {
+    settingsBtn.addEventListener("click", () => {
+      showSettingsModal();
+      // Update dynamic displays when modal opens
+      updateUserAgentDisplay();
+      updateStorageDisplay();
+      updateCacheStatsDisplay();
+      updateTotalChannelsDisplay();
+      updateLastUpdateDisplay();
     });
   }
 
-  if (settingsBtn) {
-    settingsBtn.addEventListener("click", showSettingsModal);
-  }
   if (closeSettings) {
-    closeSettings.addEventListener("click", hideSettingsModal);
+    closeSettings.addEventListener("click", () => {
+      hideSettingsModal();
+    });
   }
+
   if (settingsModal) {
     settingsModal.addEventListener("click", (e) => {
       if (e.target === settingsModal) {
@@ -3838,19 +3864,34 @@ function setupSettingsModal() {
       }
     });
   }
+
+  // --- SORT ---
+  if (sortSelect) {
+    sortSelect.addEventListener("change", (e) => {
+      handleSortChange(e.target.value);
+    });
+  }
+
+  // --- AUTO UPDATE ---
   if (autoUpdateToggle) {
     autoUpdateToggle.addEventListener("change", (e) => {
       toggleAutoUpdate(e.target.checked);
     });
   }
+
+  // --- UPDATE INTERVAL ---
   if (updateIntervalSelect) {
     updateIntervalSelect.addEventListener("change", (e) => {
       changeUpdateInterval(e.target.value);
     });
   }
+
+  // --- MANUAL UPDATE ---
   if (manualUpdateBtn) {
     manualUpdateBtn.addEventListener("click", manualUpdate);
   }
+
+  // --- API KEY ---
   if (manageApiKeyBtn) {
     manageApiKeyBtn.addEventListener("click", () => {
       hideSettingsModal();
@@ -3858,102 +3899,25 @@ function setupSettingsModal() {
     });
   }
 
-  // Add storage and cache sections if missing
-  if (!document.getElementById("storageUsageDisplay")) {
-    addStorageInfoToSettings();
-  }
-  updateStorageDisplay();
-  // ✅ ADD THIS:
-  addUserAgentSettings();
+  // --- USER AGENT CONTROLS ---
+  setupUserAgentControls();
 
-  // --- Move Close Button to Bottom ---
-  const settingsContent = settingsModal.querySelector(".settings-content");
-  if (settingsContent && closeSettings) {
-    // Wrap in footer for better UX
-    const footer = document.createElement("div");
-    footer.className = "settings-footer";
-    footer.style.cssText = "margin-top:20px; text-align:right;";
+  // --- STORAGE MANAGEMENT BUTTONS ---
+  setupStorageControls();
 
-    footer.appendChild(closeSettings);
-    settingsContent.appendChild(footer);
-  }
+  // --- CACHE MANAGEMENT BUTTONS ---
+  setupCacheControls();
 
-  // --- Extra UX Improvement: ESC key closes modal ---
+  // --- ESC KEY CLOSES MODAL ---
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape" && settingsModal.style.display === "flex") {
       hideSettingsModal();
     }
   });
-}
 
-
-// ============================================
-// USER AGENT SETTINGS UI
-// ============================================
-function addUserAgentSettings() {
-  const settingsContent = document.querySelector('.settings-content');
-  if (!settingsContent || document.getElementById('userAgentSection')) return;
-
-  const userAgentSection = document.createElement('div');
-  userAgentSection.id = 'userAgentSection';
-  userAgentSection.className = 'setting-item';
-  userAgentSection.innerHTML = `
-    <h3>User Agent Override</h3>
-    
-    <div class="setting-description" style="margin-bottom: 10px;">
-      <strong>Current:</strong><br>
-      <span id="currentUserAgent" style="font-family: monospace; font-size: 11px; word-break: break-all;"></span>
-    </div>
-    
-    <div style="margin-bottom: 10px;">
-      <label for="userAgentPreset">Quick Presets:</label>
-      <select id="userAgentPreset" style="width: 100%; padding: 8px; background: #2a2a2a; color: white; border: 1px solid #444; border-radius: 4px;">
-        <option value="">-- Select Preset --</option>
-        <optgroup label="Desktop">
-          <option value="chromeWindows">Chrome (Windows)</option>
-        </optgroup>
-        <optgroup label="Mobile">
-          <option value="iPhoneSafari">iPhone Safari</option>
-                    <option value="androidChrome">Android Chrome</option>
-        </optgroup>
-        <optgroup label="Smart TV">
-          <option value="androidTV">Android TV</option>
-          <option value="samsungTV">Samsung TV</option>
-        </optgroup>
-      </select>
-    </div>
-    
-    <div style="margin-bottom: 10px;">
-      <label for="customUserAgent">Custom:</label>
-      <textarea 
-        id="customUserAgent" 
-        style="width: 100%; padding: 8px; background: #2a2a2a; color: white; border: 1px solid #444; border-radius: 4px; font-family: monospace; font-size: 11px;"
-        rows="3"
-        placeholder="Enter custom user agent..."
-      ></textarea>
-    </div>
-    
-    <div style="display: flex; gap: 10px;">
-      <button id="applyUserAgent" class="btn-primary" style="flex: 1;">
-        Apply & Reload
-      </button>
-      <button id="resetUserAgent" class="btn-secondary" style="flex: 1;">
-        Reset
-      </button>
-    </div>
-    
-    <p class="setting-description" style="margin-top: 10px; color: #ff9800; font-size: 12px;">
-      <i class="fas fa-info-circle"></i> Page will reload after changes
-    </p>
-  `;
-
-  const closeBtn = document.getElementById('closeSettings');
-  if (closeBtn && closeBtn.parentNode) {
-    closeBtn.parentNode.insertBefore(userAgentSection, closeBtn);
-  }
-
+  // Initial updates
   updateUserAgentDisplay();
-  setupUserAgentControls();
+  updateStorageDisplay();
 }
 
 function updateUserAgentDisplay() {
@@ -5240,114 +5204,111 @@ function triggerImportDialog() {
 // ============================================
 // ADD TO SETTINGS MODAL
 // ============================================
-function addStorageInfoToSettings() {
-  const settingsContent = document.querySelector('.settings-content');
-  if (!settingsContent) return;
-
-  const storageInfo = document.createElement('div');
-  storageInfo.className = 'setting-item';
-  storageInfo.innerHTML = `
-    <h3>Storage Usage</h3> 
-    <div id="storageUsageDisplay" class="setting-description">
-      Calculating...
-    </div>
-    <button id="viewStorageDetails" class="btn-secondary" style="margin-top: 10px;">
-      <i class="fas fa-chart-bar text-green-500"></i> View Details
-    </button>
-    <button id="exportDataBtn" class="btn-secondary" style="margin-top: 10px;">
-      <i class="fas fa-file-export text-blue-500"></i> Export Backup
-    </button>
-    <button id="importDataBtn" class="btn-secondary" style="margin-top: 10px;">
-      <i class="fas fa-file-import text-red-500"></i> Import Backup
-    </button>
-    <button id="clearRecentBtn" class="btn-secondary" style="margin-top: 10px;">
-      <i class="fas fa-history text-green-500"></i> Clear Recently Watched
-    </button>
-    <button id="clearFavoritesBtn" class="btn-secondary" style="margin-top: 10px;">
-      <i class="fas fa-star text-yellow-500"></i> Clear All Favorites
-    </button>
-
-    <input type="file" id="importFileInput" accept=".json" style="display: none;">
-    
-  `;
-
-  // 💡 Recommendation: Append to the main content instead of finding the close button
-  settingsContent.appendChild(storageInfo);
-
-  // Event listeners (attached only once)
-  document.getElementById('viewStorageDetails')?.addEventListener('click', () => {
-    logStorageUsage();
-
-    showNotification('Check console for storage details', 'info');
-  });
-
-
-  document.getElementById('exportDataBtn')?.addEventListener('click', exportAllData);
-  document.getElementById('importDataBtn')?.addEventListener('click', triggerImportDialog);
-
-  document.getElementById('clearRecentBtn')?.addEventListener('click', clearRecentlyWatched);
-  document.getElementById('clearFavoritesBtn')?.addEventListener('click', clearAllFavorites);
-
-  const closeBtn = document.getElementById('closeSettings');
-  if (closeBtn && closeBtn.parentNode) {
-    closeBtn.parentNode.insertBefore(storageInfo, closeBtn);
+function setupStorageControls() {
+  // View Storage Details
+  const viewStorageDetailsBtn = document.getElementById('viewStorageDetails');
+  if (viewStorageDetailsBtn) {
+    viewStorageDetailsBtn.addEventListener('click', () => {
+      logStorageUsage();
+      showNotification('Check console for storage details', 'info');
+    });
   }
 
+  // Export Data
+  const exportDataBtn = document.getElementById('exportDataBtn');
+  if (exportDataBtn) {
+    exportDataBtn.addEventListener('click', exportAllData);
+  }
+
+  // Import Data
+  const importDataBtn = document.getElementById('importDataBtn');
+  if (importDataBtn) {
+    importDataBtn.addEventListener('click', triggerImportDialog);
+  }
+
+  // Clear Recently Watched
+  const clearRecentBtn = document.getElementById('clearRecentBtn');
+  if (clearRecentBtn) {
+    clearRecentBtn.addEventListener('click', clearRecentlyWatched);
+  }
+
+  // Clear All Favorites
+  const clearFavoritesBtn = document.getElementById('clearFavoritesBtn');
+  if (clearFavoritesBtn) {
+    clearFavoritesBtn.addEventListener('click', clearAllFavorites);
+  }
+
+  // File Input for Import
   const fileInput = document.getElementById('importFileInput');
   if (fileInput) {
     fileInput.addEventListener('change', handleImportFile);
   }
-
 }
+
 
 /**
  * Add cache management to settings
  */
-function addCacheManagementToSettings() {
-  const settingsContent = document.querySelector('.settings-content');
-  if (!settingsContent) return;
+function setupCacheControls() {
+  // Clear Cache Button
+  const clearCacheBtn = document.getElementById('clearCacheBtn');
+  if (clearCacheBtn) {
+    clearCacheBtn.addEventListener('click', () => {
+      try {
+        rssCache.clear();
+        liveCache.clear();
+        showNotification('✅ Cache cleared successfully', 'success');
+        updateCacheStatsDisplay();
+      } catch (error) {
+        console.error('Error clearing cache:', error);
+        showNotification('❌ Failed to clear cache', 'error');
+      }
+    });
+  }
+
+  // View Cache Stats Button
+  const viewCacheStatsBtn = document.getElementById('viewCacheStatsBtn');
+  if (viewCacheStatsBtn) {
+    viewCacheStatsBtn.addEventListener('click', () => {
+      try {
+        const rssStats = rssCache.getStats();
+        const liveStats = liveCache.getStats();
+
+        console.group('📊 Cache Statistics');
+        console.log('RSS Cache:', rssStats);
+        console.log('Live Cache:', liveStats);
+        console.groupEnd();
+
+        showNotification('Check console for detailed cache statistics', 'info');
+      } catch (error) {
+        console.error('Error getting cache stats:', error);
+        showNotification('❌ Failed to get cache stats', 'error');
+      }
+    });
+  }
+}
 
 
-  const cacheSection = document.createElement('div');
-  cacheSection.className = 'setting-item';
-  cacheSection.innerHTML = `
-    <h3>Cache Management</h3>
-    <div class="setting-description" id="cacheStats">
-      Loading cache statistics...
-    </div>
-    <button id="clearCacheBtn" class="btn-secondary" style="margin-top: 10px;">
-      <i class="fas fa-trash"></i> Clear Cache
-    </button>
-    <button id="viewCacheStatsBtn" class="btn-secondary" style="margin-top: 10px;">
-      <i class="fas fa-chart-line"></i> View Detailed Stats
-    </button>
-  `;
+// ============================================
+// UPDATE TOTAL CHANNELS DISPLAY
+// Add this new function
+// ============================================
 
+function updateTotalChannelsDisplay() {
+  const totalChannelsElement = document.getElementById('totalChannelsCount');
+  if (!totalChannelsElement) return;
 
-  settingsContent.appendChild(cacheSection);
-
-  // Update cache stats display
-  updateCacheStatsDisplay();
-
-  // Event listeners
-  document.getElementById('clearCacheBtn')?.addEventListener('click', () => {
-    rssCache.clear();
-    liveCache.clear();
-    showNotification('✅ Cache cleared successfully', 'success');
-    updateCacheStatsDisplay();
-  });
-
-  document.getElementById('viewCacheStatsBtn')?.addEventListener('click', () => {
-    const rssStats = rssCache.getStats();
-    const liveStats = liveCache.getStats();
-
-    console.log('📊 RSS Cache:', rssStats);
-    console.log('📊 Live Cache:', liveStats);
-
-    showNotification('Check console for cache statistics', 'info');
-    // Or call showCacheStatsModal(rssStats, liveStats) if you want the modal
-  });
-
+  try {
+    const channels = appState.get('channels.all') || [];
+    const totalCount = channels.length;
+    
+    totalChannelsElement.textContent = totalCount;
+    totalChannelsElement.style.color = '#4CAF50';
+  } catch (error) {
+    console.error('Error updating total channels display:', error);
+    totalChannelsElement.textContent = 'Error';
+    totalChannelsElement.style.color = '#f44336';
+  }
 }
 
 function updateStorageStatsDisplay() {
@@ -5391,59 +5352,88 @@ function updateCacheStatsDisplay() {
   const statsEl = document.getElementById('cacheStats');
   if (!statsEl) return;
 
-  const rssStats = rssCache.getStats();
-  const liveStats = liveCache.getStats();
+  try {
+    const rssStats = rssCache.getStats();
+    const liveStats = liveCache.getStats();
 
-  statsEl.innerHTML = `
-    <div style="display: grid; gap: 10px; margin-top: 10px;">
-      <div style="background: rgba(33, 150, 243, 0.1); padding: 10px; border-radius: 8px;">
-        <strong>RSS Cache:</strong><br>
-        ${rssStats.size}/${rssStats.maxSize} entries | 
-        Hit rate: ${rssStats.hitRate}
+    statsEl.innerHTML = `
+      <div style="display: grid; gap: 12px;">
+        <div style="background: rgba(33, 150, 243, 0.1); padding: 12px; border-radius: 8px; border: 1px solid rgba(33, 150, 243, 0.3);">
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <strong>📡 RSS Cache</strong>
+            <span style="color: #2196F3;">${rssStats.size}/${rssStats.maxSize}</span>
+          </div>
+          <div style="font-size: 13px; color: #aaa; margin-top: 6px;">
+            Hit Rate: <strong style="color: #4CAF50;">${rssStats.hitRate}</strong>
+          </div>
+        </div>
+        <div style="background: rgba(244, 67, 54, 0.1); padding: 12px; border-radius: 8px; border: 1px solid rgba(244, 67, 54, 0.3);">
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <strong>📺 Live Cache</strong>
+            <span style="color: #f44336;">${liveStats.size}/${liveStats.maxSize}</span>
+          </div>
+          <div style="font-size: 13px; color: #aaa; margin-top: 6px;">
+            Hit Rate: <strong style="color: #4CAF50;">${liveStats.hitRate}</strong>
+          </div>
+        </div>
       </div>
-      <div style="background: rgba(244, 67, 54, 0.1); padding: 10px; border-radius: 8px;">
-        <strong>Live Cache:</strong><br>
-        ${liveStats.size}/${liveStats.maxSize} entries | 
-        Hit rate: ${liveStats.hitRate}
-      </div>
-    </div>
-  `;
+    `;
+  } catch (error) {
+    console.error('Error updating cache stats:', error);
+    statsEl.innerHTML = '<div class="cache-loading">❌ Error loading cache statistics</div>';
+  }
 }
-
-/**
- * Calculate average hit rate from multiple caches
- */
-function calculateAvgHitRate(rssStats, liveStats) {
-  const totalHits = rssStats.hits + liveStats.hits;
-  const totalAccess = totalHits + rssStats.misses + liveStats.misses;
-
-  if (totalAccess === 0) return '0%';
-
-  return `${((totalHits / totalAccess) * 100).toFixed(2)}%`;
-}
-
 
 
 function updateStorageDisplay() {
-  const usage = getStorageUsage();
   const display = document.getElementById('storageUsageDisplay');
+  if (!display) return;
 
-  if (display) {
-    let color = '#4caf50'; // Green
-    if (parseFloat(usage.totalMB) > 4) {
-      color = '#ff9800'; // Orange - getting close to limit
+  try {
+    const usage = getStorageUsage();
+    if (!usage) {
+      display.innerHTML = '<div class="storage-loading">⚠️ Unable to calculate storage usage</div>';
+      return;
     }
-    if (parseFloat(usage.totalMB) > 8) {
-      color = '#f44336'; // Red - danger zone
+
+    const MAX_MB = 10; // Typical localStorage limit
+    const usedPercent = ((usage.totalBytes / (MAX_MB * 1024 * 1024)) * 100).toFixed(1);
+    
+    let color = '#4caf50'; // Green
+    let statusIcon = '✅';
+    let statusText = 'Healthy';
+    
+    if (parseFloat(usage.totalMB) > 7) {
+      color = '#ff9800'; // Orange
+      statusIcon = '⚠️';
+      statusText = 'Getting Full';
+    }
+    if (parseFloat(usage.totalMB) > 9) {
+      color = '#f44336'; // Red
+      statusIcon = '🚨';
+      statusText = 'Critical';
     }
 
     display.innerHTML = `
-      <span style="color: ${color}; font-weight: bold;">
-        ${usage.totalMB} MB
-      </span> 
-      used (${usage.itemCount} items)
-      ${parseFloat(usage.totalMB) > 4 ? '<br>⚠️ Consider clearing old data' : ''}
+      <div style="display: grid; gap: 12px;">
+        <div style="background: rgba(76, 175, 80, 0.1); padding: 12px; border-radius: 8px; border: 1px solid rgba(76, 175, 80, 0.3);">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+            <strong>Storage Status</strong>
+            <span style="color: ${color};">${statusIcon} ${statusText}</span>
+          </div>
+          <div style="font-size: 13px; color: #aaa;">
+            Used: <strong style="color: ${color};">${usage.totalMB} MB</strong> / ${MAX_MB} MB 
+            <span style="color: #888;">(${usedPercent}%)</span>
+          </div>
+        </div>
+        <div style="background: rgba(33, 150, 243, 0.1); padding: 12px; border-radius: 8px; border: 1px solid rgba(33, 150, 243, 0.3);">
+          <strong>Items Stored:</strong> ${usage.itemCount}
+        </div>
+      </div>
     `;
+  } catch (error) {
+    console.error('Error updating storage display:', error);
+    display.innerHTML = '<div class="storage-loading">❌ Error calculating storage</div>';
   }
 }
 
@@ -5938,5 +5928,4 @@ Object.freeze(window.__iptv);
 // Ensure global namespace exists
 // Export for debugging
 window.__iptv.getErrorLog = () => [...errorLog];
-window.addUserAgentSettings = addUserAgentSettings;
 window.updateUserAgentDisplay = updateUserAgentDisplay;

@@ -87,60 +87,218 @@
       </div>
 
       <!-- Settings Modal -->
-      <div id="settingsModal" class="settings-modal" style="display: none;">
-        <div class="settings-content">
-          <!-- Auto-update settings -->
-          <div class="setting-item">
-            <label>
-              <input type="checkbox" id="autoUpdateToggle" checked>
-              Enable automatic updates
-            </label>
-            <p class="setting-description" id="updateIntervalDescription">
-              Automatically check for new content every 8 hours
-            </p>
-          </div>
-          <div class="setting-item">
-            <label for="updateInterval">Update interval</label>
-            <select id="updateInterval">
-              <option value="4">4 hours</option>
-              <option value="8" selected>8 hours</option>
-              <option value="12">12 hours</option>
-              <option value="24">24 hours</option>
-            </select>
-          </div>
-          <div class="setting-item">
-            <button id="manualUpdateBtn" class="btn-primary">Update
-              Now</button>
-            <span id="lastUpdateDisplay"></span>
-          </div>
 
-          <div class="setting-item">
-            <label for="sortSelect">
-              <i class="fas fa-sort mr-2"></i> Sort Channels
-            </label>
-            <p class="setting-description">
-              Choose how channels are organized on the home screen
-            </p>
-            <select id="sortSelect">
-              <option value="none" onclick="handleSortChange('none')">Default (Category)</option>
-              <option value="asc" onclick="handleSortChange('asc')">Name (A-Z)</option>
-              <option value="desc" onclick="handleSortChange('desc')">Name (Z-A)</option>
-              <option value="watchTime" onclick="handleSortChange('watchTime')">Most Watched</option>
-            </select>
-          </div>
-          <!-- ✅ NEW: API Key Management -->
-          <div class="setting-item">
-            <label for="manageApiKeyBtn">YouTube API Key</label>
-            <button id="manageApiKeyBtn" class="btn-secondary" style="margin-top: 10px;">
-              🔑 Manage API Key
-            </button>
-            <p class="setting-description">
-              Configure your YouTube API key for live stream detection
-            </p>
-          </div>
-          <button id="closeSettings" class="btn-secondary">Close</button>
+<div id="settingsModal" class="settings-modal" style="display: none;">
+  <div class="settings-content">
+    
+    <!-- Header -->
+    <div class="settings-header">
+      <h2><i class="fas fa-cog"></i> Settings</h2>
+      <button id="closeSettings" class="close-btn" aria-label="Close Settings">
+        <i class="fas fa-times"></i>
+      </button>
+    </div>
+
+    <!-- Sort Options -->
+    <div class="setting-item">
+      <h3><i class="fas fa-sort"></i> Sort Channels</h3>
+      <select id="sortSelect" class="setting-select">
+        <option value="none">Default (By Category)</option>
+        <option value="asc">A → Z</option>
+        <option value="desc">Z → A</option>
+        <option value="watchTime">Most Watched</option>
+      </select>
+    </div>
+
+    <!-- Auto Update -->
+    <div class="setting-item">
+      <h3><i class="fas fa-sync-alt"></i> Auto Update</h3>
+      <label class="toggle-container">
+        <input type="checkbox" id="autoUpdateToggle" checked>
+        <span class="toggle-slider"></span>
+        <span class="toggle-label">Automatically check for new content</span>
+      </label>
+    </div>
+
+    <!-- Update Interval -->
+    <div class="setting-item">
+      <h3><i class="fas fa-clock"></i> Update Interval</h3>
+      <p class="setting-description" id="updateIntervalDescription">
+        Automatically check for new content every 8 hours
+      </p>
+      <select id="updateInterval" class="setting-select">
+        <option value="1">Every 1 hour</option>
+        <option value="4">Every 4 hours</option>
+        <option value="8" selected>Every 8 hours</option>
+        <option value="12">Every 12 hours</option>
+        <option value="24">Every 24 hours</option>
+      </select>
+    </div>
+
+    <!-- Manual Update -->
+    <div class="setting-item">
+      <h3><i class="fas fa-redo"></i> Manual Update</h3>
+      <p class="setting-description">
+        Immediately check for new content from all sources
+      </p>
+      <button id="manualUpdateBtn" class="btn-primary">
+        <i class="fas fa-sync"></i> Update Now
+      </button>
+    </div>
+
+    <!-- API Key Management -->
+    <div class="setting-item">
+      <h3><i class="fas fa-key"></i> YouTube API Key</h3>
+      <p class="setting-description">
+        Required for live YouTube channel updates. Get your API key from 
+        <a href="https://console.cloud.google.com" target="_blank" rel="noopener">Google Cloud Console</a>
+      </p>
+      <button id="manageApiKeyBtn" class="btn-secondary">
+        <i class="fas fa-key"></i> Manage API Key
+      </button>
+    </div>
+
+    <!-- User Agent Settings -->
+    <div class="setting-item" id="userAgentSection">
+      <h3><i class="fas fa-user-secret"></i> User Agent Override</h3>
+      
+      <div class="setting-info-box">
+        <strong>Current User Agent:</strong>
+        <code id="currentUserAgent" class="user-agent-display">Loading...</code>
+      </div>
+      
+      <div class="form-group">
+        <label for="userAgentPreset">
+          <i class="fas fa-list"></i> Quick Presets:
+        </label>
+        <select id="userAgentPreset" class="setting-select">
+          <option value="">-- Select Preset --</option>
+          <optgroup label="Desktop">
+            <option value="chromeWindows">Chrome (Windows)</option>
+          </optgroup>
+          <optgroup label="Mobile">
+            <option value="iPhoneSafari">iPhone Safari</option>
+            <option value="androidChrome">Android Chrome</option>
+          </optgroup>
+          <optgroup label="Smart TV">
+            <option value="androidTV">Android TV</option>
+            <option value="samsungTV">Samsung TV</option>
+          </optgroup>
+        </select>
+      </div>
+      
+      <div class="form-group">
+        <label for="customUserAgent">
+          <i class="fas fa-edit"></i> Custom User Agent:
+        </label>
+        <textarea 
+          id="customUserAgent" 
+          class="setting-textarea"
+          rows="3"
+          placeholder="Enter custom user agent string..."
+        ></textarea>
+      </div>
+      
+      <div class="button-group">
+        <button id="applyUserAgent" class="btn-primary">
+          <i class="fas fa-check"></i> Apply & Reload
+        </button>
+        <button id="resetUserAgent" class="btn-secondary">
+          <i class="fas fa-undo"></i> Reset to Default
+        </button>
+      </div>
+      
+      <div class="setting-warning">
+        <i class="fas fa-info-circle"></i> 
+        <span>Page will automatically reload after applying changes</span>
+      </div>
+    </div>
+
+    <!-- Storage Management -->
+    <div class="setting-item">
+      <h3><i class="fas fa-database"></i> Storage Management</h3>
+      
+      <div id="storageUsageDisplay" class="storage-display">
+        <div class="storage-loading">
+          <i class="fas fa-spinner fa-spin"></i> Calculating storage usage...
         </div>
       </div>
+      
+      <div class="button-group">
+        <button id="viewStorageDetails" class="btn-secondary">
+          <i class="fas fa-chart-bar"></i> View Details
+        </button>
+        <button id="exportDataBtn" class="btn-secondary">
+          <i class="fas fa-file-export"></i> Export Backup
+        </button>
+        <button id="importDataBtn" class="btn-secondary">
+          <i class="fas fa-file-import"></i> Import Backup
+        </button>
+      </div>
+      
+      <div class="setting-divider"></div>
+      
+      <h4><i class="fas fa-trash-alt"></i> Clear Data</h4>
+      <div class="button-group">
+        <button id="clearRecentBtn" class="btn-warning">
+          <i class="fas fa-history"></i> Clear Recently Watched
+        </button>
+        <button id="clearFavoritesBtn" class="btn-warning">
+          <i class="fas fa-star"></i> Clear All Favorites
+        </button>
+      </div>
+      
+      <input type="file" id="importFileInput" accept=".json" style="display: none;">
+    </div>
+
+    <!-- Cache Management -->
+    <div class="setting-item">
+      <h3><i class="fas fa-memory"></i> Cache Management</h3>
+      
+      <div id="cacheStats" class="cache-stats">
+        <div class="cache-loading">
+          <i class="fas fa-spinner fa-spin"></i> Loading cache statistics...
+        </div>
+      </div>
+      
+      <div class="button-group">
+        <button id="clearCacheBtn" class="btn-secondary">
+          <i class="fas fa-trash"></i> Clear All Cache
+        </button>
+        <button id="viewCacheStatsBtn" class="btn-secondary">
+          <i class="fas fa-chart-line"></i> Detailed Stats
+        </button>
+      </div>
+      
+      <p class="setting-description">
+        Clearing cache will remove temporary data but may slow down initial loading
+      </p>
+    </div>
+
+    <!-- App Info -->
+    <div class="setting-item">
+      <h3><i class="fas fa-info-circle"></i> Application Info</h3>
+      <div class="app-info">
+        <div class="info-row">
+          <span class="info-label">Version:</span>
+          <span class="info-value">1.0.0</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">Total Channels:</span>
+          <span class="info-value" id="totalChannelsCount">Loading...</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">Last Updated:</span>
+          <span class="info-value" id="lastUpdateDisplay">Never</span>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+      
+
       <!-- API Key Modal -->
       <!-- Replace your API Key Modal with this -->
       <div id="apiKeyModal" class="settings-modal" style="display: none;">
@@ -163,6 +321,11 @@
               <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener">
                 Google Cloud Console
               </a>
+            </p>
+
+            <p class="setting-description text-yellow-300">
+              ⚠️ Warning: This key is stored in your browser.
+              For security, create a YouTube API key restricted to your domain or app in Google Cloud Console.
             </p>
           </div>
 
