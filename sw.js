@@ -93,16 +93,15 @@ self.addEventListener('fetch', (event) => {
     event.respondWith(
       caches.open(DYNAMIC_CACHE).then(async cache => {
         const cached = await cache.match(req);
+        if (cached) return cached;
 
-        const fetchPromise = fetch(req).then(res => {
-          if (res.ok) {
-            cache.put(req, res.clone());
-          }
+        try {
+          const res = await fetch(req);
+          if (res && res.ok) cache.put(req, res.clone());
           return res;
-        }).catch(() => null);
-
-        // Return cached immediately, update in background
-        return cached || fetchPromise || caches.match('/placeholder.png');
+        } catch {
+          return caches.match('/placeholder.png') || OFFLINE_RESPONSE;
+        }
       })
     );
     return;
@@ -117,9 +116,9 @@ self.addEventListener('fetch', (event) => {
     url.pathname.endsWith('.m3u8')
   ) {
     event.respondWith(
-      fetch(req)
-        .then(res => res)
-        .catch(() => caches.match(req))
+      fetch(req).catch(async () => {
+        return (await caches.match(req)) || OFFLINE_RESPONSE;
+      })
     );
     return;
   }
@@ -129,10 +128,7 @@ self.addEventListener('fetch', (event) => {
   // ----------------------------------------
   event.respondWith(
     caches.match(req).then(cached => {
-      return (
-        cached ||
-        fetch(req).catch(() => caches.match('/index.html'))
-      );
+      return cached || fetch(req).catch(() => caches.match('/index.html') || OFFLINE_RESPONSE);
     })
   );
 });

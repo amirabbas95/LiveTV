@@ -406,17 +406,13 @@ class AppStateManager {
         overlayHide: null,
         promptTimeout: null,
         numberTimeout: null,
-        navigationDebounce: 180
+        navigationDebounce: null
       },
       settings: {
         isOnline: navigator.onLine,
         apiKey: '',
         isAutoUpdateEnabled: true,
-        updateIntervalHours: 8,
-        userAgent: {
-          current: navigator.userAgent,
-          isCustom: UserAgentManager.isCustom
-        }
+        updateIntervalHours: 8
       },
       uiCollections: {
         allChannelItems: []
@@ -843,7 +839,6 @@ function showErrorToUser(message) {
   document.body.appendChild(errorDiv);
   setTimeout(() => {
     errorDiv.style.opacity = '0';
-    navigateToNextChannel();
     setTimeout(() => errorDiv.remove(), 350);
   }, PLAYBACK_CONSTANTS.PLAYER_READY_TIMEOUT);
 }
@@ -3068,118 +3063,89 @@ function handleNumberKeyPress(e) {
  * Handle arrow keys and navigation keys
  */
 function handleNavigationKeys(event) {
-  const GRID_COLUMNS = getGridColumns();
-  const modal = document.getElementById("videoModal");
-  const isModalOpen = appState.get('ui.isModalOpen') || (modal && modal.style.display === "flex");
+  // ✅ Clear previous timeout first
+  const prevTimeout = appState.get('intervals.navigationDebounce');
+  if (prevTimeout) clearTimeout(prevTimeout);
 
-  const allChannelItems = appState.get('uiCollections.allChannelItems') || [];
-  const focusedElement = document.activeElement;
-  let currentFocusedIndex = allChannelItems.findIndex((item) => item === focusedElement);
+  const timeoutId = setTimeout(() => {
+    const GRID_COLUMNS = getGridColumns();
+    const modal = document.getElementById("videoModal");
+    const isModalOpen = appState.get('ui.isModalOpen') || (modal && modal.style.display === "flex");
 
-  // ===========================
-  // MODAL OPEN NAVIGATION
-  // ===========================
-  if (isModalOpen) {
-    // ✅ FIX: Only toggle fullscreen if modal was ALREADY open for a while
-    // This prevents immediate fullscreen on channel open
-    if (event.key === "Enter" || event.key === "OK") {
-      event.preventDefault();
-      event.stopPropagation();
+    const allChannelItems = appState.get('uiCollections.allChannelItems') || [];
+    const focusedElement = document.activeElement;
+    let currentFocusedIndex = allChannelItems.findIndex((item) => item === focusedElement);
 
-      // Check if modal has been open for at least 300ms
-      const modalOpenTime = appState.get('ui.modalOpenTimestamp') || 0;
-      const timeSinceOpen = Date.now() - modalOpenTime;
+    // ===========================
+    // MODAL OPEN NAVIGATION
+    // ===========================
+    if (isModalOpen) {
 
-      // Only trigger fullscreen if modal has been open for a bit
-      if (timeSinceOpen > 300) {
+      if (event.key === "Enter" || event.key === "OK") {
+        event.preventDefault();
+        event.stopPropagation();
         toggleFullscreen();
+        return;
+      }
+
+
+      if (
+        event.key === "Escape" ||
+        event.key === "ArrowLeft" ||
+        event.key === "Backspace" || // sometimes used as back
+        event.key === "BrowserBack" || // some remotes or browsers
+        event.key === "GoBack" // Android TV or custom remotes
+      ) {
+        event.preventDefault();
+        event.stopPropagation();
+        closeModal();
+        return;
+      }
+
+
+      if (event.key === "ArrowRight") {
+        event.preventDefault();
+        showChannelInfoOverlay();
+        return;
+      }
+
+      if (["ArrowUp", "ArrowDown", "PageUp", "PageDown"].includes(event.key)) {
+        event.preventDefault();
+
+        const lastFocusedElement = appState.get('ui.lastFocusedElement');
+        if (!lastFocusedElement || allChannelItems.length === 0) return;
+
+        const currentChannelIndex = allChannelItems.findIndex(
+          (item) => item === lastFocusedElement
+        );
+
+        if (currentChannelIndex === -1) return;
+
+        let newIndex = currentChannelIndex;
+        if (event.key === "ArrowDown" || event.key === "PageDown") {
+          newIndex = (currentChannelIndex + 1) % allChannelItems.length;
+        } else if (event.key === "ArrowUp" || event.key === "PageUp") {
+          newIndex = (currentChannelIndex - 1 + allChannelItems.length) % allChannelItems.length;
+        }
+
+        const newChannelCard = allChannelItems[newIndex];
+        const { url, name, image, description, number, isLive = "false", category = "Unknown" } = newChannelCard.dataset;
+
+        newChannelCard.scrollIntoView({ behavior: "smooth", block: "center" });
+        selectChannel(url, name, image, description, number, isLive);
+        saveRecentlyWatched({ name, url, image, description, number, isLive, category });
+
+        appState.set('ui.lastFocusedElement', newChannelCard);
       }
       return;
     }
 
-    if (
-      event.key === "Escape" ||
-      event.key === "ArrowLeft" ||
-      event.key === "Backspace" ||
-      event.key === "BrowserBack" ||
-      event.key === "GoBack"
-    ) {
-      event.preventDefault();
-      event.stopPropagation();
-      closeModal();
-      return;
-    }
-
-    if (event.key === "ArrowRight") {
-      event.preventDefault();
-      showChannelInfoOverlay();
-      return;
-    }
-
-    if (["ArrowUp", "ArrowDown", "PageUp", "PageDown"].includes(event.key)) {
+    // ===========================
+    // NORMAL NAVIGATION (GRID)
+    // ===========================
+    if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)) {
       event.preventDefault();
 
-      const lastFocusedElement = appState.get('ui.lastFocusedElement');
-      if (!lastFocusedElement || allChannelItems.length === 0) return;
-
-      const currentChannelIndex = allChannelItems.findIndex(
-        (item) => item === lastFocusedElement
-      );
-
-      if (currentChannelIndex === -1) return;
-
-      let newIndex = currentChannelIndex;
-      if (event.key === "ArrowDown" || event.key === "PageDown") {
-        newIndex = (currentChannelIndex + 1) % allChannelItems.length;
-      } else if (event.key === "ArrowUp" || event.key === "PageUp") {
-        newIndex = (currentChannelIndex - 1 + allChannelItems.length) % allChannelItems.length;
-      }
-
-      const newChannelCard = allChannelItems[newIndex];
-      const { url, name, image, description, number, isLive = "false", category = "Unknown" } = newChannelCard.dataset;
-
-      newChannelCard.scrollIntoView({ behavior: "smooth", block: "center" });
-      selectChannel(url, name, image, description, number, isLive);
-      saveRecentlyWatched({ name, url, image, description, number, isLive, category });
-
-      appState.set('ui.lastFocusedElement', newChannelCard);
-    }
-    return;
-  }
-
-  // ===========================
-  // ENTER KEY - SELECT CHANNEL
-  // ===========================
-  if (event.key === "Enter" && currentFocusedIndex !== -1) {
-    event.preventDefault();
-    event.stopPropagation();
-
-    const card = allChannelItems[currentFocusedIndex];
-    if (!card) return;
-
-    const { url, name, image, description, number, isLive = "false", category = "Unknown" } = card.dataset;
-
-    card.scrollIntoView({ behavior: "smooth", block: "center" });
-
-    // ✅ Set timestamp when modal opens to prevent immediate fullscreen
-    appState.set('ui.modalOpenTimestamp', Date.now());
-
-    selectChannel(url, name, image, description, number, isLive);
-    saveRecentlyWatched({ name, url, image, description, number, isLive, category });
-    return;
-  }
-
-  // ===========================
-  // ARROW NAVIGATION (WITH DEBOUNCE)
-  // ===========================
-  if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)) {
-    event.preventDefault();
-
-    // ✅ Clear previous debounce timeout
-    const prevTimeout = appState.get('intervals.navigationDebounce');
-    if (prevTimeout) clearTimeout(prevTimeout);
-
-    const timeoutId = setTimeout(() => {
       if (allChannelItems.length === 0) return;
 
       // If nothing focused, focus first item
@@ -3208,48 +3174,65 @@ function handleNavigationKeys(event) {
         newCard.scrollIntoView({ behavior: "smooth", block: "center" });
         appState.set('ui.focusedIndex', newIndex);
       }
-
-      appState.setTimeoutRef('navigationDebounce', null);
-    }, 50);
-
-    appState.setTimeoutRef('navigationDebounce', timeoutId);
-    return;
-  }
-
-  // ===========================
-  // PAGE/HOME/END NAVIGATION
-  // ===========================
-  if (["PageUp", "PageDown", "Home", "End"].includes(event.key)) {
-    event.preventDefault();
-
-    if (allChannelItems.length === 0) return;
-
-    if (currentFocusedIndex === -1) {
-      allChannelItems[0].focus();
-      allChannelItems[0].scrollIntoView({ behavior: "smooth", block: "center" });
-      appState.set('ui.focusedIndex', 0);
-      return;
     }
 
-    let newIndex = currentFocusedIndex;
+    // ===========================
+    // PAGE/HOME/END NAVIGATION
+    // ===========================
+    else if (["PageUp", "PageDown", "Home", "End"].includes(event.key)) {
+      event.preventDefault();
 
-    if (event.key === "PageUp") {
-      newIndex = Math.max(currentFocusedIndex - GRID_COLUMNS * 3, 0);
-    } else if (event.key === "PageDown") {
-      newIndex = Math.min(currentFocusedIndex + GRID_COLUMNS * 3, allChannelItems.length - 1);
-    } else if (event.key === "Home") {
-      newIndex = 0;
-    } else if (event.key === "End") {
-      newIndex = allChannelItems.length - 1;
+      if (allChannelItems.length === 0) return;
+
+      if (currentFocusedIndex === -1) {
+        allChannelItems[0].focus();
+        allChannelItems[0].scrollIntoView({ behavior: "smooth", block: "center" });
+        appState.set('ui.focusedIndex', 0);
+        return;
+      }
+
+      let newIndex = currentFocusedIndex;
+
+      if (event.key === "PageUp") {
+        newIndex = Math.max(currentFocusedIndex - GRID_COLUMNS * 3, 0);
+      } else if (event.key === "PageDown") {
+        newIndex = Math.min(currentFocusedIndex + GRID_COLUMNS * 3, allChannelItems.length - 1);
+      } else if (event.key === "Home") {
+        newIndex = 0;
+      } else if (event.key === "End") {
+        newIndex = allChannelItems.length - 1;
+      }
+
+      const newCard = allChannelItems[newIndex];
+      if (newCard) {
+        newCard.focus();
+        newCard.scrollIntoView({ behavior: "smooth", block: "center" });
+        appState.set('ui.focusedIndex', newIndex);
+      }
     }
 
-    const newCard = allChannelItems[newIndex];
-    if (newCard) {
-      newCard.focus();
-      newCard.scrollIntoView({ behavior: "smooth", block: "center" });
-      appState.set('ui.focusedIndex', newIndex);
+    // ===========================
+    // ENTER KEY - SELECT CHANNEL
+    // ===========================
+    else if (event.key === "Enter" && currentFocusedIndex !== -1) {
+      event.preventDefault();
+
+      const card = allChannelItems[currentFocusedIndex];
+      if (!card) return;
+
+      const { url, name, image, description, number, isLive = "false", category = "Unknown" } = card.dataset;
+
+      card.scrollIntoView({ behavior: "smooth", block: "center" });
+      selectChannel(url, name, image, description, number, isLive);
+      saveRecentlyWatched({ name, url, image, description, number, isLive, category });
     }
-  }
+
+    // ✅ Clear the timeout reference after execution
+    appState.setTimeoutRef('navigationDebounce', null);
+  }, 50);
+
+
+  appState.setTimeoutRef('navigationDebounce', timeoutId);
 }
 
 // ============================================
@@ -3728,7 +3711,6 @@ function showSettingsModal() {
       // Update all dynamic displays
   updateUserAgentDisplay();
   updateStorageDisplay();
-  updateCacheStatsDisplay();
   updateTotalChannelsDisplay();
   updateLastUpdateDisplay();
 
@@ -3845,7 +3827,6 @@ function setupSettingsModal() {
       // Update dynamic displays when modal opens
       updateUserAgentDisplay();
       updateStorageDisplay();
-      updateCacheStatsDisplay();
       updateTotalChannelsDisplay();
       updateLastUpdateDisplay();
     });
@@ -3905,8 +3886,6 @@ function setupSettingsModal() {
   // --- STORAGE MANAGEMENT BUTTONS ---
   setupStorageControls();
 
-  // --- CACHE MANAGEMENT BUTTONS ---
-  setupCacheControls();
 
   // --- ESC KEY CLOSES MODAL ---
   document.addEventListener("keydown", (e) => {
@@ -5246,49 +5225,6 @@ function setupStorageControls() {
 }
 
 
-/**
- * Add cache management to settings
- */
-function setupCacheControls() {
-  // Clear Cache Button
-  const clearCacheBtn = document.getElementById('clearCacheBtn');
-  if (clearCacheBtn) {
-    clearCacheBtn.addEventListener('click', () => {
-      try {
-        rssCache.clear();
-        liveCache.clear();
-        showNotification('✅ Cache cleared successfully', 'success');
-        updateCacheStatsDisplay();
-      } catch (error) {
-        console.error('Error clearing cache:', error);
-        showNotification('❌ Failed to clear cache', 'error');
-      }
-    });
-  }
-
-  // View Cache Stats Button
-  const viewCacheStatsBtn = document.getElementById('viewCacheStatsBtn');
-  if (viewCacheStatsBtn) {
-    viewCacheStatsBtn.addEventListener('click', () => {
-      try {
-        const rssStats = rssCache.getStats();
-        const liveStats = liveCache.getStats();
-
-        console.group('📊 Cache Statistics');
-        console.log('RSS Cache:', rssStats);
-        console.log('Live Cache:', liveStats);
-        console.groupEnd();
-
-        showNotification('Check console for detailed cache statistics', 'info');
-      } catch (error) {
-        console.error('Error getting cache stats:', error);
-        showNotification('❌ Failed to get cache stats', 'error');
-      }
-    });
-  }
-}
-
-
 // ============================================
 // UPDATE TOTAL CHANNELS DISPLAY
 // Add this new function
@@ -5342,46 +5278,6 @@ function updateStorageStatsDisplay() {
       </div>
     </div>
   `;
-}
-
-
-/**
- * Update cache stats display in settings
- */
-function updateCacheStatsDisplay() {
-  const statsEl = document.getElementById('cacheStats');
-  if (!statsEl) return;
-
-  try {
-    const rssStats = rssCache.getStats();
-    const liveStats = liveCache.getStats();
-
-    statsEl.innerHTML = `
-      <div style="display: grid; gap: 12px;">
-        <div style="background: rgba(33, 150, 243, 0.1); padding: 12px; border-radius: 8px; border: 1px solid rgba(33, 150, 243, 0.3);">
-          <div style="display: flex; justify-content: space-between; align-items: center;">
-            <strong>📡 RSS Cache</strong>
-            <span style="color: #2196F3;">${rssStats.size}/${rssStats.maxSize}</span>
-          </div>
-          <div style="font-size: 13px; color: #aaa; margin-top: 6px;">
-            Hit Rate: <strong style="color: #4CAF50;">${rssStats.hitRate}</strong>
-          </div>
-        </div>
-        <div style="background: rgba(244, 67, 54, 0.1); padding: 12px; border-radius: 8px; border: 1px solid rgba(244, 67, 54, 0.3);">
-          <div style="display: flex; justify-content: space-between; align-items: center;">
-            <strong>📺 Live Cache</strong>
-            <span style="color: #f44336;">${liveStats.size}/${liveStats.maxSize}</span>
-          </div>
-          <div style="font-size: 13px; color: #aaa; margin-top: 6px;">
-            Hit Rate: <strong style="color: #4CAF50;">${liveStats.hitRate}</strong>
-          </div>
-        </div>
-      </div>
-    `;
-  } catch (error) {
-    console.error('Error updating cache stats:', error);
-    statsEl.innerHTML = '<div class="cache-loading">❌ Error loading cache statistics</div>';
-  }
 }
 
 
