@@ -18,7 +18,7 @@
       configurable: true
     });
 
-    console.log('✅ User Agent override initialized');
+    //console.log('✅ User Agent override initialized');
   } catch (error) {
     console.error('❌ Failed to override User Agent:', error);
   }
@@ -348,11 +348,14 @@ const LS_KEYS = {
   LIVE: "liveChannelsData",
   FEEDS: "rssFeedsData",
   WATCH_TIME: "watchTimePerChannel",
-  YT_QUOTA: "__iptv_yt_quota"
+  YT_QUOTA: "__iptv_yt_quota",
+  RSS_FAILED: "rssFailedFeeds"
 };
 
 const API_KEY_STORAGE_KEY = "youtube_api_key";
 const CACHE_KEY = "lastChannelsUpdate";
+
+const MAX_MB = 10; // total quota in MB
 
 const PLAYBACK_CONSTANTS = {
   MAX_ELEMENT_WAIT_TIME: 2000,
@@ -585,6 +588,8 @@ const appState = new AppStateManager();
 
 
 
+
+
 // ============================================
 // Utilities
 // ============================================
@@ -637,7 +642,7 @@ function getActualStorageSize(str) {
 
 
 function getAvailableSpace() {
-  const MAX_BYTES = 8 * 1024 * 1024; // 5 MB quota
+  const MAX_BYTES = MAX_MB * 1024 * 1024; 
   const usage = getStorageUsage();   // { totalBytes, totalKB, totalMB, itemCount, items }
 
   if (!usage || typeof usage.totalBytes !== "number") {
@@ -910,12 +915,12 @@ function toggleFavoriteStatus(channelData) {
 
 
 
-function clearAllFavorites() { 
-    if (confirm('Are you sure you want to clear ALL favorites? This cannot be undone!')) {
-  const ok = writeArray(LS_KEYS.FAVORITES, []); 
-  if (ok) dispatchStorageUpdate('favorites'); 
-  return ok; 
-}
+function clearAllFavorites() {
+  if (confirm('Are you sure you want to clear ALL favorites? This cannot be undone!')) {
+    const ok = writeArray(LS_KEYS.FAVORITES, []);
+    if (ok) dispatchStorageUpdate('favorites');
+    return ok;
+  }
 }
 
 /**
@@ -988,10 +993,10 @@ function removeFromRecentlyWatched(url) {
  */
 function clearRecentlyWatched() {
   if (confirm('Are you sure you want to clear your recently watched history?')) {
-  const ok = writeArray(LS_KEYS.RECENT, []);
-  if (ok) dispatchStorageUpdate('recent');
-  return ok;
-}
+    const ok = writeArray(LS_KEYS.RECENT, []);
+    if (ok) dispatchStorageUpdate('recent');
+    return ok;
+  }
 }
 
 function saveRecentlyWatched(channel) {
@@ -3239,30 +3244,178 @@ function handleNavigationKeys(event) {
 // YOUTUBE API & RSS FEEDS
 // ============================================
 
+
+
+class RetryManager {
+  constructor(storageKey, options = {}) {
+    this.key = storageKey;
+    this.maxRetries = options.maxRetries ?? 5;
+    this.baseDelay = options.baseDelay ?? 60_000; // 1 minute
+  }
+
+  _load() {
+    const raw = localStorage.getItem(this.key);
+    // Using the fallback parameter of your safeJSONParse utility
+    const parsed = safeJSONParse(raw, {});
+
+    // Final safety check to ensure 'parsed' is never null
+    return parsed || {};
+  }
+
+  _save(data) {
+    localStorage.setItem(this.key, JSON.stringify(data));
+  }
+
+  recordFailure(id, error) {
+    const data = this._load();
+    const entry = data[id] || { retries: 0 };
+
+    entry.retries++;
+    entry.lastError = error || "Unknown error";
+    entry.lastAttempt = Date.now();
+    entry.nextRetry =
+      Date.now() + this.baseDelay * Math.pow(2, entry.retries - 1);
+
+    data[id] = entry;
+    this._save(data);
+  }
+
+  recordSuccess(id) {
+    const data = this._load();
+    if (data[id]) {
+      delete data[id];
+      this._save(data);
+    }
+  }
+
+  shouldRetry(id) {
+    const data = this._load();
+    const entry = data[id];
+    if (!entry) return false;
+    if (entry.retries >= this.maxRetries) return false;
+    return Date.now() >= entry.nextRetry;
+  }
+
+  hasPending() {
+    // ✅ Fixed: Check if there are ANY entries below max retries
+    // Don't check nextRetry time - that's for hasReadyRetries()
+    const data = this._load();
+    return Object.values(data).some(e => e.retries < this.maxRetries);
+  }
+
+  hasReadyRetries() {
+    // ✅ New: Check if there are entries ready to retry NOW
+    const data = this._load();
+    return Object.values(data).some(
+      e => e.retries < this.maxRetries && Date.now() >= e.nextRetry
+    );
+  }
+
+  getPendingIds() {
+    const data = this._load();
+    return Object.keys(data).filter(id => this.shouldRetry(id));
+  }
+
+  isBlocked(id) {
+    const data = this._load();
+    const entry = data[id];
+    if (!entry) return false;
+    // If we hit max retries or we are still waiting for the nextRetry timestamp
+    return entry.retries >= this.maxRetries || Date.now() < entry.nextRetry;
+  }
+
+  // ✅ New: Get stats for monitoring
+  getStats() {
+    const data = this._load();
+    const entries = Object.values(data);
+    const blocked = entries.filter(e => e.retries >= this.maxRetries).length;
+    const pending = entries.filter(e => e.retries < this.maxRetries && Date.now() < e.nextRetry).length;
+    const ready = entries.filter(e => e.retries < this.maxRetries && Date.now() >= e.nextRetry).length;
+    
+    return { 
+      total: entries.length, 
+      blocked, 
+      pending,
+      ready
+    };
+  }
+
+  // ✅ New: Cleanup old entries
+  cleanup(maxAge = 24 * 60 * 60 * 1000) {
+    const data = this._load();
+    const now = Date.now();
+    const cleaned = {};
+    let removed = 0;
+    
+    for (const [id, entry] of Object.entries(data)) {
+      // Keep entries that are either:
+      // 1. Still retrying (below max retries)
+      // 2. Failed recently (within maxAge)
+      if (entry.retries < this.maxRetries || (now - entry.lastAttempt) < maxAge) {
+        cleaned[id] = entry;
+      } else {
+        removed++;
+      }
+    }
+    
+    if (removed > 0) {
+      this._save(cleaned);
+      console.log(`🧹 RetryManager cleanup: removed ${removed} old entries`);
+    }
+    
+    return removed;
+  }
+}
+
+
 function extractChannelId(feedUrl) {
   const match = feedUrl.match(/channel_id=([^&]+)/);
   return match ? match[1] : null;
 }
 
 function youtubeItemToChannel(videoId, title, feed) {
+  // ✅ Guard against null/undefined feed
+  if (!feed || typeof feed !== 'object') {
+    console.error('❌ youtubeItemToChannel: Invalid feed object', feed);
+    return {
+      url: `https://www.youtube.com/watch?v=${videoId}`,
+      name: 'Unknown Channel',
+      image: '',
+      category: '> Person <',
+      description: title || 'No description',
+    };
+  }
+  
   return {
     url: `https://www.youtube.com/watch?v=${videoId}`,
-    name: feed.name,
-    image: feed.image,
+    name: feed.name || 'Unknown Channel',
+    image: feed.image || '',
     category: feed.category || "> Person <",
-    description: title,
+    description: title || 'No description',
   };
 }
 
 function updateOrAddChannel(channelObj) {
+  // ✅ Guard against null/undefined channelObj
+  if (!channelObj || typeof channelObj !== 'object') {
+    console.error('❌ updateOrAddChannel: Invalid channel object', channelObj);
+    return;
+  }
+  
   const channels = appState.get('channels.all') || [];
-  const existingIndex = channels.findIndex((ch) => ch.name === channelObj.name);
+  const existingIndex = channels.findIndex((ch) => ch && ch.name === channelObj.name);
 
   if (existingIndex !== -1) {
-    channels[existingIndex] = {
-      ...channels[existingIndex],
-      ...channelObj,
-    };
+    // ✅ Additional safety check before spreading
+    const existing = channels[existingIndex];
+    if (existing && typeof existing === 'object') {
+      channels[existingIndex] = {
+        ...existing,
+        ...channelObj,
+      };
+    } else {
+      channels[existingIndex] = channelObj;
+    }
   } else {
     channels.push(channelObj);
   }
@@ -3272,18 +3425,36 @@ function updateOrAddChannel(channelObj) {
 }
 
 function processRSSData(data, feed) {
-  if (!data.items || data.items.length === 0) return;
-  let latestValid = data.items.find((item) => !item.link.includes("/shorts/"));
+  // ✅ Guard against null/undefined feed
+  if (!feed || typeof feed !== 'object') {
+    console.error('❌ processRSSData: Invalid feed object', feed);
+    return;
+  }
+  
+  if (!data || !data.items || data.items.length === 0) return;
+  
+  let latestValid = data.items.find((item) => item && item.link && !item.link.includes("/shorts/"));
   if (!latestValid) return;
+  
   const videoId = extractYouTubeID(latestValid.link);
   if (!videoId) return;
+  
   const channelObj = youtubeItemToChannel(videoId, latestValid.title, feed);
   updateOrAddChannel(channelObj);
-  console.log(`✅ ${feed.name} Successfully updated`);
+  console.log(`✅ ${feed.name || 'Unknown'} Successfully updated`);
 }
 
+
+const rssRetryManager = new RetryManager("rss_retry_queue", {
+  maxRetries: 3,
+  baseDelay: 2 * 60 * 1000 // 2 minutes
+});
+
 /**
- * Enhanced cache usage in RSS feed loading
+ * RSS Loader using Generic RetryManager
+ * - Retries only failed feeds
+ * - Uses exponential backoff
+ * - No full refresh loops
  */
 async function loadYouTubeLatestFeeds({ force = false } = {}) {
   return deduplicateRequest('loadYouTubeLatestFeeds', async ({ signal } = {}) => {
@@ -3302,39 +3473,78 @@ async function loadYouTubeLatestFeeds({ force = false } = {}) {
       return;
     }
 
-    if (!feeds || feeds.length === 0) return;
+    if (!Array.isArray(feeds) || feeds.length === 0) return;
+
+    // --------------------------------
+    // Decide which feeds to process
+    // --------------------------------
+
+    let feedsToProcess = feeds;
+
+    if (!force && rssRetryManager.hasReadyRetries()) {
+      // ✅ Use Set for O(1) lookup instead of O(n)
+      const retryIdsSet = new Set(rssRetryManager.getPendingIds());
+      feedsToProcess = feeds.filter(f => retryIdsSet.has(f.url));
+
+      console.log(
+        `🔁 Retrying → ${feedsToProcess.length} failed RSS feeds (${retryIdsSet.size} ready for retry)`
+      );
+    }
+
 
     let successful = 0;
     let failed = 0;
     let cacheHits = 0;
 
-    for (const [index, feed] of feeds.entries()) {
+    for (const [index, feed] of feedsToProcess.entries()) {
+      // ✅ Skip null/undefined feeds
+      if (!feed || typeof feed !== 'object') {
+        console.warn(`⚠️ Skipping invalid feed at index ${index}:`, feed);
+        failed++;
+        continue;
+      }
+      
       try {
         // small spacing to reduce parallel load
         if (index > 0) await new Promise(r => setTimeout(r, 200));
 
         const cacheKey = `rss_${feed.url}`;
 
-        // LRU cache hit
+        // -----------------------------
+        // Cache hit
+        // -----------------------------
+
         if (rssCache.has(cacheKey)) {
           const cached = rssCache.get(cacheKey);
-          console.log(`📦 Cache hit for ${feed.name}`);
-          cacheHits++;
+          console.log(`📦 Cache hit for ${feed.name || 'Unknown'}`);
           processRSSData(cached, feed);
+          cacheHits++;
           successful++;
+          
+          // ✅ Only clear retry state if it actually exists
+          const data = rssRetryManager._load();
+          if (data[feed.url]) {
+            rssRetryManager.recordSuccess(feed.url);
+          }
           continue;
         }
 
-        // Fetch via rss2json proxy
+
+        // -----------------------------
+        // Fetch RSS
+        // -----------------------------
         const feedUrl = "https://api.rss2json.com/v1/api.json?rss_url=" + encodeURIComponent(feed.url);
 
-        const res = await fetchWithTimeout(feedUrl, { timeout: 12000, json: true });
+        const res = await fetchWithTimeout(feedUrl, {
+          timeout: 15000,
+          signal
+        });
 
-        if (!res.ok) {
-          throw new Error(`HTTP ${res.status}`);
+        if (!res || res.status >= 400) {
+          throw new Error(`HTTP ${res?.status || "fetch failed"}`);
         }
 
-        const data = await res.json();
+        const data = res.json ? await res.json() : res;
 
         // store in cache
         rssCache.set(cacheKey, data);
@@ -3343,172 +3553,293 @@ async function loadYouTubeLatestFeeds({ force = false } = {}) {
         processRSSData(data, feed);
         successful++;
 
+        rssRetryManager.recordSuccess(feed.url);
+
+        console.log(`✅ RSS updated: ${feed.name}`);
+
+
       } catch (e) {
         failed++;
+
+        rssRetryManager.recordFailure(
+          feed.url,
+          e?.message || "RSS fetch error"
+        );
+
         console.log(`❌ Error loading RSS feed for ${feed.name}: ${e && e.message ? e.message : e}`);
       }
     }
 
-    // prune and log
+
+    // -------------------------------
+    // Cache & stats
+    // -------------------------------
     try { rssCache.pruneExpired(); } catch (e) { /* ignore */ }
-    console.log(`RSS update: ${successful} successful, ${failed} failed, ${cacheHits} cache hits`);
-    console.log('📊 RSS Cache Stats:', rssCache.getStats());
+    console.log(
+      `RSS update summary → success: ${successful}, failed: ${failed}, cache hits: ${cacheHits}`
+    );
+    
+    // ✅ Log retry manager stats
+    console.log('🔄 RSS Retry Manager Stats:', rssRetryManager.getStats());
+
+    // Update global timestamp ONLY when fully clean
+    if (!rssRetryManager.hasPending()) {
+      localStorage.setItem(CACHE_KEY, Date.now().toString());
+    } else {
+      console.log("⚠️ RSS retries pending — global cache timestamp unchanged");
+    }
 
     return { successful, failed, cacheHits };
-  }, { timeout: 20000, ttl: 2 * 60 * 1000, force });
+  },
+    {
+      timeout: 20_000,
+      ttl: 2 * 60 * 1000,
+      force
+    }
+  );
+
 }
 
 /**
  * Enhanced cache usage in live feed loading
  */
-async function loadYouTubeLiveFeeds() {
-  return deduplicateRequest('loadYouTubeLiveFeeds', async () => {
-    // Ensure appState has API key loaded
-    if (!appState.get('settings.apiKey')) {
-      appState.set('settings.apiKey', getStoredAPIKey());
-    }
 
-    if (!appState.get('settings.apiKey') || !hasValidAPIKey()) {
-      console.log("🔒 No valid API key found, prompting user...");
-      showAPIKeyModal();
-      return; // caller expects no exception for missing API key
-    }
+const liveRetryManager = new RetryManager("live_retry_queue", {
+  maxRetries: 3,
+  baseDelay: 90_000 // 1.5 minutes
+});
 
-    const storedLive = localStorage.getItem(LS_KEYS.LIVE);
-    if (!storedLive) {
-      showNotification("No live channels found in localStorage.", "warning");
-      return;
-    }
+async function loadYouTubeLiveFeeds({ force = false } = {}) {
+  return deduplicateRequest(
+    'loadYouTubeLiveFeeds',
+    async ({ signal } = {}) => {
 
-    let live = [];
-    try {
-      live = JSON.parse(storedLive);
-    } catch (error) {
-      console.error("Failed to parse live channels:", error);
-      showNotification("Error loading live channels data.", "error");
-      return;
-    }
+      // ----------------------------------
+      // API key handling (UNCHANGED)
+      // ----------------------------------
+      if (!appState.get('settings.apiKey')) {
+        appState.set('settings.apiKey', getStoredAPIKey());
+      }
 
-    if (!live || live.length === 0) return;
+      if (!appState.get('settings.apiKey') || !hasValidAPIKey()) {
+        console.log("🔒 No valid API key found, prompting user...");
+        showAPIKeyModal();
+        return;
+      }
 
-    let apiQuotaExceeded = false;
-    let successfulUpdates = 0;
-    let failedUpdates = 0;
-    let cacheHits = 0;
+      const storedLive = localStorage.getItem(LS_KEYS.LIVE);
+      if (!storedLive) {
+        showNotification("No live channels found in localStorage.", "warning");
+        return;
+      }
 
-    for (const [index, feed] of live.entries()) {
+
+      let live = [];
       try {
-        // small spacing to avoid rapid quota hits
-        if (index > 0) await new Promise(r => setTimeout(r, 200));
+        live = JSON.parse(storedLive);
+      } catch (error) {
+        console.error("Failed to parse live channels:", error);
+        showNotification("Error loading live channels data.", "error");
+        return;
+      }
 
-        if (apiQuotaExceeded) {
-          console.log(`⏸️ Skipping ${feed.name} - API quota exceeded`);
+      if (!Array.isArray(live) || live.length === 0) return;
+
+      let apiQuotaExceeded = false;
+      let successfulUpdates = 0;
+      let failedUpdates = 0;
+      let cacheHits = 0;
+
+      // ----------------------------------
+      // Decide which feeds to process
+      // ----------------------------------
+      let feedsToProcess = live;
+
+      if (!force && liveRetryManager.hasReadyRetries()) {
+        // ✅ Use Set for O(1) lookup instead of O(n)
+        const retryIdsSet = new Set(liveRetryManager.getPendingIds());
+        feedsToProcess = live.filter(feed => {
+          const id = extractChannelId(feed.url);
+          return id && retryIdsSet.has(id);
+        });
+
+        console.log(
+          `🔁 Retrying → ${feedsToProcess.length} failed live channel(s) (${retryIdsSet.size} ready)`
+        );
+      }
+
+
+
+      for (const [index, feed] of feedsToProcess.entries()) {
+        // ✅ Skip null/undefined feeds
+        if (!feed || typeof feed !== 'object') {
+          console.warn(`⚠️ Skipping invalid live feed at index ${index}:`, feed);
           failedUpdates++;
           continue;
         }
+        
+        try {
+          // small spacing to avoid rapid quota hits
+          if (index > 0) await new Promise(r => setTimeout(r, 300));
 
-        const channelId = extractChannelId(feed.url);
-        if (!channelId) {
-          console.warn("No channelId found in feed:", feed.url);
-          continue;
-        }
-
-        const cacheKey = `live_${channelId}`;
-
-        // Use LRU cache if present
-        if (liveCache.has(cacheKey)) {
-          const cached = liveCache.get(cacheKey);
-          console.log(`📦 Cache hit for ${feed.name}`);
-          cacheHits++;
-          if (cached && cached.videoId) {
-            const channelObj = youtubeItemToChannel(cached.videoId, cached.title, feed);
-            updateOrAddChannel(channelObj);
-            successfulUpdates++;
+          if (apiQuotaExceeded) {
+            // ✅ Don't count as failure - we're just skipping due to quota
+            console.log(`⏸️ Skipping ${feed.name || 'Unknown'} - API quota exceeded (not retrying)`);
+            continue; // Don't increment failedUpdates or record in retry manager
           }
-          continue;
-        }
 
-        // Build API url
-        const apiUrl =
-          `https://www.googleapis.com/youtube/v3/search?` +
-          `part=snippet&channelId=${encodeURIComponent(channelId)}&eventType=live&` +
-          `type=video&order=date&maxResults=1&key=${encodeURIComponent(appState.get('settings.apiKey'))}`;
-
-        const res = await fetch(apiUrl);
-
-        if (!res.ok) {
-          if (res.status === 403) {
-            apiQuotaExceeded = true;
-            failedUpdates++;
+          const channelId = extractChannelId(feed.url);
+          if (!channelId) {
+            console.warn("No channelId found in feed:", feed.url);
             continue;
           }
-          throw new Error(`API returned status ${res.status}`);
-        }
 
-        const data = await res.json();
+          const cacheKey = `live_${channelId}`;
 
-        if (data.error) {
-          if (data.error.code === 403) {
-            apiQuotaExceeded = true;
-            failedUpdates++;
+          // ----------------------------------
+          // Cache hit (UNCHANGED semantics)
+          // ----------------------------------
+          if (liveCache.has(cacheKey)) {
+            const cached = liveCache.get(cacheKey);
+            console.log(`📦 Cache hit for ${feed.name || 'Unknown'}`);
+            cacheHits++;
+            if (cached && cached.videoId) {
+              const channelObj = youtubeItemToChannel(cached.videoId, cached.title, feed);
+              updateOrAddChannel(channelObj);
+              successfulUpdates++;
+            }
+            
+            // ✅ Only clear retry state if it exists
+            const data = liveRetryManager._load();
+            if (data[channelId]) {
+              liveRetryManager.recordSuccess(channelId);
+            }
             continue;
           }
-          throw new Error(`YouTube API Error: ${data.error.message}`);
-        }
 
-        let cacheData = null;
+          // ----------------------------------
+          // Build API URL (UNCHANGED)
+          // ----------------------------------
+          const apiUrl =
+            `https://www.googleapis.com/youtube/v3/search?` +
+            `part=snippet&channelId=${encodeURIComponent(channelId)}&eventType=live&` +
+            `type=video&order=date&maxResults=1&key=${encodeURIComponent(appState.get('settings.apiKey'))}`;
 
-        if (data.items && data.items.length > 0) {
-          const item = data.items[0];
-          const videoId = item.id && item.id.videoId ? item.id.videoId : null;
-          const title = item.snippet && item.snippet.title ? item.snippet.title : '';
 
-          if (videoId) {
-            cacheData = { videoId, title };
-            const channelObj = youtubeItemToChannel(videoId, title, feed);
-            updateOrAddChannel(channelObj);
-            successfulUpdates++;
-            console.log(`✅ ${feed.name} Successfully updated`);
+          const res = await fetchWithTimeout(apiUrl, {
+            timeout: 15000,
+            signal
+          });
+
+          if (!res.ok) {
+            if (res.status === 403) {
+              apiQuotaExceeded = true;
+              failedUpdates++;
+              liveRetryManager.recordFailure(channelId, "Quota exceeded");
+              continue;
+            }
+            throw new Error(`API returned status ${res.status}`);
+          }
+
+          const data = await res.json();
+
+          if (data.error) {
+            if (data.error.code === 403) {
+              apiQuotaExceeded = true;
+              failedUpdates++;
+              liveRetryManager.recordFailure(channelId, "Quota exceeded");
+              continue;
+            }
+            throw new Error(`YouTube API Error: ${data.error.message}`);
+          }
+
+          let cacheData = null;
+
+          // ----------------------------------
+          // Process response (UNCHANGED)
+          // ----------------------------------
+
+          if (data.items && data.items.length > 0) {
+            const item = data.items[0];
+            const videoId = item?.id?.videoId || null;
+            const title = item?.snippet?.title || '';
+
+            if (videoId) {
+              cacheData = { videoId, title };
+              const channelObj = youtubeItemToChannel(videoId, title, feed);
+              updateOrAddChannel(channelObj);
+              successfulUpdates++;
+              console.log(`✅ ${feed.name} Successfully updated`);
+            } else {
+              // No live videoId found
+              console.log(`ℹ️ No live stream id for ${feed.name}`);
+            }
           } else {
-            // No live videoId found
-            console.log(`ℹ️ No live stream id for ${feed.name}`);
-            cacheData = null;
+            // No items → not live
+            console.log(`ℹ️ No live stream found for ${feed.name}`);
           }
-        } else {
-          // No items → not live
-          console.log(`ℹ️ No live stream found for ${feed.name}`);
-          cacheData = null;
-        }
 
-        // Store in LRU cache (may be null for "not live" to avoid refetch spike)
-        liveCache.set(cacheKey, cacheData);
+          // Store in LRU cache (may be null for "not live" to avoid refetch spike)
+          liveCache.set(cacheKey, cacheData);
+          // Success clears retry state
+          liveRetryManager.recordSuccess(channelId);
+        } catch (e) {
+          failedUpdates++;
+          if (
+            typeof e?.message === 'string' &&
+            (e.message.includes("quota") || e.message.includes("403"))
+          ) {
+            apiQuotaExceeded = true;
+          }
 
-      } catch (e) {
-        failedUpdates++;
-        if (typeof e.message === 'string' && (e.message.includes("quota") || e.message.includes("403"))) {
-          apiQuotaExceeded = true;
+          const channelId = extractChannelId(feed.url);
+          if (channelId) {
+            liveRetryManager.recordFailure(
+              channelId,
+              e?.message || "Live fetch error"
+            );
+
+          }
+          console.log(
+            `❌ Error loading live feed for ${feed.name}:`,
+            e?.message || e
+          );
         }
-        console.log(`❌ Error loading live feed for ${feed.name}: ${e && e.message ? e.message : e}`);
       }
-    }
 
-    // cleanup & stats
-    try { liveCache.pruneExpired(); } catch (e) { /* ignore */ }
-    console.log(`Live streams update: ${successfulUpdates} successful, ${failedUpdates} failed, ${cacheHits} cache hits`);
-    console.log('📊 Live Cache Stats:', liveCache.getStats());
 
-    if (successfulUpdates === 0 && failedUpdates > 0 && apiQuotaExceeded) {
-      // Surface quota error to caller (optional)
-      throw new Error("YouTube API quota exceeded - no live streams updated");
-    }
+      // ----------------------------------
+      // Cleanup & stats (UNCHANGED)
+      // ----------------------------------
+      try { liveCache.pruneExpired(); } catch { }
+      console.log(
+        `Live streams update: ${successfulUpdates} successful, ` +
+        `${failedUpdates} failed, ${cacheHits} cache hits`
+      );
+      console.log('📊 Live Cache Stats:', liveCache.getStats());
+      
+      // ✅ Log retry manager stats
+      console.log('🔄 Live Retry Manager Stats:', liveRetryManager.getStats());
 
-    // Return summary for callers/tests
-    return {
-      success: successfulUpdates,
-      failed: failedUpdates,
-      cacheHits
-    };
-  }, { ttl: 30_000, timeout: 15000, force: false });
+      if (
+        successfulUpdates === 0 &&
+        failedUpdates > 0 &&
+        apiQuotaExceeded
+      ) {
+        throw new Error(
+          "YouTube API quota exceeded - no live streams updated"
+        );
+      }
+
+      // Return summary for callers/tests
+      return {
+        success: successfulUpdates,
+        failed: failedUpdates,
+        cacheHits
+      };
+    },
+    { ttl: 30_000, timeout: 15_000, force }
+  );
 }
 
 
@@ -3557,6 +3888,8 @@ async function loadAllChannelFeeds() {
     return false;
   }
 }
+
+
 
 
 // ============================================
@@ -3639,11 +3972,21 @@ function startChannelAutoUpdate() {
     const lastUpdateDate = new Date(initialLastUpdate).toLocaleString();
     const nextExpiry = initialLastUpdate + cacheExpiryMs;
     const nextUpdateDate = new Date(nextExpiry).toLocaleString();
+
     const timeRemaining = nextExpiry - Date.now();
     const minutesRemaining = Math.ceil(timeRemaining / (60 * 1000));
+
+    const hoursRemaining = Math.floor(minutesRemaining / 60);
+    const minsRemaining = minutesRemaining % 60;
+
     console.log(`Last Update: ${lastUpdateDate}`);
     console.log(`Next update available after: ${nextUpdateDate}`);
-    console.log(`Time remaining: ${minutesRemaining} minutes`);
+
+    if (hoursRemaining > 0) {
+      console.log(`Time remaining: ${hoursRemaining}h ${minsRemaining}m`);
+    } else {
+      console.log(`Time remaining: ${minutesRemaining} minutes`);
+    }
   }
 
   // Clear any existing interval before starting a new one
@@ -3708,7 +4051,7 @@ function showSettingsModal() {
 
   updateIntervalDescriptionText(updateIntervalHours);
 
-      // Update all dynamic displays
+  // Update all dynamic displays
   updateUserAgentDisplay();
   updateStorageDisplay();
   updateTotalChannelsDisplay();
@@ -4705,7 +5048,6 @@ function logStorageUsage() {
     return;
   }
 
-  const MAX_MB = 5; // total quota in MB
   const availableBytes = getAvailableSpace();
   const availableMB = (availableBytes / (1024 * 1024)).toFixed(2);
   const availableKB = (availableBytes / 1024).toFixed(2);
@@ -5237,7 +5579,7 @@ function updateTotalChannelsDisplay() {
   try {
     const channels = appState.get('channels.all') || [];
     const totalCount = channels.length;
-    
+
     totalChannelsElement.textContent = totalCount;
     totalChannelsElement.style.color = '#4CAF50';
   } catch (error) {
@@ -5257,7 +5599,6 @@ function updateStorageStatsDisplay() {
     return;
   }
 
-  const MAX_MB = 5; // total quota in MB
   const availableBytes = getAvailableSpace();
   const availableMB = (availableBytes / (1024 * 1024)).toFixed(2);
   const availableKB = (availableBytes / 1024).toFixed(2);
@@ -5291,14 +5632,12 @@ function updateStorageDisplay() {
       display.innerHTML = '<div class="storage-loading">⚠️ Unable to calculate storage usage</div>';
       return;
     }
-
-    const MAX_MB = 10; // Typical localStorage limit
     const usedPercent = ((usage.totalBytes / (MAX_MB * 1024 * 1024)) * 100).toFixed(1);
-    
+
     let color = '#4caf50'; // Green
     let statusIcon = '✅';
     let statusText = 'Healthy';
-    
+
     if (parseFloat(usage.totalMB) > 7) {
       color = '#ff9800'; // Orange
       statusIcon = '⚠️';
@@ -5482,7 +5821,7 @@ function loadImage(img) {
 // ✅ Add periodic cache maintenance
 function startCacheMaintenance() {
   const maintenanceInterval = setInterval(() => {
-    console.log('🧹 Running cache maintenance...');
+    //console.log('🧹 Running cache maintenance...');
 
     const rssPruned = rssCache.pruneExpired();
     const livePruned = liveCache.pruneExpired();
@@ -5492,8 +5831,8 @@ function startCacheMaintenance() {
     }
 
     // Log stats
-    console.log('RSS Cache:', rssCache.getStats());
-    console.log('Live Cache:', liveCache.getStats());
+    //console.log('RSS Cache:', rssCache.getStats());
+   // console.log('Live Cache:', liveCache.getStats());
 
   }, 10 * 60 * 1000); // Every 10 minutes
 
