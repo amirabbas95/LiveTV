@@ -3883,11 +3883,14 @@ async function loadAllChannelFeeds() {
       showNotification("⚠️ Channels loaded (not saved due to storage limits)", "warning");
     }
 
-    console.log("🔄 Refreshing UI...");
-    renderChannels(channels);
-    updateFavoriteIcons();
+        console.log("🔄 Refreshing UI...");
+    renderChannels(appState.get("channels.all"));
+    renderFavorites();
     renderRecentlyWatched();
+    updateFavoriteIcons();
     updateAllChannelItems();
+
+
 
     console.log("✅ Full channels update COMPLETE.");
     return true;
@@ -3898,9 +3901,11 @@ async function loadAllChannelFeeds() {
     const channels = appState.get("channels.all") || [];
     safeLocalStorageSet(LS_KEYS.CHANNELS, JSON.stringify(channels));
 
-    renderChannels(channels);
-    updateFavoriteIcons();
+    console.log("🔄 Refreshing UI...");
+    renderChannels(appState.get("channels.all"));
+    renderFavorites();
     renderRecentlyWatched();
+    updateFavoriteIcons();
     updateAllChannelItems();
 
     return false;
