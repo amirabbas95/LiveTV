@@ -355,7 +355,7 @@ const LS_KEYS = {
 const API_KEY_STORAGE_KEY = "youtube_api_key";
 const CACHE_KEY = "lastChannelsUpdate";
 
-const MAX_MB = 10; // total quota in MB
+const MAX_MB = 6; // total quota in MB
 
 const PLAYBACK_CONSTANTS = {
   MAX_ELEMENT_WAIT_TIME: 2000,
@@ -642,7 +642,7 @@ function getActualStorageSize(str) {
 
 
 function getAvailableSpace() {
-  const MAX_BYTES = MAX_MB * 1024 * 1024; 
+  const MAX_BYTES = MAX_MB * 1024 * 1024;
   const usage = getStorageUsage();   // { totalBytes, totalKB, totalMB, itemCount, items }
 
   if (!usage || typeof usage.totalBytes !== "number") {
@@ -789,40 +789,27 @@ function getTimeAgo(timestamp) {
 // Notifications & error helpers
 // ============================================
 function showNotification(message, type = 'info') {
-  const colors = { info: '#007BFF', success: '#28A745', warning: '#FFC107', error: '#DC3545' };
-  // Dedup: remove any existing notification
+  // Synchronous Removal of existing notifications
   document.querySelectorAll('.iptv-notification').forEach(n => n.remove());
 
   const el = document.createElement('div');
-  el.className = 'iptv-notification';
-  el.setAttribute('role', 'status');
-  el.setAttribute('aria-live', 'polite');
-  el.style.background = colors[type] || colors.info;
-  el.style.cssText += 'position:fixed;top:-100px;left:50%;transform:translateX(-50%);color:white;padding:10px 18px;border-radius:20px;z-index:10001;transition:top .4s,opacity .4s;font-weight:600;opacity:0;';
+  el.className = `iptv-notification notification-${type}`;
   el.textContent = message;
-
   document.body.appendChild(el);
 
-  const prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   requestAnimationFrame(() => {
-    if (prefersReduced) {
-      el.style.top = '20px';
-      el.style.opacity = '1';
-    } else {
-      el.style.top = '20px';
-      el.style.opacity = '1';
-    }
+    el.style.top = '20px';
+    el.style.opacity = '1';
   });
 
   const hide = () => {
     if (!el.isConnected) return;
     el.style.top = '-100px';
     el.style.opacity = '0';
+    // Synchronous cleanup after transition
     setTimeout(() => { if (el.isConnected) el.remove(); }, 400);
   };
-
-  const t = setTimeout(hide, 3000);
-  // Optional: register t in AppStateManager for cleanup on route changes or modals
+  appState.setTimeoutRef('notificationTimer', setTimeout(hide, 3000));
 }
 
 
@@ -2135,6 +2122,16 @@ function closeModal() {
     modal.classList.add('hidden');
   }
 
+  // Ensure fullscreen prompt is removed immediately to avoid orphaned elements/timers
+  try {
+    // clear centralized auto-hide timer and force immediate removal
+    appState.clearTimeoutRef('promptTimeout');
+    // removeFullscreenPrompt(forceImmediate = true) - ensure your implementation accepts this flag
+    if (typeof removeFullscreenPrompt === 'function') removeFullscreenPrompt(true);
+  } catch (e) {
+    console.warn('Error clearing fullscreen prompt during modal close', e);
+  }
+
   // Player cleanup
   try {
     channelLoader.cleanupPlayer().catch(e => console.warn('⚠️ Error during player cleanup:', e));
@@ -2183,13 +2180,29 @@ function closeModal() {
 /**
  * Show enhanced fullscreen prompt with controls for mobile users
  */
+// single module-scoped state for prompt internals
+let promptHandlers = null;
+
+// show or reset prompt
 function showFullscreenPrompt() {
-  removeFullscreenPrompt();
   const modal = document.getElementById('videoModal');
   if (!modal || modal.style.display !== 'flex') return;
-  fullscreenPrompt = document.createElement('div');
-  fullscreenPrompt.className = 'minimal-fullscreen-prompt';
-  fullscreenPrompt.innerHTML = `
+
+  // If prompt already exists, just reset auto-hide timer and return
+  if (window.fullscreenPrompt) {
+    appState.clearTimeoutRef('promptTimeout');
+    const tid = setTimeout(() => removeFullscreenPrompt(), 8000);
+    appState.setTimeoutRef('promptTimeout', tid);
+    return;
+  }
+
+  // Ensure any leftover prompt is removed immediately (avoid fade race)
+  removeFullscreenPrompt(true);
+
+  // Create prompt element
+  const el = document.createElement('div');
+  el.className = 'minimal-fullscreen-prompt';
+  el.innerHTML = `
     <div class="prompt-backdrop">
       <div class="prompt-card">
         <div class="prompt-header">
@@ -2204,66 +2217,70 @@ function showFullscreenPrompt() {
         </div>
       </div>
     </div>`;
-  modal.appendChild(fullscreenPrompt);
 
-  const prevBtn = fullscreenPrompt.querySelector('#promptPrevBtn');
-  const nextBtn = fullscreenPrompt.querySelector('#promptNextBtn');
-  const fsBtn = fullscreenPrompt.querySelector('#promptFullscreenBtn');
-  const closeBtn = fullscreenPrompt.querySelector('.prompt-close');
+  modal.appendChild(el);
+  window.fullscreenPrompt = el;
 
-  const prevHandler = (e) => {
-    e.stopPropagation();
-    navigateToPreviousChannel();
-    removeFullscreenPrompt();
-  };
-  const nextHandler = (e) => {
-    e.stopPropagation();
-    navigateToNextChannel();
-    removeFullscreenPrompt();
-  };
-  const fsHandler = (e) => {
-    e.stopPropagation();
-    toggleFullscreen();
-    removeFullscreenPrompt();
-  };
-  const closeHandler = (e) => {
-    e.stopPropagation();
-    removeFullscreenPrompt();
+  // attach handlers and keep references for removal
+  const prevBtn = el.querySelector('#promptPrevBtn');
+  const nextBtn = el.querySelector('#promptNextBtn');
+  const fsBtn = el.querySelector('#promptFullscreenBtn');
+  const closeBtn = el.querySelector('.prompt-close');
+
+  promptHandlers = {
+    prev: (e) => { e.stopPropagation(); navigateToPreviousChannel(); removeFullscreenPrompt(); },
+    next: (e) => { e.stopPropagation(); navigateToNextChannel(); removeFullscreenPrompt(); },
+    fs: (e) => { e.stopPropagation(); toggleFullscreen(); removeFullscreenPrompt(); },
+    close: (e) => { e.stopPropagation(); removeFullscreenPrompt(); }
   };
 
-  prevBtn && prevBtn.addEventListener('click', prevHandler);
-  nextBtn && nextBtn.addEventListener('click', nextHandler);
-  fsBtn && fsBtn.addEventListener('click', fsHandler);
-  closeBtn && closeBtn.addEventListener('click', closeHandler);
+  prevBtn && prevBtn.addEventListener('click', promptHandlers.prev);
+  nextBtn && nextBtn.addEventListener('click', promptHandlers.next);
+  fsBtn && fsBtn.addEventListener('click', promptHandlers.fs);
+  closeBtn && closeBtn.addEventListener('click', promptHandlers.close);
 
+  // centralized auto-hide timer
   appState.clearTimeoutRef('promptTimeout');
   const tid = setTimeout(() => removeFullscreenPrompt(), 8000);
   appState.setTimeoutRef('promptTimeout', tid);
 
-  appState.addCleanup(() => {
-    prevBtn && prevBtn.removeEventListener('click', prevHandler);
-    nextBtn && nextBtn.removeEventListener('click', nextHandler);
-    fsBtn && fsBtn.removeEventListener('click', fsHandler);
-    closeBtn && closeBtn.removeEventListener('click', closeHandler);
-    if (fullscreenPrompt && fullscreenPrompt.parentNode) fullscreenPrompt.parentNode.removeChild(fullscreenPrompt);
-    fullscreenPrompt = null;
-  });
+  // ensure cleanup on app teardown (only add once ideally)
+  appState.addCleanup(() => removeFullscreenPrompt(true));
 }
 
-/**
- * Remove fullscreen prompt with smooth animation
- */
-function removeFullscreenPrompt() {
-  if (fullscreenPrompt) {
-    fullscreenPrompt.classList.add('fade-out');
-    hasUserInteracted = true;
+function removeFullscreenPrompt(forceImmediate = false) {
+  appState.clearTimeoutRef('promptTimeout');
+  const el = window.fullscreenPrompt;
+  if (!el) return;
+
+  // 1. Synchronously remove listeners
+  try {
+    if (promptHandlers) {
+      const btns = el.querySelectorAll('button');
+      btns.forEach(btn => {
+        // Generic listener removal if specific ones are lost
+        btn.replaceWith(btn.cloneNode(true));
+      });
+    }
+  } catch (e) { console.warn(e); }
+
+  promptHandlers = null;
+
+  // 2. Determine if we can wait for animation
+  if (forceImmediate) {
+    if (el.parentNode) el.parentNode.removeChild(el);
+    window.fullscreenPrompt = null;
+  } else {
+    el.classList.add('fade-out');
     setTimeout(() => {
-      if (fullscreenPrompt && fullscreenPrompt.parentNode) fullscreenPrompt.parentNode.removeChild(fullscreenPrompt);
-      fullscreenPrompt = null;
+      if (window.fullscreenPrompt?.parentNode) {
+        window.fullscreenPrompt.parentNode.removeChild(window.fullscreenPrompt);
+      }
+      window.fullscreenPrompt = null;
     }, 250);
   }
-  appState.clearTimeoutRef('promptTimeout');
 }
+
 
 
 
@@ -3331,10 +3348,10 @@ class RetryManager {
     const blocked = entries.filter(e => e.retries >= this.maxRetries).length;
     const pending = entries.filter(e => e.retries < this.maxRetries && Date.now() < e.nextRetry).length;
     const ready = entries.filter(e => e.retries < this.maxRetries && Date.now() >= e.nextRetry).length;
-    
-    return { 
-      total: entries.length, 
-      blocked, 
+
+    return {
+      total: entries.length,
+      blocked,
       pending,
       ready
     };
@@ -3346,7 +3363,7 @@ class RetryManager {
     const now = Date.now();
     const cleaned = {};
     let removed = 0;
-    
+
     for (const [id, entry] of Object.entries(data)) {
       // Keep entries that are either:
       // 1. Still retrying (below max retries)
@@ -3357,12 +3374,12 @@ class RetryManager {
         removed++;
       }
     }
-    
+
     if (removed > 0) {
       this._save(cleaned);
       console.log(`🧹 RetryManager cleanup: removed ${removed} old entries`);
     }
-    
+
     return removed;
   }
 }
@@ -3385,7 +3402,7 @@ function youtubeItemToChannel(videoId, title, feed) {
       description: title || 'No description',
     };
   }
-  
+
   return {
     url: `https://www.youtube.com/watch?v=${videoId}`,
     name: feed.name || 'Unknown Channel',
@@ -3401,7 +3418,7 @@ function updateOrAddChannel(channelObj) {
     console.error('❌ updateOrAddChannel: Invalid channel object', channelObj);
     return;
   }
-  
+
   const channels = appState.get('channels.all') || [];
   const existingIndex = channels.findIndex((ch) => ch && ch.name === channelObj.name);
 
@@ -3430,18 +3447,19 @@ function processRSSData(data, feed) {
     console.error('❌ processRSSData: Invalid feed object', feed);
     return;
   }
-  
+
   if (!data || !data.items || data.items.length === 0) return;
-  
+
   let latestValid = data.items.find((item) => item && item.link && !item.link.includes("/shorts/"));
   if (!latestValid) return;
-  
+
   const videoId = extractYouTubeID(latestValid.link);
   if (!videoId) return;
-  
+
   const channelObj = youtubeItemToChannel(videoId, latestValid.title, feed);
   updateOrAddChannel(channelObj);
-  console.log(`✅ ${feed.name || 'Unknown'} Successfully updated`);
+  //console.log(`✅ ${feed.name || 'Unknown'} Successfully updated`);
+  console.log(`✅ RSS updated: ${feed.name}`);
 }
 
 
@@ -3503,7 +3521,7 @@ async function loadYouTubeLatestFeeds({ force = false } = {}) {
         failed++;
         continue;
       }
-      
+
       try {
         // small spacing to reduce parallel load
         if (index > 0) await new Promise(r => setTimeout(r, 200));
@@ -3520,7 +3538,7 @@ async function loadYouTubeLatestFeeds({ force = false } = {}) {
           processRSSData(cached, feed);
           cacheHits++;
           successful++;
-          
+
           // ✅ Only clear retry state if it actually exists
           const data = rssRetryManager._load();
           if (data[feed.url]) {
@@ -3555,7 +3573,7 @@ async function loadYouTubeLatestFeeds({ force = false } = {}) {
 
         rssRetryManager.recordSuccess(feed.url);
 
-        console.log(`✅ RSS updated: ${feed.name}`);
+
 
 
       } catch (e) {
@@ -3578,7 +3596,7 @@ async function loadYouTubeLatestFeeds({ force = false } = {}) {
     console.log(
       `RSS update summary → success: ${successful}, failed: ${failed}, cache hits: ${cacheHits}`
     );
-    
+
     // ✅ Log retry manager stats
     console.log('🔄 RSS Retry Manager Stats:', rssRetryManager.getStats());
 
@@ -3677,7 +3695,7 @@ async function loadYouTubeLiveFeeds({ force = false } = {}) {
           failedUpdates++;
           continue;
         }
-        
+
         try {
           // small spacing to avoid rapid quota hits
           if (index > 0) await new Promise(r => setTimeout(r, 300));
@@ -3708,7 +3726,7 @@ async function loadYouTubeLiveFeeds({ force = false } = {}) {
               updateOrAddChannel(channelObj);
               successfulUpdates++;
             }
-            
+
             // ✅ Only clear retry state if it exists
             const data = liveRetryManager._load();
             if (data[channelId]) {
@@ -3816,8 +3834,8 @@ async function loadYouTubeLiveFeeds({ force = false } = {}) {
         `Live streams update: ${successfulUpdates} successful, ` +
         `${failedUpdates} failed, ${cacheHits} cache hits`
       );
-      console.log('📊 Live Cache Stats:', liveCache.getStats());
-      
+      //console.log('📊 Live Cache Stats:', liveCache.getStats());
+
       // ✅ Log retry manager stats
       console.log('🔄 Live Retry Manager Stats:', liveRetryManager.getStats());
 
@@ -4894,7 +4912,9 @@ function handleTouchEnd(e) {
   if (totalDelta < 10) {
     if (currentTime - lastTapTime < DOUBLE_TAP_DELAY) {
       if (!isCurrentlyFullscreen) {
-        showFullscreenPrompt();
+        // toggle prompt: remove if visible, otherwise show
+        if (window.fullscreenPrompt) removeFullscreenPrompt();
+        else showFullscreenPrompt();
       } else {
         window.toggleFullscreen();
         showNotification("Exit fullscreen to use player. Double‑tap again!", "success");
@@ -4903,8 +4923,10 @@ function handleTouchEnd(e) {
       return;
     }
     appState.set('ui.lastTapTime', currentTime);
-    return; // Don't process as swipe
+    return;
   }
+
+
 
   // Process swipe only if significant movement
   handleSwipe(deltaX, deltaY);
@@ -5622,55 +5644,106 @@ function updateStorageStatsDisplay() {
 }
 
 
-function updateStorageDisplay() {
+async function updateStorageDisplay() {
   const display = document.getElementById('storageUsageDisplay');
   if (!display) return;
 
+  // Clear previous content and set an accessible live region
+  display.textContent = '';
+  display.setAttribute('aria-live', 'polite');
+
   try {
-    const usage = getStorageUsage();
-    if (!usage) {
+    // Support both sync and async getStorageUsage implementations
+    const maybePromise = getStorageUsage();
+    const usage = (maybePromise && typeof maybePromise.then === 'function')
+      ? await maybePromise
+      : maybePromise;
+
+    if (!usage || typeof usage.totalBytes !== 'number') {
       display.innerHTML = '<div class="storage-loading">⚠️ Unable to calculate storage usage</div>';
       return;
     }
-    const usedPercent = ((usage.totalBytes / (MAX_MB * 1024 * 1024)) * 100).toFixed(1);
 
-    let color = '#4caf50'; // Green
+    // Defensive defaults
+    const MAX_MB_VALUE = (typeof MAX_MB === 'number' && MAX_MB > 0) ? MAX_MB : 6;
+    const totalBytes = Number(usage.totalBytes) || 0;
+    const totalMB = (typeof usage.totalMB === 'number') ? usage.totalMB : (totalBytes / (1024 * 1024));
+
+    // Percent used (clamped 0..100)
+    const usedPercentRaw = (totalBytes / (MAX_MB_VALUE * 1024 * 1024)) * 100;
+    const usedPercent = Math.max(0, Math.min(100, Number(usedPercentRaw.toFixed(1))));
+
+    // Determine status
+    let colorClass = 'storage-good';
     let statusIcon = '✅';
     let statusText = 'Healthy';
 
-    if (parseFloat(usage.totalMB) > 7) {
-      color = '#ff9800'; // Orange
+    if (usedPercentRaw > 80) {
+      colorClass = 'storage-warning';
       statusIcon = '⚠️';
       statusText = 'Getting Full';
     }
-    if (parseFloat(usage.totalMB) > 9) {
-      color = '#f44336'; // Red
+    if (usedPercentRaw > 95) {
+      colorClass = 'storage-critical';
       statusIcon = '🚨';
       statusText = 'Critical';
     }
 
-    display.innerHTML = `
-      <div style="display: grid; gap: 12px;">
-        <div style="background: rgba(76, 175, 80, 0.1); padding: 12px; border-radius: 8px; border: 1px solid rgba(76, 175, 80, 0.3);">
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-            <strong>Storage Status</strong>
-            <span style="color: ${color};">${statusIcon} ${statusText}</span>
-          </div>
-          <div style="font-size: 13px; color: #aaa;">
-            Used: <strong style="color: ${color};">${usage.totalMB} MB</strong> / ${MAX_MB} MB 
-            <span style="color: #888;">(${usedPercent}%)</span>
-          </div>
-        </div>
-        <div style="background: rgba(33, 150, 243, 0.1); padding: 12px; border-radius: 8px; border: 1px solid rgba(33, 150, 243, 0.3);">
-          <strong>Items Stored:</strong> ${usage.itemCount}
-        </div>
-      </div>
-    `;
+    // Build DOM structure (safer than large innerHTML)
+    const wrapper = document.createElement('div');
+    wrapper.className = 'storage-grid';
+
+    const statusCard = document.createElement('div');
+    statusCard.className = `storage-card ${colorClass}`;
+
+    const header = document.createElement('div');
+    header.className = 'storage-header';
+    const title = document.createElement('strong');
+    title.textContent = 'Storage Status';
+    const statusSpan = document.createElement('span');
+    statusSpan.className = 'storage-status-text';
+    statusSpan.style.color = ''; // color handled by CSS class
+    statusSpan.textContent = `${statusIcon} ${statusText}`;
+    header.appendChild(title);
+    header.appendChild(statusSpan);
+
+    const usageLine = document.createElement('div');
+    usageLine.className = 'storage-usage-line';
+    const usedText = document.createElement('span');
+    usedText.innerHTML = `Used: <strong class="storage-amount">${totalMB.toFixed(1)} MB</strong> / ${MAX_MB_VALUE} MB`;
+    const percentText = document.createElement('span');
+    percentText.className = 'storage-percent';
+    percentText.textContent = ` (${usedPercent}%)`;
+    usageLine.appendChild(usedText);
+    usageLine.appendChild(percentText);
+
+    // Progress bar
+    const progressWrap = document.createElement('div');
+    progressWrap.className = 'storage-progress-wrap';
+    const progressBar = document.createElement('div');
+    progressBar.className = 'storage-progress-bar';
+    progressBar.style.width = `${usedPercent}%`;
+    progressBar.setAttribute('role', 'progressbar');
+    progressBar.setAttribute('aria-valuemin', '0');
+    progressBar.setAttribute('aria-valuemax', '100');
+    progressBar.setAttribute('aria-valuenow', String(usedPercent));
+    progressWrap.appendChild(progressBar);
+
+    statusCard.appendChild(header);
+    statusCard.appendChild(usageLine);
+    statusCard.appendChild(progressWrap);
+
+
+    wrapper.appendChild(statusCard);
+
+    // Replace display content
+    display.appendChild(wrapper);
   } catch (error) {
     console.error('Error updating storage display:', error);
     display.innerHTML = '<div class="storage-loading">❌ Error calculating storage</div>';
   }
 }
+
 
 
 function cleanupAllEventListeners() {
@@ -5689,7 +5762,7 @@ function escapeHtml(text) {
 // Add proactive monitoring
 function checkStorageHealth() {
   const usage = getStorageUsage();
-  const percentUsed = (usage.totalBytes / (8 * 1024 * 1024)) * 100;
+  const percentUsed = (usage.totalBytes / (MAX_MB * 1024 * 1024)) * 100;
 
   if (percentUsed > 80) {
     showNotification('⚠️ Storage 80% full - consider exporting data', 'warning');
@@ -5832,7 +5905,7 @@ function startCacheMaintenance() {
 
     // Log stats
     //console.log('RSS Cache:', rssCache.getStats());
-   // console.log('Live Cache:', liveCache.getStats());
+    // console.log('Live Cache:', liveCache.getStats());
 
   }, 10 * 60 * 1000); // Every 10 minutes
 
@@ -6164,3 +6237,4 @@ Object.freeze(window.__iptv);
 // Export for debugging
 window.__iptv.getErrorLog = () => [...errorLog];
 window.updateUserAgentDisplay = updateUserAgentDisplay;
+window.fullscreenPrompt = fullscreenPrompt;
