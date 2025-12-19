@@ -2633,6 +2633,8 @@ function renderChannels(channels) {
   const main = document.getElementById('channels');
   if (!main) return;
 
+  cleanupChannelItems();
+
   const isSearching = appState.get('channels.searchQuery') !== '';
   const sortMethod = appState.get('ui.sortMethod') || 'none';
 
@@ -2666,6 +2668,8 @@ function renderChannels(channels) {
   if (!shouldReuseDOM) {
     main.innerHTML = '';
   }
+
+
 
   // Build the new Grid
   for (const [category, categoryChannels] of Object.entries(categorized)) {
@@ -2715,7 +2719,10 @@ function renderChannels(channels) {
 
   // Post-render updates
   updateAllChannelItems();
-  observeNewImages();
+
+  if (window.lazyLoadObserver) {
+    observeNewImages();
+  }
 
   // Toggle visibility of other sections
   if (isSearching) {
@@ -2786,10 +2793,16 @@ function updateFavoriteIcons() {
   });
 }
 
+/* function updateAllChannelItems() {
+  const items = Array.from(document.querySelectorAll('.channel-item'));
+  appState.set('uiCollections.allChannelItems', items);
+} */
+
 function updateAllChannelItems() {
   const items = Array.from(document.querySelectorAll('.channel-item'));
   appState.set('uiCollections.allChannelItems', items);
 }
+
 // ============================================
 // SEARCH FUNCTIONALITY
 // ============================================
@@ -3573,7 +3586,7 @@ async function loadYouTubeLatestFeeds({ force = false } = {}) {
 
         rssRetryManager.recordSuccess(feed.url);
 
-
+        //console.log(`✅ RSS updated: ${feed.name}`);
 
 
       } catch (e) {
@@ -3883,14 +3896,12 @@ async function loadAllChannelFeeds() {
       showNotification("⚠️ Channels loaded (not saved due to storage limits)", "warning");
     }
 
-        console.log("🔄 Refreshing UI...");
+    console.log("🔄 Refreshing UI...");
     renderChannels(appState.get("channels.all"));
     renderFavorites();
     renderRecentlyWatched();
-    updateFavoriteIcons();
     updateAllChannelItems();
-
-
+    updateFavoriteIcons();
 
     console.log("✅ Full channels update COMPLETE.");
     return true;
@@ -3905,8 +3916,8 @@ async function loadAllChannelFeeds() {
     renderChannels(appState.get("channels.all"));
     renderFavorites();
     renderRecentlyWatched();
-    updateFavoriteIcons();
     updateAllChannelItems();
+    updateFavoriteIcons();
 
     return false;
   }
@@ -4677,10 +4688,14 @@ async function initialize() {
     updateFavoriteIcons();
     updateAllChannelItems();
 
+
+
+
     if (loadingElement) loadingElement.style.display = "none";
     if (contentGrid) contentGrid.style.display = "grid";
 
     restoreFocus();
+    bindChannelClickDelegation();
 
     if (window.__GLOBAL_ERROR_BOUNDARIES_INSTALLED__) return;
     window.__GLOBAL_ERROR_BOUNDARIES_INSTALLED__ = true;
@@ -6187,6 +6202,43 @@ function fetchWithTimeout(url, options = {}) {
 
   return fetch(url, cleanOptions)
     .finally(() => clearTimeout(id));
+}
+
+function bindChannelClickDelegation() {
+  document.addEventListener('click', function (e) {
+    const item = e.target.closest('[data-channel-index]');
+    if (!item) return;
+
+    // Ignore inner buttons (favorite, menu, etc.)
+    if (e.target.closest('button')) return;
+
+    const index = Number(item.dataset.channelIndex);
+    if (Number.isNaN(index)) return;
+
+    const filtered = appState.get('channels.filtered');
+    const channels = Array.isArray(filtered) && filtered.length
+      ? filtered
+      : appState.get('channels.all');
+
+    const ch = channels[index];
+    if (!ch || !ch.url) return;
+
+    // Keep keyboard + mouse in sync
+    appState.set('ui.focusedIndex', index);
+
+    try {
+      item.focus({ preventScroll: true });
+    } catch (_) { }
+
+    selectChannel(
+      ch.url,
+      ch.name,
+      ch.image,
+      ch.description,
+      ch.number,
+      ch.isLive
+    );
+  });
 }
 
 
