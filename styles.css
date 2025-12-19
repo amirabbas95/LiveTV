@@ -802,6 +802,20 @@ body.modal-open {
   }
 }
 
+.warning-box {
+  background: rgba(255, 152, 0, 0.1);
+  border: 1px solid rgba(255, 152, 0, 0.3);
+  border-radius: 8px;
+  padding: 15px;
+  color: #ff9800;
+}
+
+.modal-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 20px;
+}
+
 /* Settings Header */
 .settings-header {
   display: flex;
@@ -1572,9 +1586,17 @@ body.modal-open {
     font-weight: 600;
     opacity: 0;
 }
+
+/* Visible state */
+.iptv-notification.visible {
+  top: 20px;
+  opacity: 1;
+}
+
+/* Type-specific colors */
 .notification-info    { background: #007BFF; }
 .notification-success { background: #28A745; }
-.notification-warning { background: #FFC107; }
+.notification-warning { background: #FFC107; color: #000; }
 .notification-error   { background: #DC3545; }
 
 /* Storage Dashboard */

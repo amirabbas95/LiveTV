@@ -357,6 +357,8 @@ const CACHE_KEY = "lastChannelsUpdate";
 
 const MAX_MB = 6; // total quota in MB
 
+const VERSION = "1.0.0";
+
 const PLAYBACK_CONSTANTS = {
   MAX_ELEMENT_WAIT_TIME: 2000,
   PLAYER_READY_TIMEOUT: 5000,
@@ -789,28 +791,32 @@ function getTimeAgo(timestamp) {
 // Notifications & error helpers
 // ============================================
 function showNotification(message, type = 'info') {
-  // Synchronous Removal of existing notifications
+  // Remove existing notifications
   document.querySelectorAll('.iptv-notification').forEach(n => n.remove());
 
   const el = document.createElement('div');
   el.className = `iptv-notification notification-${type}`;
+  el.setAttribute('role', 'status');
+  el.setAttribute('aria-live', 'polite');
   el.textContent = message;
+
   document.body.appendChild(el);
 
+  // Trigger CSS transition
   requestAnimationFrame(() => {
-    el.style.top = '20px';
-    el.style.opacity = '1';
+    el.classList.add('visible');
   });
 
   const hide = () => {
     if (!el.isConnected) return;
-    el.style.top = '-100px';
-    el.style.opacity = '0';
-    // Synchronous cleanup after transition
+    el.classList.remove('visible');
     setTimeout(() => { if (el.isConnected) el.remove(); }, 400);
   };
+
+  // Centralized timeout management
   appState.setTimeoutRef('notificationTimer', setTimeout(hide, 3000));
 }
+
 
 
 function showErrorToUser(message) {
@@ -2793,11 +2799,6 @@ function updateFavoriteIcons() {
   });
 }
 
-/* function updateAllChannelItems() {
-  const items = Array.from(document.querySelectorAll('.channel-item'));
-  appState.set('uiCollections.allChannelItems', items);
-} */
-
 function updateAllChannelItems() {
   const items = Array.from(document.querySelectorAll('.channel-item'));
   appState.set('uiCollections.allChannelItems', items);
@@ -3847,7 +3848,7 @@ async function loadYouTubeLiveFeeds({ force = false } = {}) {
         `Live streams update: ${successfulUpdates} successful, ` +
         `${failedUpdates} failed, ${cacheHits} cache hits`
       );
-      //console.log('📊 Live Cache Stats:', liveCache.getStats());
+      console.log('📊 Live Cache Stats:', liveCache.getStats());
 
       // ✅ Log retry manager stats
       console.log('🔄 Live Retry Manager Stats:', liveRetryManager.getStats());
@@ -3897,11 +3898,12 @@ async function loadAllChannelFeeds() {
     }
 
     console.log("🔄 Refreshing UI...");
-    renderChannels(appState.get("channels.all"));
+
+    renderChannels(channels);
     renderFavorites();
+    updateFavoriteIcons();
     renderRecentlyWatched();
     updateAllChannelItems();
-    updateFavoriteIcons();
 
     console.log("✅ Full channels update COMPLETE.");
     return true;
@@ -3913,11 +3915,12 @@ async function loadAllChannelFeeds() {
     safeLocalStorageSet(LS_KEYS.CHANNELS, JSON.stringify(channels));
 
     console.log("🔄 Refreshing UI...");
-    renderChannels(appState.get("channels.all"));
+
+    renderChannels(channels);
     renderFavorites();
+    updateFavoriteIcons();
     renderRecentlyWatched();
     updateAllChannelItems();
-    updateFavoriteIcons();
 
     return false;
   }
@@ -4688,14 +4691,10 @@ async function initialize() {
     updateFavoriteIcons();
     updateAllChannelItems();
 
-
-
-
     if (loadingElement) loadingElement.style.display = "none";
     if (contentGrid) contentGrid.style.display = "grid";
 
     restoreFocus();
-    bindChannelClickDelegation();
 
     if (window.__GLOBAL_ERROR_BOUNDARIES_INSTALLED__) return;
     window.__GLOBAL_ERROR_BOUNDARIES_INSTALLED__ = true;
@@ -5124,7 +5123,7 @@ function exportAllData() {
   try {
     // Gather all data from localStorage and memory safely
     const data = {
-      version: "1.0.0",
+      version: VERSION,
       exportDate: new Date().toISOString(),
       channels: appState.get("channels.all") || [],
       favorites: safeJSONParse(localStorage.getItem(LS_KEYS.FAVORITES) || "[]", []),
@@ -5252,7 +5251,7 @@ function validateBackupData(data) {
  */
 function isVersionCompatible(version) {
   // Simple version check - expand as needed
-  const currentVersion = "1.0.0";
+  const currentVersion = VERSION;
   return version === currentVersion;
 }
 
@@ -5505,7 +5504,7 @@ async function performImport(data) {
 async function createAutoBackup() {
   try {
     const data = {
-      version: "1.0.0",
+      version: VERSION,
       exportDate: new Date().toISOString(),
       autoBackup: true,
       channels: appState.get('channels.all') || [],
@@ -5925,7 +5924,7 @@ function startCacheMaintenance() {
 
     // Log stats
     //console.log('RSS Cache:', rssCache.getStats());
-    // console.log('Live Cache:', liveCache.getStats());
+    //console.log('Live Cache:', liveCache.getStats());
 
   }, 10 * 60 * 1000); // Every 10 minutes
 
@@ -6204,43 +6203,6 @@ function fetchWithTimeout(url, options = {}) {
     .finally(() => clearTimeout(id));
 }
 
-function bindChannelClickDelegation() {
-  document.addEventListener('click', function (e) {
-    const item = e.target.closest('[data-channel-index]');
-    if (!item) return;
-
-    // Ignore inner buttons (favorite, menu, etc.)
-    if (e.target.closest('button')) return;
-
-    const index = Number(item.dataset.channelIndex);
-    if (Number.isNaN(index)) return;
-
-    const filtered = appState.get('channels.filtered');
-    const channels = Array.isArray(filtered) && filtered.length
-      ? filtered
-      : appState.get('channels.all');
-
-    const ch = channels[index];
-    if (!ch || !ch.url) return;
-
-    // Keep keyboard + mouse in sync
-    appState.set('ui.focusedIndex', index);
-
-    try {
-      item.focus({ preventScroll: true });
-    } catch (_) { }
-
-    selectChannel(
-      ch.url,
-      ch.name,
-      ch.image,
-      ch.description,
-      ch.number,
-      ch.isLive
-    );
-  });
-}
-
 
 // Global error hooks - call your log send utility (non-blocking)
 window.addEventListener('error', (ev) => {
@@ -6256,10 +6218,11 @@ window.addEventListener('unhandledrejection', (ev) => {
 // ============================================
 
 // Build the namespace object
-window.__iptv = {
+const __iptv = {
   // state / modules
   appState,
   channelLoader,
+
   // UI / actions
   selectChannel,
   handleSortChange,
@@ -6284,14 +6247,13 @@ window.__iptv = {
   // rendering / helpers
   renderChannels,
   getFavorites,
-  getRecentlyWatched
+  getRecentlyWatched,
+
+  // debugging / utilities
+  getErrorLog: () => Array.isArray(errorLog) ? [...errorLog] : [],
+  updateUserAgentDisplay,
+  fullscreenPrompt
 };
 
-// Optionally make it immutable to avoid accidental reassignment
-Object.freeze(window.__iptv);
-
-// Ensure global namespace exists
-// Export for debugging
-window.__iptv.getErrorLog = () => [...errorLog];
-window.updateUserAgentDisplay = updateUserAgentDisplay;
-window.fullscreenPrompt = fullscreenPrompt;
+// Attach to global scope
+window.__iptv = Object.freeze(__iptv);
