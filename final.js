@@ -314,6 +314,565 @@ class PerformanceMonitor {
   }
 }
 
+/**
+ * Network Status Monitoring System
+ * Enhanced, configurable, and AppState-friendly single-file class
+ */
+class NetworkMonitor {
+  constructor(options = {}) {
+    // Configurable options with sensible defaults
+    this.config = {
+      checkInterval: options.checkInterval || 30000, // ms
+      healthCheckTimeout: options.healthCheckTimeout || 5000, // ms
+      qualitySamples: options.qualitySamples || 5,
+      maxRetries: options.maxRetries || 3,
+      autoResumeDelay: options.autoResumeDelay || 1000,
+      // Connection quality thresholds (in milliseconds)
+      thresholds: {
+        EXCELLENT: (options.thresholds && options.thresholds.EXCELLENT) || 100, // < 100ms
+        GOOD: (options.thresholds && options.thresholds.GOOD) || 300,           // 100-300ms
+        FAIR: (options.thresholds && options.thresholds.FAIR) || 600,           // 300-600ms
+        POOR: (options.thresholds && options.thresholds.POOR) || 1000           // > 600ms
+      },
+      ...options
+    };
+
+    // Basic runtime state (keeps original public fields for compatibility)
+    this.isOnline = navigator.onLine;
+    this.latency = 0;
+    this.quality = 'unknown';
+    this.connectionType = 'unknown';
+    this.lastCheck = 0;
+    this.checkInterval = null;
+    this.statusListeners = new Set();
+    this.qualityListeners = new Set();
+
+    // Resilience and telemetry
+    this.retryCount = 0;
+    this.maxRetries = this.config.maxRetries;
+
+    this.stats = {
+      totalChecks: 0,
+      successfulChecks: 0,
+      failedChecks: 0,
+      totalDowntime: 0,
+      lastDowntimeStart: null
+    };
+
+    // Internal bound handlers (populated in setupEventListeners)
+    this._onOnline = null;
+    this._onOffline = null;
+    this._onVisibilityChange = null;
+    this._onConnectionChange = null;
+  }
+
+  /**
+   * Initialize network monitoring
+   */
+  initialize() {
+    // Avoid double initialization if desired (optional)
+    if (this._initialized) return this;
+    this._initialized = true;
+
+    this.setupEventListeners();
+    this.startQualityMonitoring();
+    this.detectConnectionType();
+
+    // Update appState
+    try {
+      appState.set('settings.isOnline', this.isOnline);
+      appState.set('settings.networkQuality', this.quality);
+      appState.set('settings.connectionType', this.connectionType);
+    } catch (e) {
+      // appState may be unavailable in some contexts; ignore safely
+    }
+
+    // Register cleanup with appState if available
+    try {
+      if (typeof appState?.addCleanup === 'function') {
+        this._appStateCleanupUnsub = appState.addCleanup(() => this.cleanup());
+      }
+    } catch (e) { /* ignore */ }
+
+    console.log(`🌐 Network Monitor: ${this.isOnline ? 'Online' : 'Offline'}, Type: ${this.connectionType}`);
+    return this;
+  }
+
+  /**
+   * Setup online/offline event listeners (stores bound handlers for cleanup)
+   */
+  setupEventListeners() {
+    // store bound handlers so they can be removed later
+    this._onOnline = this.handleOnline.bind(this);
+    this._onOffline = this.handleOffline.bind(this);
+    this._onVisibilityChange = this.handleVisibilityChange.bind(this);
+    this._onConnectionChange = this.handleConnectionChange.bind(this);
+
+    // Online/Offline events
+    window.addEventListener('online', this._onOnline);
+    window.addEventListener('offline', this._onOffline);
+
+    // Network Information API (if available)
+    if (navigator.connection) {
+      try {
+        navigator.connection.addEventListener('change', this._onConnectionChange);
+      } catch (e) {
+        // Some browsers may not support addEventListener on connection
+      }
+    }
+
+    // Page visibility changes (tab switch)
+    document.addEventListener('visibilitychange', this._onVisibilityChange);
+  }
+
+  /**
+   * Start periodic network quality checks
+   */
+  startQualityMonitoring() {
+    // Clear existing interval
+    if (this.checkInterval) {
+      clearInterval(this.checkInterval);
+      this.checkInterval = null;
+    }
+
+    const intervalMs = this.config.checkInterval || 30000;
+
+    // Check periodically when online
+    this.checkInterval = setInterval(() => {
+      if (this.isOnline) {
+        this.checkConnectionQuality();
+      }
+    }, intervalMs);
+
+    // Initial check (short delay)
+    if (this.isOnline) {
+      setTimeout(() => this.checkConnectionQuality(), 1000);
+    }
+
+    // Store interval in appState for centralized cleanup
+    try {
+      if (typeof appState?.setIntervalRef === 'function') {
+        appState.setIntervalRef('networkMonitor', this.checkInterval);
+      }
+    } catch (e) { /* ignore */ }
+  }
+
+
+  /**
+   * Detect connection type using Network Information API
+   */
+  detectConnectionType() {
+    try {
+      const connection = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+      if (connection) {
+        this.connectionType = connection.effectiveType || connection.type || 'unknown';
+        if (typeof appState?.set === 'function') {
+          appState.set('settings.connectionType', this.connectionType);
+        }
+      }
+    } catch (e) {
+      // ignore
+    }
+  }
+
+  /**
+   * Check connection quality by measuring latency
+   */
+  async checkConnectionQuality() {
+    if (!this.isOnline) return;
+
+    this.stats.totalChecks++;
+    const startTime = Date.now();
+    this.lastCheck = startTime;
+
+    try {
+      // Use multiple endpoints for reliability
+      const endpoints = [
+        'https://www.google.com/favicon.ico',
+        'https://connectivitycheck.gstatic.com/generate_204'
+      ];
+
+      const results = await Promise.allSettled(
+        endpoints.map(url => this.measureLatency(url))
+      );
+
+      // Calculate average latency from successful measurements
+      const successful = results.filter(r => r.status === 'fulfilled');
+      const successRate = successful.length / endpoints.length;
+
+      if (successful.length > 0) {
+        const latencies = successful.map(r => r.value);
+        this.latency = Math.round(
+          latencies.reduce((a, b) => a + b, 0) / latencies.length
+        );
+
+        // Determine quality based on latency thresholds
+        this.quality = this.determineQuality(this.latency);
+
+        // Update appState
+        try {
+          appState.set('settings.networkLatency', this.latency);
+          appState.set('settings.networkQuality', this.quality);
+        } catch (e) { /* ignore */ }
+
+        // Notify listeners
+        this.notifyQualityChange();
+
+        console.log(`📡 Network Quality: ${this.quality} (${this.latency}ms)`);
+
+        // Show warning if quality is poor
+        if (this.quality === 'poor') {
+          this.showQualityWarning();
+        }
+
+        // success bookkeeping
+        this.stats.successfulChecks++;
+        this.retryCount = 0; // reset retry counter on success
+      } else {
+        // no successful checks — treat as partial failure
+        this.stats.failedChecks++;
+        this.retryCount++;
+        console.warn(`Network checks failed (${this.retryCount}/${this.maxRetries})`);
+        if (this.retryCount >= this.maxRetries) {
+          // escalate to offline state
+          this.handleOffline({ manual: false });
+        }
+      }
+    } catch (error) {
+      this.stats.failedChecks++;
+      this.retryCount++;
+      console.warn('Network quality check failed:', error);
+      if (this.retryCount >= this.maxRetries) {
+        this.handleOffline({ manual: false });
+      }
+    }
+  }
+
+
+  /**
+   * Measure latency to a specific endpoint
+   */
+  async measureLatency(url) {
+    return new Promise((resolve, reject) => {
+      const controller = new AbortController();
+      const timeoutMs = this.config.healthCheckTimeout || 5000;
+      const timeoutId = setTimeout(() => {
+        controller.abort();
+        reject(new Error('Timeout'));
+      }, timeoutMs);
+
+      const start = performance.now();
+
+      fetch(url, {
+        method: 'HEAD',
+        mode: 'no-cors',
+        cache: 'no-cache',
+        signal: controller.signal
+      })
+        .then(() => {
+          clearTimeout(timeoutId);
+          const end = performance.now();
+          resolve(end - start);
+        })
+        .catch(error => {
+          clearTimeout(timeoutId);
+          reject(error);
+        });
+    });
+  }
+
+  /**
+   * Determine connection quality based on latency
+   */
+  determineQuality(latency) {
+    const t = this.config.thresholds;
+    if (latency <= t.EXCELLENT) return 'excellent';
+    if (latency <= t.GOOD) return 'good';
+    if (latency <= t.FAIR) return 'fair';
+    return 'poor';
+  }
+
+  /**
+   * Handle online event
+   */
+  handleOnline(event) {
+    if (this.isOnline) return; // already online
+
+    this.isOnline = true;
+    try { appState.set('settings.isOnline', true); } catch (e) { /* ignore */ }
+
+    // Track downtime
+    if (this.stats.lastDowntimeStart) {
+      this.stats.totalDowntime += Date.now() - this.stats.lastDowntimeStart;
+      this.stats.lastDowntimeStart = null;
+    }
+
+    console.log('🌐 Network: Online');
+    showNotification('📶 Network connection restored', 'success');
+
+    // Update connection type
+    this.detectConnectionType();
+
+    // Start quality monitoring
+    this.startQualityMonitoring();
+
+    // Notify listeners
+    this.notifyStatusChange();
+
+    // Auto-resume playback if applicable
+    this.handleAutoResume();
+
+    // Immediate re-check
+    setTimeout(() => this.checkConnectionQuality(), 1000);
+  }
+
+  /**
+   * Handle offline event
+   */
+  handleOffline(options = {}) {
+    if (!this.isOnline && !options.force) return; // already offline
+
+    this.isOnline = false;
+    appState.set('settings.isOnline', false);
+    this.quality = 'offline';
+    try { appState.set('settings.isOnline', false); } catch (e) { /* ignore */ }
+
+    // Start downtime timer
+    if (!this.stats.lastDowntimeStart) {
+      this.stats.lastDowntimeStart = Date.now();
+    }
+
+    console.log('🌐 Network: Offline');
+    showNotification('📴 Network connection lost', 'error');
+
+    // Notify listeners
+    this.notifyStatusChange();
+
+    // Handle playback interruption
+    this.handlePlaybackInterruption();
+  }
+
+  /**
+   * Handle connection change (Network Information API)
+   */
+  handleConnectionChange() {
+    const previousType = this.connectionType;
+    this.detectConnectionType();
+
+    if (previousType !== this.connectionType) {
+      console.log(`🔀 Connection type changed: ${previousType} → ${this.connectionType}`);
+      showNotification(`Network changed to ${this.connectionType}`, 'info');
+    }
+  }
+
+  /**
+   * Handle visibility change (tab switch)
+   */
+  handleVisibilityChange() {
+    if (!document.hidden && this.isOnline) {
+      // Tab became visible - recheck network
+      setTimeout(() => this.checkConnectionQuality(), 1000);
+    }
+  }
+
+  /**
+   * Handle playback interruption on network loss
+   */
+  handlePlaybackInterruption() {
+    const player = channelLoader?.getPlayer?.();
+    if (!player) return;
+
+    // Pause player if playing
+    try {
+      if (!player.paused()) {
+        player.pause();
+        console.log('⏸️ Playback paused due to network loss');
+      }
+    } catch (error) {
+      console.warn('Failed to pause player:', error);
+    }
+
+    // Clear buffers if using video.js with HLS
+    try {
+      if (player.tech_ && player.tech_.vhs && typeof player.tech_.vhs.resetEverything === 'function') {
+        player.tech_.vhs.resetEverything();
+        console.log('🧹 Cleared video buffers');
+      }
+    } catch (error) {
+      // Ignore - not all players support this
+    }
+  }
+
+  /**
+   * Handle auto-resume when network returns
+   */
+  handleAutoResume() {
+    const player = channelLoader?.getPlayer?.();
+    const currentChannel = (typeof appState?.get === 'function') ? appState.get('player.currentChannel') : null;
+
+    if (!player || !currentChannel) return;
+
+    // Only auto-resume if player was playing before network loss
+    if (player && player.paused()) {
+      setTimeout(() => {
+        if (this.isOnline && player.paused()) {
+          player.play()
+            .then(() => {
+              console.log('▶️ Auto-resumed playback');
+              showNotification('Playback resumed', 'success');
+            })
+            .catch((error) => {
+              // Check for user-driven errors (like 'NotAllowedError' for unmuted play)
+              if (error && (error.name === 'NotAllowedError' || error.name === 'AbortError')) {
+                console.warn("Could not auto-resume playback due to browser policy or interruption:", error?.message);
+                try { channelLoader.showPlayButton(); } catch (e) { /* ignore */ }
+                showNotification("Playback failed: Please click the 'Play' button.", "warning");
+              } else {
+                console.error("Critical error during auto-resume:", error);
+                showNotification("Error resuming stream. Please re-select the channel.", "error");
+              }
+            });
+        }
+      }, this.config.autoResumeDelay || 1000);
+    }
+  }
+
+  /**
+   * Show quality warning when connection is poor
+   */
+  showQualityWarning() {
+    if (!this.isOnline) return;
+
+    // Don't show too frequently (max once per 2 minutes)
+    const lastWarning = (typeof appState?.get === 'function') ? appState.get('ui.lastNetworkWarning') || 0 : 0;
+    if (Date.now() - lastWarning < 120000) return;
+
+    try { appState.set('ui.lastNetworkWarning', Date.now()); } catch (e) { /* ignore */ }
+
+    showNotification(
+      `⚠️ Poor network detected (${this.latency}ms). Playback may buffer.`,
+      'warning',
+      5000
+    );
+  }
+
+  /**
+   * Add status change listener
+   */
+  addStatusListener(callback) {
+    this.statusListeners.add(callback);
+    return () => this.statusListeners.delete(callback);
+  }
+
+  /**
+   * Add quality change listener
+   */
+  addQualityListener(callback) {
+    this.qualityListeners.add(callback);
+    return () => this.qualityListeners.delete(callback);
+  }
+
+  /**
+   * Notify status change to all listeners
+   */
+  notifyStatusChange() {
+    this.statusListeners.forEach(callback => {
+      try {
+        callback(this.isOnline, this.connectionType);
+      } catch (error) {
+        console.warn('Network status listener error:', error);
+      }
+    });
+  }
+
+  /**
+   * Notify quality change to all listeners
+   */
+  notifyQualityChange() {
+    this.qualityListeners.forEach(callback => {
+      try {
+        callback(this.quality, this.latency);
+      } catch (error) {
+        console.warn('Network quality listener error:', error);
+      }
+    });
+  }
+
+  /**
+   * Get current network status
+   */
+  getStatus() {
+    return {
+      isOnline: this.isOnline,
+      latency: this.latency,
+      quality: this.quality,
+      connectionType: this.connectionType,
+      lastCheck: this.lastCheck,
+      stats: { ...this.stats }
+    };
+  }
+
+  /**
+   * Force a network check
+   */
+  async forceCheck() {
+    console.log('🔄 Forcing network check...');
+    await this.checkConnectionQuality();
+    return this.getStatus();
+  }
+
+  /**
+   * Cleanup resources
+   */
+  cleanup() {
+    // Clear interval and appState reference
+    if (this.checkInterval) {
+      clearInterval(this.checkInterval);
+      this.checkInterval = null;
+    }
+    try {
+      if (typeof appState?.clearIntervalRef === 'function') {
+        appState.clearIntervalRef('networkMonitor');
+      }
+    } catch (e) { /* ignore */ }
+
+    this.statusListeners.clear();
+    this.qualityListeners.clear();
+
+    // Remove bound event listeners (only if we stored them)
+    if (this._onOnline) window.removeEventListener('online', this._onOnline);
+    if (this._onOffline) window.removeEventListener('offline', this._onOffline);
+    if (this._onVisibilityChange) document.removeEventListener('visibilitychange', this._onVisibilityChange);
+    if (this._onConnectionChange && navigator.connection) {
+      try {
+        navigator.connection.removeEventListener('change', this._onConnectionChange);
+      } catch (e) { /* ignore */ }
+    }
+
+    // Unregister appState cleanup if we registered one
+    try {
+      if (this._appStateCleanupUnsub) {
+        this._appStateCleanupUnsub();
+        this._appStateCleanupUnsub = null;
+      }
+    } catch (e) { /* ignore */ }
+
+    // Clear any other references
+    this._onOnline = null;
+    this._onOffline = null;
+    this._onVisibilityChange = null;
+    this._onConnectionChange = null;
+
+    this._initialized = false;
+  }
+}
+
+
+// ============================================
+// NETWORK MONITOR INSTANCE
+// ============================================
+const networkMonitor = new NetworkMonitor();
+
 // ============================================
 // CONSTANTS - MUST BE FIRST
 // ============================================
@@ -389,6 +948,7 @@ class AppStateManager {
         isPlaying: false
       },
       ui: {
+        lastNetworkWarning: null,
         focusedIndex: 0,
         lastFocusedElement: null,
         sortMethod: 'none',
@@ -415,6 +975,9 @@ class AppStateManager {
       },
       settings: {
         isOnline: navigator.onLine,
+        networkQuality: null,
+        connectionType: null,
+        networkLatency: null,
         apiKey: '',
         isAutoUpdateEnabled: true,
         updateIntervalHours: 8
@@ -1421,6 +1984,9 @@ class ChannelLoader {
     // Add token checks before EVERY async operation:
     try {
       this.verifyOperation(opId, token);
+
+      appState.set("ui.isModalOpen", true);
+
       this.updateChannelUI(name, image, description, number);
 
       this.verifyOperation(opId, token);
@@ -1432,7 +1998,6 @@ class ChannelLoader {
       this.verifyOperation(opId, token);
       appState.set("player.currentChannel", { url, name, image, description, number, isLive });
       appState.set("player.isPlaying", true);
-      appState.set("ui.isModalOpen", true);
 
     } catch (err) {
       if (!token.isCancelled()) {
@@ -1449,9 +2014,6 @@ class ChannelLoader {
 
     }
   }
-
-
-
 
   updateChannelUI(name, image, description, number) {
     const map = {
@@ -1580,11 +2142,18 @@ class ChannelLoader {
     const errorHandler = () => {
       if (token.isCancelled()) return;
       const error = this.playerInstance.error();
+
+      // Check if error is network-related
+      const isNetworkError = error?.code === 2 || // MEDIA_ERR_NETWORK
+        error?.message?.toLowerCase().includes('network') ||
+        error?.message?.toLowerCase().includes('fetch');
+
       console.error('🚨 Player error details:', {
         code: error?.code,
         message: error?.message,
         type: error?.type,
-        metadata: error?.metadata
+        metadata: error?.metadata,
+        isNetworkError
       });
       if (error) {
         switch (error.code) {
@@ -1593,6 +2162,19 @@ class ChannelLoader {
             break;
           case 2:
             console.warn('⚠️ Network error - attempting recovery...');
+
+            // Check network status before retrying
+            if (!navigator.onLine) {
+              showNotification('Network offline. Please check connection.', 'error');
+              return;
+            }
+
+            // Check network quality before retrying
+            const networkQuality = appState.get('settings.networkQuality');
+            if (networkQuality === 'poor') {
+              showNotification('Poor network quality. Trying lower quality...', 'warning');
+            }
+
             setTimeout(() => {
               if (this.playerInstance && !token.isCancelled()) {
                 console.log('🔄 Attempting to reload stream...');
@@ -1600,11 +2182,13 @@ class ChannelLoader {
                 this.playerInstance.src(currentSrc);
                 this.playerInstance.play().catch(e => {
                   console.error('❌ Reload failed:', e);
-                  showErrorToUser('Stream failed to load. Please try again.');
+                  showErrorToUser('Stream failed to load. Please check network connection.');
                 });
               }
             }, PLAYBACK_CONSTANTS.MAX_ELEMENT_WAIT_TIME);
             return;
+
+
           case 3:
             console.error('❌ Decoding error - stream format issue');
             showErrorToUser('Stream format not supported');
@@ -2092,6 +2676,8 @@ function buildPlayerOptions(streamConfig, metadata) {
 
 async function selectChannel(url, name, image, description, number, isLive) {
   if (!url) return;
+
+  appState.set("ui.isModalOpen", true);
   await channelLoader.loadChannel(url, name, image, description, number, isLive);
   debouncedAddRecent({
     name,
@@ -3611,6 +4197,9 @@ async function loadYouTubeLatestFeeds({ force = false } = {}) {
       `RSS update summary → success: ${successful}, failed: ${failed}, cache hits: ${cacheHits}`
     );
 
+    console.log('📊 RSS Cache Stats:', rssCache.getStats());
+
+
     // ✅ Log retry manager stats
     console.log('🔄 RSS Retry Manager Stats:', rssRetryManager.getStats());
 
@@ -4093,7 +4682,194 @@ function showSettingsModal() {
   updateStorageDisplay();
   updateTotalChannelsDisplay();
   updateLastUpdateDisplay();
+  updateNetworkInfoDisplay();
 
+}
+
+function updateNetworkInfoDisplay() {
+  const networkInfoEl = document.getElementById('networkInfoDisplay');
+  if (!networkInfoEl) return;
+
+  const isOnline = appState.get('settings.isOnline');
+  const quality = appState.get('settings.networkQuality') || 'unknown';
+  const latency = appState.get('settings.networkLatency') || 0;
+  const connectionType = appState.get('settings.connectionType') || 'unknown';
+
+  let statusColor = '#4CAF50'; // Green
+  let statusText = 'Online';
+
+  if (!isOnline) {
+    statusColor = '#f44336';
+    statusText = 'Offline';
+  } else if (quality === 'poor') {
+    statusColor = '#ff9800';
+    statusText = 'Poor';
+  }
+
+  // prepare CSS classes based on runtime values
+  const statusClass = !networkMonitor?.isOnline ? 'network-offline' : `network-quality-${quality}`;
+  const connBadgeClass = `connection-badge connection-${(connectionType || 'unknown').toString().replace(/\s+/g, '-').toLowerCase()}`;
+
+  networkInfoEl.innerHTML = `
+  <div class="network-info" role="status" aria-live="polite">
+    <div class="info-row" style="display:flex;justify-content:space-between;align-items:center;">
+      <div class="info-label">Status</div>
+      <div class="info-value ${statusClass}" style="font-weight:700;">${statusText}</div>
+    </div>
+
+    <div class="info-row" style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;">
+      <div class="info-label">Quality</div>
+      <div class="info-value ${statusClass}">
+        ${quality.charAt(0).toUpperCase() + quality.slice(1)}
+      </div>
+    </div>
+
+    ${latency > 0 ? `
+      <div class="info-row" style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;">
+        <div class="info-label">Latency</div>
+        <div class="info-value">${latency}ms</div>
+      </div>
+    ` : ''}
+
+    <div class="info-row" style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;">
+      <div class="info-label">Connection</div>
+      <div style="display:flex;gap:8px;align-items:center;">
+        <span class="${connBadgeClass}">${connectionType}</span>
+      </div>
+    </div>
+
+    <div class="modal-actions" style="margin-top:14px;">
+      <button class="btn-secondary" type="button" onclick="networkMonitor.forceCheck()" aria-label="Test connection">
+        🔄 Test Connection
+      </button>
+    </div>
+  </div>
+`;
+}
+
+/**
+ * Create network status indicator in UI
+ */
+function setupNetworkStatusIndicator() {
+  // Remove existing indicator if any
+  const existing = document.getElementById('network-status-indicator');
+  if (existing) existing.remove();
+
+  // 1. Create the main container (Now transparent)
+  const indicator = document.createElement('div');
+  indicator.id = 'network-status-indicator';
+  indicator.className = 'network-status-indicator';
+  indicator.style.cssText = `
+    position: fixed;
+    top: 15px;
+    left: 15px;
+    z-index: 9999;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent; /* No background */
+  `;
+
+  // 2. Create the FontAwesome Icon
+  const icon = document.createElement('i');
+  icon.className = 'fa fa-signal';
+  icon.setAttribute('aria-hidden', 'true');
+  icon.style.fontSize = '18px'; // Adjust size as needed
+  icon.style.textShadow = '0 1px 3px rgba(0,0,0,0.5)'; // Makes it visible on light/dark backgrounds
+  indicator.appendChild(icon);
+
+  // 3. Click handler for details
+  indicator.addEventListener('click', () => {
+    const isOnline = appState.get('settings.isOnline');
+    const quality = appState.get('settings.networkQuality') || 'unknown';
+    const connectionType = appState.get('settings.connectionType') || 'unknown';
+    const latency = appState.get('settings.networkLatency') || 0; // Retrieve latency from state
+
+    // Format Strings
+
+    const currentStatus = isOnline ? 'Online' : 'Offline';
+    const qualityText = quality.charAt(0).toUpperCase() + quality.slice(1);
+    const typeText = connectionType.charAt(0).toUpperCase() + connectionType.slice(1);
+
+    const notificationType = isOnline ? 'success' : 'error';
+
+    showNotification(
+      `Status: ${currentStatus},\n` +
+      `Quality: ${qualityText},\n` +
+      `Connection: ${typeText},\n` +
+      `Latency: ${Math.round(latency)}ms,\n`,
+      'info',
+      5000
+    );
+  });
+
+
+  document.body.appendChild(indicator);
+
+  // 4. Update logic: Change ONLY the icon color
+  const updateIndicator = (isOnline, quality) => {
+    if (!indicator.isConnected) return;
+
+    // Set data attributes for CSS animations
+    indicator.setAttribute('data-status', isOnline ? 'online' : 'offline');
+    indicator.setAttribute('data-quality', quality);
+
+    if (!isOnline) {
+      icon.style.color = '#ff4d4d'; // Red for offline
+      indicator.title = 'Offline';
+      return;
+    }
+
+    // Change color based on quality (modern palette)
+    switch (quality) {
+      case 'excellent': icon.style.color = '#39FF14'; break; // Neon Green
+      case 'good': icon.style.color = '#00FFFF'; break; // Electric Cyan
+      case 'fair': icon.style.color = '#FFFF00'; break; // Neon Yellow
+      case 'poor': icon.style.color = '#FF073A'; break; // Neon Red
+      default: icon.style.color = '#A0A0A0'; break; // Neutral Gray
+    }
+    //icon.style.textShadow = `0 0 6px ${icon.style.color}`; // glow effect
+
+    indicator.title = `Quality: ${quality}`;
+
+  };
+
+  // 5. Listeners
+  networkMonitor.addStatusListener((isOnline) => {
+    const quality = appState.get('settings.networkQuality') || 'unknown';
+    updateIndicator(isOnline, quality);
+  });
+
+  networkMonitor.addQualityListener((quality) => {
+    const isOnline = appState.get('settings.isOnline');
+    updateIndicator(isOnline, quality);
+  });
+
+  // Initial update
+  updateIndicator(appState.get('settings.isOnline'), appState.get('settings.networkQuality') || 'unknown');
+
+  /**
+   * 6. MODAL HIDE LOGIC
+   * This ensures the icon disappears completely when a video/modal is open
+   */
+  const syncVisibility = (isOpen) => {
+    if (!isOpen) {
+      indicator.style.opacity = '0';
+      indicator.style.pointerEvents = 'none';
+      indicator.style.visibility = 'hidden';
+    } else {
+      indicator.style.opacity = '1'; // Full visibility for the icon
+      indicator.style.pointerEvents = 'auto';
+      indicator.style.visibility = 'visible';
+    }
+  };
+
+  appState.subscribe('ui.isModalOpen', syncVisibility);
+  syncVisibility(appState.get('ui.isModalOpen'));
+
+  return indicator;
 }
 
 
@@ -4435,116 +5211,17 @@ function setupAPIKeyModalEvents() {
 }
 
 // ============================================
-// NETWORK MONITORING
-// ============================================
-
-function setupNetworkMonitoring() {
-  // Ensure we don't bind listeners twice
-  if (window._networkSetupDone) return;
-
-  window.addEventListener("online", handleNetworkRestored);
-  window.addEventListener("offline", handleNetworkLost);
-
-  // Use a named interval reference if you need to clear it later (good practice)
-  window._connectionQualityInterval = setInterval(checkConnectionQuality, 30000);
-
-  window._networkSetupDone = true;
-}
-
-
-// Function: checkConnectionQuality
-function checkConnectionQuality() {
-  // 1. Check navigator.onLine first (fast fail)
-  if (!navigator.onLine) return;
-
-  const start = Date.now();
-
-  // 2. Use a dedicated, low-bandwidth, and highly available endpoint for health checks.
-  // Google favicon is fine, but fetch options should be explicit for robustness.
-  fetch("https://www.google.com/favicon.ico", {
-    method: "GET",
-    mode: "no-cors",
-    cache: "no-cache",
-    // Use a small timeout, like 5 seconds (5000ms), to avoid hanging
-    signal: AbortSignal.timeout(5000)
-  })
-    .then(() => {
-      const latency = Date.now() - start;
-      // 3. Use your existing notification system
-      if (latency > 2500) { // Slightly increased threshold for warning
-        showNotification("⚠️ Poor connection detected. Playback may buffer.", "warning");
-      }
-    })
-    .catch((error) => {
-      // Only log serious errors (e.g., actual fetch failure, not just a no-cors error)
-      if (error.name === 'AbortError') return; // Ignore timeout
-      console.warn("Connection quality check failed:", error.message);
-    });
-}
-
-
-// Function: handleNetworkLost
-function handleNetworkLost() {
-  // Update appState status
-  appState.set("settings.isOnline", false);
-  console.log("📴 Network connection lost");
-
-  // Use the global channelLoader instance
-  const player = channelLoader.getPlayer();
-
-  if (player && !player.paused()) {
-    try {
-      player.pause();
-      // Ensure the error notification is visible and clear
-      showNotification("📴 Network Connection lost", "error", 10000);
-    } catch (e) {
-      console.error("Error pausing player on network loss:", e);
-    }
-  }
-}
-
-// Function: handleNetworkRestored
-function handleNetworkRestored() {
-  // Update appState status
-  appState.set("settings.isOnline", true);
-  showNotification("📶 Network Connection restored", "success");
-
-  // Use the global channelLoader instance
-  const player = channelLoader.getPlayer();
-
-  if (player && player.paused()) {
-    // 1. Use the player.play() promise for cleaner error handling
-    // 2. Use a constant/utility for the timeout (assuming a CONSTANT like 1000ms exists)
-    const RESUME_DELAY = 1000; // Define locally or use a global constant
-
-    setTimeout(() => {
-      // Check if player is still valid/modal is open
-      if (!player || !appState.get('ui.isModalOpen')) return;
-
-      player.play()
-        .then(() => {
-          showNotification("▶️ Resuming playback...", "success");
-        })
-        .catch((error) => {
-          // Check for user-driven errors (like 'NotAllowedError' for unmuted play)
-          if (error.name === 'NotAllowedError' || error.name === 'AbortError') {
-            console.warn("Could not auto-resume playback due to browser policy or interruption:", error.message);
-            // Since playback failed, show the fallback play button
-            channelLoader.showPlayButton();
-            showNotification("Playback failed: Please click the 'Play' button.", "warning");
-          } else {
-            console.error("Critical error during auto-resume:", error);
-            showNotification("Error resuming stream. Please re-select the channel.", "error");
-          }
-        });
-    }, RESUME_DELAY);
-  }
-}
-// ============================================
 // CLEANUP & INITIALIZATION
 // ============================================
 function cleanup() {
   console.log("🧹 Performing cleanup...");
+
+  // Stop network monitoring
+  try {
+    networkMonitor.cleanup();
+  } catch (error) {
+    console.warn('Error during network monitor cleanup:', error);
+  }
 
   // Stop watchers and auto-update
   stopWatching();
@@ -4604,6 +5281,14 @@ async function initialize() {
     if (contentGrid) contentGrid.style.display = "none";
     if (loadingElement) loadingElement.style.display = "block";
 
+    // ✅ NEW: Initialize Network Monitor
+    try {
+      networkMonitor.initialize();
+    } catch (error) {
+      console.error('Failed to initialize network monitor:', error);
+    }
+
+
     // Modal setup
     const closeBtn = document.querySelector(".closeModal");
     if (closeBtn) closeBtn.addEventListener("click", closeModal);
@@ -4619,7 +5304,7 @@ async function initialize() {
     const features = [
       { name: 'Lazy Loading', fn: initializeLazyLoading },
       { name: 'Cache Maintenance', fn: startCacheMaintenance },
-      { name: 'Network Monitoring', fn: setupNetworkMonitoring },
+      { name: 'Network Status', fn: setupNetworkStatusIndicator },
       { name: 'Settings Modal', fn: setupSettingsModal },
       { name: 'Search Bar', fn: setupSearchBar },
       { name: 'Touch Gestures', fn: setupTouchGestures },
@@ -4936,7 +5621,7 @@ function handleTouchEnd(e) {
         else showFullscreenPrompt();
       } else {
         window.toggleFullscreen();
-        showNotification("Exit fullscreen to use player. Double‑tap again!", "success");
+        showNotification("Exit fullscreen. Double‑tap again!", "success");
       }
       appState.set('ui.lastTapTime', 0);
       return;
@@ -5810,30 +6495,6 @@ function checkStorageHealth() {
 }
 
 
-// Use Promise.allSettled for parallel requests with rate limiting
-async function fetchWithRateLimit(feeds, maxConcurrent = 3) {
-  const results = [];
-
-  for (let i = 0; i < feeds.length; i += maxConcurrent) {
-    const batch = feeds.slice(i, i + maxConcurrent);
-    const batchPromises = batch.map(feed =>
-      fetch(feed.url)
-        .then(res => res.json())
-        .then(data => ({ feed, data, status: 'fulfilled' }))
-        .catch(error => ({ feed, error, status: 'rejected' }))
-    );
-
-    const batchResults = await Promise.allSettled(batchPromises);
-    results.push(...batchResults);
-
-    // Small delay between batches
-    if (i + maxConcurrent < feeds.length) {
-      await new Promise(resolve => setTimeout(resolve, 100));
-    }
-  }
-
-  return results;
-}
 
 
 // ============================================
@@ -5911,29 +6572,59 @@ function loadImage(img) {
 
 
 // ✅ Add periodic cache maintenance
-function startCacheMaintenance() {
-  const maintenanceInterval = setInterval(() => {
-    //console.log('🧹 Running cache maintenance...');
+// ✅ Periodic cache maintenance with flexible options
+// ✅ Hybrid cache maintenance: simple defaults + optional advanced features
+function startCacheMaintenance({
+  verbose = false,
+  intervalMinutes = 15,
+  onComplete = null
+} = {}) {
+  const MAINTENANCE_INTERVAL_MS = intervalMinutes * 60 * 1000;
+  const LOG_PREFIX = '[Cache]';
 
-    const rssPruned = rssCache.pruneExpired();
-    const livePruned = liveCache.pruneExpired();
+  console.log(`${LOG_PREFIX} Starting maintenance every ${intervalMinutes} minutes`);
 
-    if (rssPruned + livePruned > 0) {
-      console.log(`Pruned ${rssPruned + livePruned} expired cache entries`);
+  const runMaintenance = () => {
+    try {
+      const startTime = Date.now();
+      const rssPruned = rssCache?.pruneExpired?.() ?? 0;
+      const livePruned = liveCache?.pruneExpired?.() ?? 0;
+      const totalPruned = rssPruned + livePruned;
+
+      if (totalPruned > 0 || verbose) {
+        console.log(`${LOG_PREFIX} Pruned ${totalPruned} entries in ${Date.now() - startTime}ms`);
+      }
+
+      if (verbose) {
+        console.group(`${LOG_PREFIX} Stats`);
+        console.log('RSS:', rssCache?.getStats?.());
+        console.log('Live:', liveCache?.getStats?.());
+        console.groupEnd();
+      }
+
+      onComplete?.({ rssPruned, livePruned, totalPruned });
+    } catch (error) {
+      console.error(`${LOG_PREFIX} Maintenance error:`, error);
     }
+  };
 
-    // Log stats
-    //console.log('RSS Cache:', rssCache.getStats());
-    //console.log('Live Cache:', liveCache.getStats());
+  // Schedule periodic maintenance
+  const maintenanceInterval = setInterval(runMaintenance, MAINTENANCE_INTERVAL_MS);
 
-  }, 10 * 60 * 1000); // Every 10 minutes
+  // Register interval in appState for centralized control
+  appState?.setIntervalRef?.('cacheMaintenance', maintenanceInterval);
 
-  appState.setIntervalRef('cacheMaintenance', maintenanceInterval);
+  // Ensure cleanup is idempotent
+  appState?.addCleanup?.(() => clearInterval(maintenanceInterval));
 
-  // Cleanup on unload
-  appState.addCleanup(() => {
+  // Run once immediately
+  runMaintenance();
+
+  // Return a stop function for manual control
+  return () => {
     clearInterval(maintenanceInterval);
-  });
+    console.log(`${LOG_PREFIX} Maintenance stopped`);
+  };
 }
 
 
