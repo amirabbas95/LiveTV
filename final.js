@@ -489,7 +489,9 @@ class NetworkMonitor {
       // Use multiple endpoints for reliability
       const endpoints = [
         'https://www.google.com/favicon.ico',
-        'https://connectivitycheck.gstatic.com/generate_204'
+        'https://connectivitycheck.gstatic.com/generate_204',
+        'http://captive.apple.com/hotspot-detect.html',
+        'https://httpstat.us/204'
       ];
 
       const results = await Promise.allSettled(
@@ -518,7 +520,7 @@ class NetworkMonitor {
         // Notify listeners
         this.notifyQualityChange();
 
-        console.log(`📡 Network Quality: ${this.quality} (${this.latency}ms)`);
+        //console.log(`📡 Network Quality: ${this.quality} (${this.latency}ms)`);
 
         // Show warning if quality is poor
         if (this.quality === 'poor') {
@@ -1097,6 +1099,11 @@ class AppStateManager {
     if (prev) clearTimeout(prev);
     this.set(`intervals.${name}`, id);
   }
+
+  getTimeoutRef(key) {
+    return this.timeoutRefs[key];
+  }
+
   clearTimeoutRef(name) {
     const id = this.get(`intervals.${name}`);
     if (id) { clearTimeout(id); this.set(`intervals.${name}`, null); }
@@ -1353,34 +1360,95 @@ function getTimeAgo(timestamp) {
 // ============================================
 // Notifications & error helpers
 // ============================================
-function showNotification(message, type = 'info') {
-  // Remove existing notifications
-  document.querySelectorAll('.iptv-notification').forEach(n => n.remove());
+function showNotification(message, type = 'info', time = 3000) {
+  // --- Clear any existing notification timeout from AppStateManager ---
+  // This ensures a new notification won't be removed prematurely by an old timer.
+  appState.clearTimeoutRef('notificationTimer');
 
+  // --- Remove existing notifications gracefully ---
+  // Fade them out by removing 'visible', then remove from DOM after transition.
+  document.querySelectorAll('.iptv-notification').forEach(n => {
+    n.classList.remove('visible');
+    setTimeout(() => {
+      if (n.isConnected) n.remove();
+    }, 400); // Match this delay with your CSS transition duration
+  });
+
+  // --- Create new notification element ---
   const el = document.createElement('div');
   el.className = `iptv-notification notification-${type}`;
-  el.setAttribute('role', 'status');
-  el.setAttribute('aria-live', 'polite');
-  el.textContent = message;
 
+  // Accessibility roles: 'alert' for errors, 'status' for others
+  el.setAttribute('role', type === 'error' ? 'alert' : 'status');
+  el.setAttribute('aria-live', type === 'error' ? 'assertive' : 'polite');
+  el.setAttribute('aria-atomic', 'true');
+
+  // Allow HTML markup (icons, SVG, etc.) inside the message
+  el.innerHTML = message;
+
+  // Add to DOM
   document.body.appendChild(el);
 
-  // Trigger CSS transition
+  // --- Trigger CSS transition ---
+  // Using requestAnimationFrame ensures the 'visible' class is applied
+  // after the element is in the DOM, so transitions animate correctly.
   requestAnimationFrame(() => {
     el.classList.add('visible');
   });
 
+  // --- Cleanup helper ---
+  // Removes event listeners when notification is dismissed.
+  const cleanup = () => {
+    document.removeEventListener('keydown', handleKeydown);
+  };
+
+  // --- Hide function ---
+  // Handles fade out, DOM removal, timeout clearing, and cleanup.
   const hide = () => {
     if (!el.isConnected) return;
     el.classList.remove('visible');
-    setTimeout(() => { if (el.isConnected) el.remove(); }, 400);
+    setTimeout(() => {
+      if (el.isConnected) {
+        el.remove();
+        cleanup(); // Ensure Escape listener is removed
+        appState.clearTimeoutRef('notificationTimer');
+      }
+    }, 400); // Match CSS transition duration
   };
 
-  // Centralized timeout management
-  appState.setTimeoutRef('notificationTimer', setTimeout(hide, 3000));
+  // --- Click to dismiss ---
+  el.addEventListener('click', () => {
+    appState.clearTimeoutRef('notificationTimer');
+    hide();
+  });
+
+  // --- Escape key to dismiss ---
+  const handleKeydown = (e) => {
+    if (e.key === 'Escape' && el.isConnected) {
+      appState.clearTimeoutRef('notificationTimer');
+      hide();
+    }
+  };
+  document.addEventListener('keydown', handleKeydown);
+
+  // --- Centralized timeout management ---
+  // Automatically hide after 'time' ms, stored in AppStateManager.
+  const timer = setTimeout(hide, time);
+  appState.setTimeoutRef('notificationTimer', timer);
+
+  // --- Register cleanup with AppStateManager ---
+  // Ensures notification and listeners are removed if appState triggers cleanup.
+  appState.addCleanup(() => {
+    if (el.isConnected) {
+      cleanup();
+      el.remove();
+    }
+  });
+
+  // --- Return controls for external management ---
+  // Allows manual hide or cleanup from outside if needed.
+  return { hide, cleanup };
 }
-
-
 
 function showErrorToUser(message) {
   const errorDiv = document.createElement("div");
@@ -2208,7 +2276,8 @@ class ChannelLoader {
       console.log('⏱ Buffering...');
       const isOnline = appState.get('settings.isOnline');
       if (isOnline) {
-        showNotification("⏱ Buffering...", "info");
+        showNotification('<i class="fas fa-spinner fa-spin"></i> Buffering...', 'general');
+
       } else {
         console.warn("Player waiting while network is reported as offline. Waiting for network recovery...");
       }
@@ -3967,8 +4036,8 @@ class RetryManager {
     let removed = 0;
 
     for (const [id, entry] of Object.entries(data)) {
-      const shouldKeep = entry.retries < this.maxRetries || 
-                        (now - entry.lastAttempt) < maxAge;
+      const shouldKeep = entry.retries < this.maxRetries ||
+        (now - entry.lastAttempt) < maxAge;
       if (shouldKeep) {
         cleaned[id] = entry;
       } else {
@@ -4036,7 +4105,7 @@ function processRSSData(data, feed) {
 
   if (!data?.items?.length) return;
 
-  const latestValid = data.items.find(item => 
+  const latestValid = data.items.find(item =>
     item?.link && !item.link.includes("/shorts/")
   );
   if (!latestValid) return;
@@ -4066,7 +4135,7 @@ class FeedProcessor {
 
   async loadFeeds(options = {}) {
     const { force = false, signal } = options;
-    
+
     const feeds = this._loadFeedsFromStorage();
     if (!feeds.length) return null;
 
@@ -4169,7 +4238,7 @@ class RSSProcessor extends FeedProcessor {
     processRSSData(cached, feed);
     results.cacheHits++;
     results.successful++;
-    
+
     if (this.retryManager._load()[feed.url]) {
       this.retryManager.recordSuccess(feed.url);
     }
@@ -4282,8 +4351,8 @@ class LiveProcessor extends FeedProcessor {
   }
 
   _handleApiError(error, channelId, context, results) {
-    if (error.status === 403 || error.code === 403 || 
-        error.message?.includes("quota") || error.message?.includes("403")) {
+    if (error.status === 403 || error.code === 403 ||
+      error.message?.includes("quota") || error.message?.includes("403")) {
       context.apiQuotaExceeded = true;
     }
     results.failed++;
@@ -4317,7 +4386,7 @@ class LiveProcessor extends FeedProcessor {
 
   _handleError(feed, channelId, error, context, results) {
     results.failed++;
-    
+
     if (error.message?.includes("quota") || error.message?.includes("403")) {
       context.apiQuotaExceeded = true;
     }
@@ -4340,13 +4409,13 @@ async function loadYouTubeLatestFeeds({ force = false } = {}) {
     'loadYouTubeLatestFeeds',
     async ({ signal } = {}) => {
       const result = await processor.loadFeeds({ force, signal });
-      
+
       if (result && !rssRetryManager.hasPending()) {
         localStorage.setItem(CACHE_KEY, Date.now().toString());
       } else if (result) {
         console.log("⚠️ RSS retries pending — global cache timestamp unchanged");
       }
-      
+
       return result;
     },
     { timeout: 20_000, ttl: 2 * 60 * 1000, force }
@@ -4375,10 +4444,10 @@ async function loadAllChannelFeeds() {
     await loadYouTubeLiveFeeds();
 
     const channels = appState.get("channels.all") || [];
-    
+
     console.log("Saving updated channel data to localStorage...");
     const success = safeLocalStorageSet(LS_KEYS.CHANNELS, JSON.stringify(channels));
-    
+
     if (!success) {
       console.warn("⚠️ Channels loaded but not saved to storage");
       showNotification("⚠️ Channels loaded (not saved due to storage limits)", "warning");
@@ -4389,10 +4458,10 @@ async function loadAllChannelFeeds() {
     return true;
   } catch (error) {
     console.error(`❌ Critical error during full channel update:`, error);
-    
+
     const channels = appState.get("channels.all") || [];
     safeLocalStorageSet(LS_KEYS.CHANNELS, JSON.stringify(channels));
-    
+
     this._updateUI(channels);
     return false;
   }
@@ -4686,13 +4755,11 @@ function setupNetworkStatusIndicator() {
     const qualityText = quality.charAt(0).toUpperCase() + quality.slice(1);
     const typeText = connectionType.charAt(0).toUpperCase() + connectionType.slice(1);
 
-    const notificationType = isOnline ? 'success' : 'error';
-
     showNotification(
       `Status: ${currentStatus},\n` +
       `Quality: ${qualityText},\n` +
       `Connection: ${typeText},\n` +
-      `Latency: ${Math.round(latency)}ms,\n`,
+      `Latency: ${Math.round(latency)}ms\n`,
       'info',
       5000
     );
@@ -4710,20 +4777,28 @@ function setupNetworkStatusIndicator() {
     indicator.setAttribute('data-quality', quality);
 
     if (!isOnline) {
-      icon.style.color = '#ff4d4d'; // Red for offline
+      icon.style.color = '#ff4d4d'; // Bright Red for offline (alert)
       indicator.title = 'Offline';
       return;
     }
 
     // Change color based on quality (modern palette)
     switch (quality) {
-      case 'excellent': icon.style.color = '#39FF14'; break; // Neon Green
-      case 'good': icon.style.color = '#00FFFF'; break; // Electric Cyan
-      case 'fair': icon.style.color = '#FFFF00'; break; // Neon Yellow
-      case 'poor': icon.style.color = '#FF073A'; break; // Neon Red
-      default: icon.style.color = '#A0A0A0'; break; // Neutral Gray
+      case 'excellent':
+        icon.style.color = '#009688'; // Spotify Green (Excellent)
+        break;
+      case 'good':
+        icon.style.color = '#1DB954'; // Indigo Blue (Good)
+        break;
+      case 'fair':
+        icon.style.color = '#FFC107'; // Amber Yellow (Fair)
+        break;
+      case 'poor':
+        icon.style.color = '#D32F2F'; // Crimson Red (Poor)
+        break;
+      default:
+        icon.style.color = '#455A64'; // Blue Gray (Unknown/Neutral)
     }
-    //icon.style.textShadow = `0 0 6px ${icon.style.color}`; // glow effect
 
     indicator.title = `Quality: ${quality}`;
 
@@ -4950,10 +5025,28 @@ function setupSettingsModal() {
 
 function updateUserAgentDisplay() {
   const display = document.getElementById('currentUserAgent');
-  if (display) {
+  if (!display) return;
+
+  try {
     const currentUA = navigator.userAgent;
+    const isCustom = window.UserAgentManager?.isCustom || false;
+
     display.textContent = currentUA;
-    display.style.color = UserAgentManager.isCustom ? '#4caf50' : '#888';
+    display.style.color = isCustom ? '#4caf50' : '#888';
+    display.title = `User Agent (${isCustom ? 'Custom' : 'Original'})`;
+
+    // Add a subtle indicator for custom UAs
+    if (isCustom) {
+      display.classList.add('custom-ua');
+      display.classList.remove('original-ua');
+    } else {
+      display.classList.add('original-ua');
+      display.classList.remove('custom-ua');
+    }
+  } catch (error) {
+    console.error('❌ Failed to update User Agent display:', error);
+    display.textContent = 'Error loading User Agent';
+    display.style.color = '#f44336';
   }
 }
 
@@ -4962,12 +5055,22 @@ function setupUserAgentControls() {
   const customInput = document.getElementById('customUserAgent');
   const applyBtn = document.getElementById('applyUserAgent');
   const resetBtn = document.getElementById('resetUserAgent');
+  const applyPresetBtn = document.getElementById('applyPresetUserAgent');
+
+  // Ensure UserAgentManager is available
+  if (!window.UserAgentManager) {
+    console.error('❌ UserAgentManager not available');
+    return;
+  }
+
+
 
   if (presetSelect && customInput) {
     presetSelect.addEventListener('change', (e) => {
       const presetName = e.target.value;
       if (presetName) {
         customInput.value = UserAgentManager.presets[presetName];
+        showNotification(`Loaded ${presetName.replace(/_/g, ' ')} preset`, 'success');
       }
     });
   }
@@ -6475,7 +6578,7 @@ function startCacheMaintenance({
   const MAINTENANCE_INTERVAL_MS = intervalMinutes * 60 * 1000;
   const LOG_PREFIX = '[Cache]';
 
-  console.log(`${LOG_PREFIX} Starting maintenance every ${intervalMinutes} minutes`);
+  //console.log(`${LOG_PREFIX} Starting maintenance every ${intervalMinutes} minutes`);
 
   const runMaintenance = () => {
     try {

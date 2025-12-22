@@ -1594,10 +1594,13 @@ body.modal-open {
 }
 
 /* Type-specific colors */
-.notification-info    { background: #00C853; }
-.notification-success { background: #64DD17; }
-.notification-warning { background: #FFD600; color: #000; }
-.notification-error   { background: #FF3D00; }
+/* Type-specific colors */
+.notification-info    { background: #009688; }   /* Teal */
+.notification-success { background: #1DB954; }   /* Green */
+.notification-warning { background: #FFC107; color: #000; } /* Amber */
+.notification-error   { background: #D32F2F; }   /* Red */
+.notification-general { background: #607D8B; }   /* Blue Gray (neutral) */
+
 
 /* Storage Dashboard */
 /* layout */
@@ -1660,3 +1663,6 @@ body.modal-open {
   0%, 100% { opacity: 1; transform: scale(1); }
   50% { opacity: 0.5; transform: scale(0.9); }
 }
+
+
+
