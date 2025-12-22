@@ -787,4 +787,4 @@ self.addEventListener('fetch', (event) => {
   }
 });
 
-console.log(`[SW] IPTV Service Worker ${VERSION} loaded`);
+//console.log(`[SW] IPTV Service Worker ${VERSION} loaded`);
