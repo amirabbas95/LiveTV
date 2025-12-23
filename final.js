@@ -490,7 +490,7 @@ class NetworkMonitor {
       const endpoints = [
         'https://www.google.com/favicon.ico',
         'https://connectivitycheck.gstatic.com/generate_204',
-        'http://captive.apple.com/hotspot-detect.html',
+        'https://captive.apple.com/hotspot-detect.html',
         'https://httpstat.us/204'
       ];
 
