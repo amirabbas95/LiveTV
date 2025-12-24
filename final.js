@@ -5599,45 +5599,52 @@ document.addEventListener("visibilitychange", () => {
     }
   }
 });
+
+
 /**
  * Sets up Progressive Web App features (Service Worker registration and prompt).
  * Integrated with IPTV Service Worker v2 messaging.
  */
 function setupPWA() {
+  // Check if running on localhost to optionally skip SW during development
   const isLocalHost = ['localhost', '127.0.0.1'].includes(location.hostname);
 
   if (isLocalHost) {
     console.warn('Service Worker skipped for local development.');
+    // Optional: comment out the 'return' below if you want to test PWA locally
     return;
   }
 
   /* --------------------------------------------------
-     Resolve base path (GitHub Pages safe)
+     1. Resolve base path (GitHub Pages safe)
   -------------------------------------------------- */
   let basePath = '/';
   if (location.hostname.endsWith('github.io')) {
+    // Extracts the repository name for subfolder hosting
     const parts = location.pathname.split('/').filter(Boolean);
     if (parts.length) basePath = `/${parts[0]}/`;
   }
 
+  // Ensure Service Workers are supported by the browser
   if (!('serviceWorker' in navigator)) return;
 
   const swPath = `${basePath}sw.js`;
 
+  /* --------------------------------------------------
+     2. Register Service Worker
+  -------------------------------------------------- */
   navigator.serviceWorker.register(swPath)
     .then(registration => {
-      console.log('SW registered:', registration.scope);
+      console.log('SW registered with scope:', registration.scope);
 
-      /* Update detection */
+      /* Update detection logic */
       registration.addEventListener('updatefound', () => {
         const worker = registration.installing;
         if (!worker) return;
 
         worker.addEventListener('statechange', () => {
-          if (
-            worker.state === 'installed' &&
-            navigator.serviceWorker.controller
-          ) {
+          // If a new worker is fully installed but waiting
+          if (worker.state === 'installed' && navigator.serviceWorker.controller) {
             showUpdateNotification(worker);
           }
         });
@@ -5648,59 +5655,81 @@ function setupPWA() {
     });
 
   /* --------------------------------------------------
-     SW → Client messages
+     3. SW → Client messages (Inbound)
   -------------------------------------------------- */
   navigator.serviceWorker.addEventListener('message', event => {
     const { type, payload } = event.data || {};
 
     switch (type) {
       case 'SW_READY':
-        console.log('SW ready, version:', payload?.version);
+        console.log('IPTV SW Ready. Version:', payload?.version);
         break;
 
       case 'CACHE_CLEARED':
-        console.log('SW caches cleared');
+        console.log('All media/API caches have been cleared.');
         break;
 
       case 'PONG':
-        console.log('SW alive:', payload?.version);
+        console.log('SW keep-alive received. Version:', payload?.version);
         break;
     }
   });
 
   /* --------------------------------------------------
-     Add-to-Home-Screen prompt
+     4. Add-to-Home-Screen (A2HS) Logic
   -------------------------------------------------- */
   let deferredPrompt;
   window.addEventListener('beforeinstallprompt', e => {
+    // Prevent the default browser mini-infobar from appearing
     e.preventDefault();
+    // Stash the event so it can be triggered later by a button if desired
     deferredPrompt = e;
   });
 
   /* --------------------------------------------------
-     Update UI
+     5. Update UI Component
   -------------------------------------------------- */
   function showUpdateNotification(worker) {
+    // Check if notification already exists to avoid duplicates
+    if (document.getElementById('sw-update-banner')) return;
+
     const bar = document.createElement('div');
+    bar.id = 'sw-update-banner';
     bar.textContent = 'New version available';
 
     const btn = document.createElement('button');
-    btn.textContent = 'Update';
+    btn.textContent = 'Update Now';
     btn.onclick = () => {
+      // Send the command to the SW to take over immediately
       worker.postMessage({ type: 'SKIP_WAITING' });
     };
 
+    // Styling the notification bar
     Object.assign(bar.style, {
       position: 'fixed',
       right: '20px',
       bottom: '20px',
       background: '#2196F3',
-      color: '#fff',
+      color: '#ffffff',
       padding: '12px 16px',
       borderRadius: '8px',
       display: 'flex',
-      gap: '10px',
-      zIndex: 10000
+      alignItems: 'center',
+      gap: '12px',
+      zIndex: '10000',
+      boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+      fontWeight: 'bold',
+      fontFamily: 'sans-serif'
+    });
+
+    Object.assign(btn.style, {
+      background: '#fff',
+      color: '#2196F3',
+      border: 'none',
+      padding: '6px 12px',
+      borderRadius: '4px',
+      cursor: 'pointer',
+      fontWeight: 'bold'
     });
 
     bar.appendChild(btn);
@@ -5708,9 +5737,10 @@ function setupPWA() {
   }
 
   /* --------------------------------------------------
-     Reload when new SW takes control
+     6. Auto-Reload on Update
   -------------------------------------------------- */
   navigator.serviceWorker.addEventListener('controllerchange', () => {
+    // When the new SW takes control, reload the page to get the new assets
     window.location.reload();
   });
 }
