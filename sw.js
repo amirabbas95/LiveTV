@@ -1,8 +1,8 @@
 /* =========================================================
-   IPTV SERVICE WORKER v2.0.0
+   IPTV SERVICE WORKER v1.0.0
    ========================================================= */
 
-const VERSION = '2.0.0';
+const VERSION = '1.0.0';
 const CACHE_STATIC = `iptv-static-${VERSION}`;
 const CACHE_MEDIA  = `iptv-media-${VERSION}`;
 const CACHE_API    = `iptv-api-${VERSION}`;
