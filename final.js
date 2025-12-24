@@ -2200,255 +2200,263 @@ class ChannelLoader {
     }
   }
 
-setupPlayerEvents(channel, isLive, isYouTube, token) {
-  if (!this.playerInstance) return;
+  setupPlayerEvents(channel, isLive, isYouTube, token) {
+    if (!this.playerInstance) return;
 
-  try {
-    this.playerInstance.off && this.playerInstance.off();
-  } catch (e) {}
+    try {
+      this.playerInstance.off && this.playerInstance.off();
+    } catch (e) { }
 
-  const errorHandler = () => {
-    if (token.isCancelled()) return;
+    const errorHandler = () => {
+      if (token.isCancelled()) return;
 
-    const error = this.playerInstance.error();
+      const error = this.playerInstance.error();
 
-    const isNetworkError =
-      error?.code === 2 ||
-      error?.message?.toLowerCase().includes('network') ||
-      error?.message?.toLowerCase().includes('fetch');
+      const isNetworkError =
+        error?.code === 2 ||
+        error?.message?.toLowerCase().includes('network') ||
+        error?.message?.toLowerCase().includes('fetch');
 
-    console.error('🚨 Player error details:', {
-      code: error?.code,
-      message: error?.message,
-      type: error?.type,
-      metadata: error?.metadata,
-      isNetworkError
-    });
+      console.error('🚨 Player error details:', {
+        code: error?.code,
+        message: error?.message,
+        type: error?.type,
+        metadata: error?.metadata,
+        isNetworkError
+      });
 
-    /* --------------------------------------------------
-       YOUTUBE ERROR 1150 (NEW, SAFE ADDITION)
-    -------------------------------------------------- */
-    if (isYouTube && error?.code === 1150) {
-      console.warn('⚠️ YouTube Error 1150 detected');
+      /* --------------------------------------------------
+         YOUTUBE ERROR 1150 (NEW, SAFE ADDITION)
+      -------------------------------------------------- */
+      if (isYouTube && error?.code === 1150) {
+        console.warn('⚠️ YouTube Error 1150 detected - Video restricted/unavailable');
 
-      // Only track retries for user-initiated playback
-      if (!token.isUserInitiated) {
-        console.log('Ignoring 1150 (not user initiated)');
+        // Always show user feedback for 1150 errors
+        showNotification(
+          'This YouTube video is unavailable (may be restricted or private).',
+          'error',
+          5000
+        );
+
+        // Record the failure for retry system
+        const channelId =
+          resolveYouTubePlayback(this.playerInstance);
+
+        if (channelId) {
+          liveRetryManager.recordFailure(
+            channelId,
+            'YouTube error 1150'
+          );
+          console.log(`🔁 Queued channel for retry: ${channelId}`);
+        } else {
+          console.warn('⚠️ Failed to resolve channelId for 1150');
+        }
+
+        showErrorToUser(
+          'This live stream is temporarily unavailable. It will be retried automatically.'
+        );
+
+        // Don't stop watching immediately - let user decide
+        // But pause the player to prevent continuous errors
+        if (this.playerInstance && !this.playerInstance.paused()) {
+          this.playerInstance.pause();
+        }
+
+        stopWatching();
         return;
       }
 
-      const channelId =
-        resolveYouTubePlayback(this.playerInstance);
+      /* --------------------------------------------------
+         EXISTING ERROR HANDLING (UNCHANGED)
+      -------------------------------------------------- */
+      if (error) {
+        switch (error.code) {
+          case 1:
+            console.warn('⚠️ Media loading aborted');
+            break;
 
-      if (channelId) {
-        liveRetryManager.recordFailure(
-          channelId,
-          'YouTube error 1150 (restricted / unavailable)'
-        );
-        console.log(`🔁 Queued channel for retry: ${channelId}`);
-      } else {
-        console.warn('⚠️ Failed to resolve channelId for 1150');
+          case 2:
+            console.warn('⚠️ Network error - attempting recovery...');
+
+            if (!navigator.onLine) {
+              showNotification(
+                'Network offline. Please check connection.',
+                'error'
+              );
+              return;
+            }
+
+            const networkQuality =
+              appState.get('settings.networkQuality');
+
+            if (networkQuality === 'poor') {
+              showNotification(
+                'Poor network quality. Trying lower quality...',
+                'warning'
+              );
+            }
+
+            setTimeout(() => {
+              if (this.playerInstance && !token.isCancelled()) {
+                console.log('🔄 Attempting to reload stream...');
+                const currentSrc = this.playerInstance.currentSrc();
+
+                this.playerInstance.src(currentSrc);
+                this.playerInstance.play().catch(e => {
+                  console.error('❌ Reload failed:', e);
+                  showErrorToUser(
+                    'Stream failed to load. Please check network connection.'
+                  );
+                });
+              }
+            }, PLAYBACK_CONSTANTS.MAX_ELEMENT_WAIT_TIME);
+            return;
+
+          case 3:
+            console.error('❌ Decoding error - stream format issue');
+            showErrorToUser('Stream format not supported');
+            break;
+
+          case 4:
+            console.error('❌ Source not supported');
+            showErrorToUser('Stream format not supported');
+            break;
+
+          default:
+            console.error('❌ Unknown player error:', error.code);
+        }
       }
-
-      showErrorToUser(
-        'This live stream is temporarily unavailable. It will be retried automatically.'
-      );
 
       stopWatching();
-      return;
-    }
+    };
 
     /* --------------------------------------------------
-       EXISTING ERROR HANDLING (UNCHANGED)
+       WAITING / BUFFERING
     -------------------------------------------------- */
-    if (error) {
-      switch (error.code) {
-        case 1:
-          console.warn('⚠️ Media loading aborted');
-          break;
+    const waitingHandler = () => {
+      if (token.isCancelled()) return;
 
-        case 2:
-          console.warn('⚠️ Network error - attempting recovery...');
+      console.log('⏱ Buffering...');
+      const isOnline = appState.get('settings.isOnline');
 
-          if (!navigator.onLine) {
-            showNotification(
-              'Network offline. Please check connection.',
-              'error'
-            );
-            return;
-          }
-
-          const networkQuality =
-            appState.get('settings.networkQuality');
-
-          if (networkQuality === 'poor') {
-            showNotification(
-              'Poor network quality. Trying lower quality...',
-              'warning'
-            );
-          }
-
-          setTimeout(() => {
-            if (this.playerInstance && !token.isCancelled()) {
-              console.log('🔄 Attempting to reload stream...');
-              const currentSrc = this.playerInstance.currentSrc();
-
-              this.playerInstance.src(currentSrc);
-              this.playerInstance.play().catch(e => {
-                console.error('❌ Reload failed:', e);
-                showErrorToUser(
-                  'Stream failed to load. Please check network connection.'
-                );
-              });
-            }
-          }, PLAYBACK_CONSTANTS.MAX_ELEMENT_WAIT_TIME);
-          return;
-
-        case 3:
-          console.error('❌ Decoding error - stream format issue');
-          showErrorToUser('Stream format not supported');
-          break;
-
-        case 4:
-          console.error('❌ Source not supported');
-          showErrorToUser('Stream format not supported');
-          break;
-
-        default:
-          console.error('❌ Unknown player error:', error.code);
-      }
-    }
-
-    stopWatching();
-  };
-
-  /* --------------------------------------------------
-     WAITING / BUFFERING
-  -------------------------------------------------- */
-  const waitingHandler = () => {
-    if (token.isCancelled()) return;
-
-    console.log('⏱ Buffering...');
-    const isOnline = appState.get('settings.isOnline');
-
-    if (isOnline) {
-      showNotification(
-        '<i class="fas fa-spinner fa-spin"></i> Buffering...',
-        'general'
-      );
-    } else {
-      console.warn(
-        'Player waiting while network is reported as offline. Waiting for network recovery...'
-      );
-    }
-  };
-
-  /* --------------------------------------------------
-     PLAY STATE HANDLERS
-  -------------------------------------------------- */
-  const playingHandler = () => {
-    if (token.isCancelled()) return;
-    startWatching(channel);
-  };
-
-  const pauseHandler = () => {
-    if (token.isCancelled()) return;
-    stopWatching();
-  };
-
-  const endedHandler = () => {
-    if (token.isCancelled()) return;
-    console.log('ℹ️ Playback ended');
-    stopWatching();
-  };
-
-  /* --------------------------------------------------
-     METADATA / CONTROLS
-  -------------------------------------------------- */
-  const metadataHandler = () => {
-    if (token.isCancelled()) return;
-
-    try {
-      this.updateQualityDisplay &&
-        this.updateQualityDisplay();
-    } catch (e) {}
-
-    const channelLive =
-      isLive === true || isLive === 'true';
-
-    if (!channelLive && !isYouTube) {
-      try {
-        this.playerInstance.controls(true);
-      } catch (e) {}
-    } else {
-      try {
-        this.playerInstance.controls(false);
-      } catch (e) {}
-    }
-  };
-
-  /* --------------------------------------------------
-     EVENT BINDINGS
-  -------------------------------------------------- */
-  this.playerInstance.on &&
-    this.playerInstance.on('error', errorHandler);
-
-  this.playerInstance.on &&
-    this.playerInstance.on('waiting', waitingHandler);
-
-  this.playerInstance.on &&
-    this.playerInstance.on('playing', playingHandler);
-
-  this.playerInstance.on &&
-    this.playerInstance.on('pause', pauseHandler);
-
-  this.playerInstance.on &&
-    this.playerInstance.on('ended', endedHandler);
-
-  this.playerInstance.on &&
-    this.playerInstance.on(
-      'loadedmetadata',
-      metadataHandler
-    );
-
-  this.playerInstance.on &&
-    this.playerInstance.on(
-      'retryplaylist',
-      () => console.log('🔄 Attempting HLS recovery...')
-    );
-
-  /* --------------------------------------------------
-     CLEANUP
-  -------------------------------------------------- */
-  this.eventCleanupCallbacks.push(() => {
-    try {
-      if (!this.playerInstance) return;
-
-      this.playerInstance.off &&
-        this.playerInstance.off('error', errorHandler);
-
-      this.playerInstance.off &&
-        this.playerInstance.off('waiting', waitingHandler);
-
-      this.playerInstance.off &&
-        this.playerInstance.off('playing', playingHandler);
-
-      this.playerInstance.off &&
-        this.playerInstance.off('pause', pauseHandler);
-
-      this.playerInstance.off &&
-        this.playerInstance.off('ended', endedHandler);
-
-      this.playerInstance.off &&
-        this.playerInstance.off(
-          'loadedmetadata',
-          metadataHandler
+      if (isOnline) {
+        showNotification(
+          '<i class="fas fa-spinner fa-spin"></i> Buffering...',
+          'general'
         );
-    } catch (e) {
-      console.warn(e);
-    }
-  });
-}
+      } else {
+        console.warn(
+          'Player waiting while network is reported as offline. Waiting for network recovery...'
+        );
+      }
+    };
+
+    /* --------------------------------------------------
+       PLAY STATE HANDLERS
+    -------------------------------------------------- */
+    const playingHandler = () => {
+      if (token.isCancelled()) return;
+      startWatching(channel);
+    };
+
+    const pauseHandler = () => {
+      if (token.isCancelled()) return;
+      stopWatching();
+    };
+
+    const endedHandler = () => {
+      if (token.isCancelled()) return;
+      console.log('ℹ️ Playback ended');
+      stopWatching();
+    };
+
+    /* --------------------------------------------------
+       METADATA / CONTROLS
+    -------------------------------------------------- */
+    const metadataHandler = () => {
+      if (token.isCancelled()) return;
+
+      try {
+        this.updateQualityDisplay &&
+          this.updateQualityDisplay();
+      } catch (e) { }
+
+      const channelLive =
+        isLive === true || isLive === 'true';
+
+      if (!channelLive && !isYouTube) {
+        try {
+          this.playerInstance.controls(true);
+        } catch (e) { }
+      } else {
+        try {
+          this.playerInstance.controls(false);
+        } catch (e) { }
+      }
+    };
+
+    /* --------------------------------------------------
+       EVENT BINDINGS
+    -------------------------------------------------- */
+    this.playerInstance.on &&
+      this.playerInstance.on('error', errorHandler);
+
+    this.playerInstance.on &&
+      this.playerInstance.on('waiting', waitingHandler);
+
+    this.playerInstance.on &&
+      this.playerInstance.on('playing', playingHandler);
+
+    this.playerInstance.on &&
+      this.playerInstance.on('pause', pauseHandler);
+
+    this.playerInstance.on &&
+      this.playerInstance.on('ended', endedHandler);
+
+    this.playerInstance.on &&
+      this.playerInstance.on(
+        'loadedmetadata',
+        metadataHandler
+      );
+
+    this.playerInstance.on &&
+      this.playerInstance.on(
+        'retryplaylist',
+        () => console.log('🔄 Attempting HLS recovery...')
+      );
+
+    /* --------------------------------------------------
+       CLEANUP
+    -------------------------------------------------- */
+    this.eventCleanupCallbacks.push(() => {
+      try {
+        if (!this.playerInstance) return;
+
+        this.playerInstance.off &&
+          this.playerInstance.off('error', errorHandler);
+
+        this.playerInstance.off &&
+          this.playerInstance.off('waiting', waitingHandler);
+
+        this.playerInstance.off &&
+          this.playerInstance.off('playing', playingHandler);
+
+        this.playerInstance.off &&
+          this.playerInstance.off('pause', pauseHandler);
+
+        this.playerInstance.off &&
+          this.playerInstance.off('ended', endedHandler);
+
+        this.playerInstance.off &&
+          this.playerInstance.off(
+            'loadedmetadata',
+            metadataHandler
+          );
+      } catch (e) {
+        console.warn(e);
+      }
+    });
+  }
 
   setupYouTubeQualityMonitoring(token) {
     let attempts = 0;
