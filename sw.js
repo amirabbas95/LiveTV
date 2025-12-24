@@ -1,54 +1,60 @@
 /* =========================================================
-   IPTV SERVICE WORKER v2
-   Clean • Safe • Spec-Compliant
+   IPTV SERVICE WORKER v2.0.0
    ========================================================= */
 
 const VERSION = '2.0.0';
-
-/* Cache names */
 const CACHE_STATIC = `iptv-static-${VERSION}`;
-const CACHE_MEDIA = `iptv-media-${VERSION}`;
-const CACHE_API = `iptv-api-${VERSION}`;
+const CACHE_MEDIA  = `iptv-media-${VERSION}`;
+const CACHE_API    = `iptv-api-${VERSION}`;
 
-/* App shell */
+/* FIXED: Removed leading slashes. 
+   'index.html' instead of '/index.html' 
+*/
 const APP_SHELL = [
-  '/',
-  '/index.html',
-  '/styles.css',
-  '/final.js',
-  '/placeholder.png',
-  '/logo.svg',
-  '/favicon.svg'
+  './',
+  'index.html',
+  'styles.css',
+  'final.js',
+  'placeholder.png',
+  'logo.svg',
+  'favicon.svg'
 ];
 
-/* Domains that must NEVER be cached */
 const BYPASS_DOMAINS = [
   'googlevideo.com',
   'youtube.com',
   'youtube.googleapis.com'
 ];
 
-/* --- INSTALL (Improved with individual error catching) --- */
+/* ---------------------------------------------------------
+   INSTALL
+--------------------------------------------------------- */
 self.addEventListener('install', event => {
   self.skipWaiting();
 
   event.waitUntil(
     caches.open(CACHE_STATIC).then(async (cache) => {
       console.log('SW: Pre-caching App Shell');
-      // We iterate so one missing file doesn't break the whole SW
+      
+      // We loop through each file so we can see exactly which one fails
       const cachePromises = APP_SHELL.map(async (url) => {
         try {
-          return await cache.add(url);
+          const response = await fetch(url);
+          if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+          return await cache.put(url, response);
         } catch (err) {
-          console.error(`SW: Failed to cache critical file: ${url}. Check if the filename is correct.`, err);
+          console.error(`SW: Failed to cache critical file: ${url}. Error:`, err);
         }
       });
+      
       return Promise.all(cachePromises);
     })
   );
 });
 
-/* --- ACTIVATE --- */
+/* ---------------------------------------------------------
+   ACTIVATE
+--------------------------------------------------------- */
 self.addEventListener('activate', event => {
   event.waitUntil(
     (async () => {
@@ -66,7 +72,9 @@ self.addEventListener('activate', event => {
   );
 });
 
-/* --- FETCH --- */
+/* ---------------------------------------------------------
+   FETCH
+--------------------------------------------------------- */
 self.addEventListener('fetch', event => {
   const req = event.request;
   const url = new URL(req.url);
@@ -95,7 +103,9 @@ self.addEventListener('fetch', event => {
   event.respondWith(cacheFirst(req, CACHE_STATIC));
 });
 
-/* --- STRATEGIES --- */
+/* ---------------------------------------------------------
+   STRATEGIES
+--------------------------------------------------------- */
 async function cacheFirst(req, cacheName) {
   const cache = await caches.open(cacheName);
   const cached = await cache.match(req);
@@ -158,7 +168,7 @@ self.addEventListener('message', event => {
     case 'CLEAR_CACHES':
       event.waitUntil(
         Promise.all([caches.delete(CACHE_MEDIA), caches.delete(CACHE_API)])
-          .then(() => broadcast('CACHE_CLEARED'))
+        .then(() => broadcast('CACHE_CLEARED'))
       );
       break;
     case 'PING':
