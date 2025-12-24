@@ -2238,7 +2238,7 @@ setupPlayerEvents(channel, isLive, isYouTube, token) {
       }
 
       const channelId =
-        resolveYouTubeChannelIdFromPlayback(this.playerInstance);
+        resolveYouTubePlayback(this.playerInstance);
 
       if (channelId) {
         liveRetryManager.recordFailure(
