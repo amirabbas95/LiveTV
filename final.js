@@ -488,11 +488,10 @@ class NetworkMonitor {
     try {
       // Use multiple endpoints for reliability
       const endpoints = [
-        'https://www.google.com/favicon.ico',
         'https://connectivitycheck.gstatic.com/generate_204',
-        'https://captive.apple.com/hotspot-detect.html',
-        'https://httpstat.us/204'
+        'https://clients3.google.com/generate_204'
       ];
+
 
       const results = await Promise.allSettled(
         endpoints.map(url => this.measureLatency(url))
@@ -2201,139 +2200,255 @@ class ChannelLoader {
     }
   }
 
-  setupPlayerEvents(channel, isLive, isYouTube, token) {
-    if (!this.playerInstance) return;
-    try {
-      this.playerInstance.off && this.playerInstance.off();
-    } catch (e) { }
+setupPlayerEvents(channel, isLive, isYouTube, token) {
+  if (!this.playerInstance) return;
 
-    const errorHandler = () => {
-      if (token.isCancelled()) return;
-      const error = this.playerInstance.error();
+  try {
+    this.playerInstance.off && this.playerInstance.off();
+  } catch (e) {}
 
-      // Check if error is network-related
-      const isNetworkError = error?.code === 2 || // MEDIA_ERR_NETWORK
-        error?.message?.toLowerCase().includes('network') ||
-        error?.message?.toLowerCase().includes('fetch');
+  const errorHandler = () => {
+    if (token.isCancelled()) return;
 
-      console.error('🚨 Player error details:', {
-        code: error?.code,
-        message: error?.message,
-        type: error?.type,
-        metadata: error?.metadata,
-        isNetworkError
-      });
-      if (error) {
-        switch (error.code) {
-          case 1:
-            console.warn('⚠️ Media loading aborted');
-            break;
-          case 2:
-            console.warn('⚠️ Network error - attempting recovery...');
+    const error = this.playerInstance.error();
 
-            // Check network status before retrying
-            if (!navigator.onLine) {
-              showNotification('Network offline. Please check connection.', 'error');
-              return;
-            }
+    const isNetworkError =
+      error?.code === 2 ||
+      error?.message?.toLowerCase().includes('network') ||
+      error?.message?.toLowerCase().includes('fetch');
 
-            // Check network quality before retrying
-            const networkQuality = appState.get('settings.networkQuality');
-            if (networkQuality === 'poor') {
-              showNotification('Poor network quality. Trying lower quality...', 'warning');
-            }
-
-            setTimeout(() => {
-              if (this.playerInstance && !token.isCancelled()) {
-                console.log('🔄 Attempting to reload stream...');
-                const currentSrc = this.playerInstance.currentSrc();
-                this.playerInstance.src(currentSrc);
-                this.playerInstance.play().catch(e => {
-                  console.error('❌ Reload failed:', e);
-                  showErrorToUser('Stream failed to load. Please check network connection.');
-                });
-              }
-            }, PLAYBACK_CONSTANTS.MAX_ELEMENT_WAIT_TIME);
-            return;
-
-
-          case 3:
-            console.error('❌ Decoding error - stream format issue');
-            showErrorToUser('Stream format not supported');
-            break;
-          case 4:
-            console.error('❌ Source not supported');
-            showErrorToUser('Stream format not supported');
-            break;
-          default:
-            console.error('❌ Unknown player error:', error.code);
-        }
-      }
-      stopWatching();
-    };
-    const waitingHandler = () => {
-      if (token.isCancelled()) return;
-      console.log('⏱ Buffering...');
-      const isOnline = appState.get('settings.isOnline');
-      if (isOnline) {
-        showNotification('<i class="fas fa-spinner fa-spin"></i> Buffering...', 'general');
-
-      } else {
-        console.warn("Player waiting while network is reported as offline. Waiting for network recovery...");
-      }
-    };
-    const playingHandler = () => {
-      if (token.isCancelled()) return;
-      startWatching(channel);
-    };
-    const pauseHandler = () => {
-      if (token.isCancelled()) return;
-      stopWatching();
-    };
-    const endedHandler = () => {
-      if (token.isCancelled()) return;
-      console.log('ℹ️ Playback ended');
-      stopWatching();
-    };
-
-    const metadataHandler = () => {
-      if (token.isCancelled()) return;
-      try {
-        this.updateQualityDisplay && this.updateQualityDisplay();
-      } catch (e) { }
-      const channelLive = isLive === true || isLive === 'true';
-      if (!channelLive && !isYouTube) {
-        try {
-          this.playerInstance.controls(true);
-        } catch (e) { }
-      } else {
-        try {
-          this.playerInstance.controls(false);
-        } catch (e) { }
-      }
-    };
-
-    this.playerInstance.on && this.playerInstance.on('error', errorHandler);
-    this.playerInstance.on && this.playerInstance.on('waiting', waitingHandler);
-    this.playerInstance.on && this.playerInstance.on('playing', playingHandler);
-    this.playerInstance.on && this.playerInstance.on('pause', pauseHandler);
-    this.playerInstance.on && this.playerInstance.on('ended', endedHandler);
-    this.playerInstance.on && this.playerInstance.on('loadedmetadata', metadataHandler);
-    this.playerInstance.on && this.playerInstance.on('retryplaylist', () => console.log('🔄 Attempting HLS recovery...'));
-
-
-    this.eventCleanupCallbacks.push(() => {
-      try {
-        if (!this.playerInstance) return;
-        this.playerInstance.off && this.playerInstance.off('error', errorHandler);
-        this.playerInstance.off && this.playerInstance.off('waiting', waitingHandler);
-        this.playerInstance.off && this.playerInstance.off('playing', playingHandler);
-        this.playerInstance.off && this.playerInstance.off('pause', pauseHandler);
-        this.playerInstance.off && this.playerInstance.off('ended', endedHandler);
-        this.playerInstance.off && this.playerInstance.off('loadedmetadata', metadataHandler);
-      } catch (e) { console.warn(e); }
+    console.error('🚨 Player error details:', {
+      code: error?.code,
+      message: error?.message,
+      type: error?.type,
+      metadata: error?.metadata,
+      isNetworkError
     });
-  }
+
+    /* --------------------------------------------------
+       YOUTUBE ERROR 1150 (NEW, SAFE ADDITION)
+    -------------------------------------------------- */
+    if (isYouTube && error?.code === 1150) {
+      console.warn('⚠️ YouTube Error 1150 detected');
+
+      // Only track retries for user-initiated playback
+      if (!token.isUserInitiated) {
+        console.log('Ignoring 1150 (not user initiated)');
+        return;
+      }
+
+      const channelId =
+        resolveYouTubeChannelIdFromPlayback(this.playerInstance);
+
+      if (channelId) {
+        liveRetryManager.recordFailure(
+          channelId,
+          'YouTube error 1150 (restricted / unavailable)'
+        );
+        console.log(`🔁 Queued channel for retry: ${channelId}`);
+      } else {
+        console.warn('⚠️ Failed to resolve channelId for 1150');
+      }
+
+      showErrorToUser(
+        'This live stream is temporarily unavailable. It will be retried automatically.'
+      );
+
+      stopWatching();
+      return;
+    }
+
+    /* --------------------------------------------------
+       EXISTING ERROR HANDLING (UNCHANGED)
+    -------------------------------------------------- */
+    if (error) {
+      switch (error.code) {
+        case 1:
+          console.warn('⚠️ Media loading aborted');
+          break;
+
+        case 2:
+          console.warn('⚠️ Network error - attempting recovery...');
+
+          if (!navigator.onLine) {
+            showNotification(
+              'Network offline. Please check connection.',
+              'error'
+            );
+            return;
+          }
+
+          const networkQuality =
+            appState.get('settings.networkQuality');
+
+          if (networkQuality === 'poor') {
+            showNotification(
+              'Poor network quality. Trying lower quality...',
+              'warning'
+            );
+          }
+
+          setTimeout(() => {
+            if (this.playerInstance && !token.isCancelled()) {
+              console.log('🔄 Attempting to reload stream...');
+              const currentSrc = this.playerInstance.currentSrc();
+
+              this.playerInstance.src(currentSrc);
+              this.playerInstance.play().catch(e => {
+                console.error('❌ Reload failed:', e);
+                showErrorToUser(
+                  'Stream failed to load. Please check network connection.'
+                );
+              });
+            }
+          }, PLAYBACK_CONSTANTS.MAX_ELEMENT_WAIT_TIME);
+          return;
+
+        case 3:
+          console.error('❌ Decoding error - stream format issue');
+          showErrorToUser('Stream format not supported');
+          break;
+
+        case 4:
+          console.error('❌ Source not supported');
+          showErrorToUser('Stream format not supported');
+          break;
+
+        default:
+          console.error('❌ Unknown player error:', error.code);
+      }
+    }
+
+    stopWatching();
+  };
+
+  /* --------------------------------------------------
+     WAITING / BUFFERING
+  -------------------------------------------------- */
+  const waitingHandler = () => {
+    if (token.isCancelled()) return;
+
+    console.log('⏱ Buffering...');
+    const isOnline = appState.get('settings.isOnline');
+
+    if (isOnline) {
+      showNotification(
+        '<i class="fas fa-spinner fa-spin"></i> Buffering...',
+        'general'
+      );
+    } else {
+      console.warn(
+        'Player waiting while network is reported as offline. Waiting for network recovery...'
+      );
+    }
+  };
+
+  /* --------------------------------------------------
+     PLAY STATE HANDLERS
+  -------------------------------------------------- */
+  const playingHandler = () => {
+    if (token.isCancelled()) return;
+    startWatching(channel);
+  };
+
+  const pauseHandler = () => {
+    if (token.isCancelled()) return;
+    stopWatching();
+  };
+
+  const endedHandler = () => {
+    if (token.isCancelled()) return;
+    console.log('ℹ️ Playback ended');
+    stopWatching();
+  };
+
+  /* --------------------------------------------------
+     METADATA / CONTROLS
+  -------------------------------------------------- */
+  const metadataHandler = () => {
+    if (token.isCancelled()) return;
+
+    try {
+      this.updateQualityDisplay &&
+        this.updateQualityDisplay();
+    } catch (e) {}
+
+    const channelLive =
+      isLive === true || isLive === 'true';
+
+    if (!channelLive && !isYouTube) {
+      try {
+        this.playerInstance.controls(true);
+      } catch (e) {}
+    } else {
+      try {
+        this.playerInstance.controls(false);
+      } catch (e) {}
+    }
+  };
+
+  /* --------------------------------------------------
+     EVENT BINDINGS
+  -------------------------------------------------- */
+  this.playerInstance.on &&
+    this.playerInstance.on('error', errorHandler);
+
+  this.playerInstance.on &&
+    this.playerInstance.on('waiting', waitingHandler);
+
+  this.playerInstance.on &&
+    this.playerInstance.on('playing', playingHandler);
+
+  this.playerInstance.on &&
+    this.playerInstance.on('pause', pauseHandler);
+
+  this.playerInstance.on &&
+    this.playerInstance.on('ended', endedHandler);
+
+  this.playerInstance.on &&
+    this.playerInstance.on(
+      'loadedmetadata',
+      metadataHandler
+    );
+
+  this.playerInstance.on &&
+    this.playerInstance.on(
+      'retryplaylist',
+      () => console.log('🔄 Attempting HLS recovery...')
+    );
+
+  /* --------------------------------------------------
+     CLEANUP
+  -------------------------------------------------- */
+  this.eventCleanupCallbacks.push(() => {
+    try {
+      if (!this.playerInstance) return;
+
+      this.playerInstance.off &&
+        this.playerInstance.off('error', errorHandler);
+
+      this.playerInstance.off &&
+        this.playerInstance.off('waiting', waitingHandler);
+
+      this.playerInstance.off &&
+        this.playerInstance.off('playing', playingHandler);
+
+      this.playerInstance.off &&
+        this.playerInstance.off('pause', pauseHandler);
+
+      this.playerInstance.off &&
+        this.playerInstance.off('ended', endedHandler);
+
+      this.playerInstance.off &&
+        this.playerInstance.off(
+          'loadedmetadata',
+          metadataHandler
+        );
+    } catch (e) {
+      console.warn(e);
+    }
+  });
+}
 
   setupYouTubeQualityMonitoring(token) {
     let attempts = 0;
@@ -2453,9 +2568,35 @@ class ChannelLoader {
 
 const channelLoader = new ChannelLoader();
 
+
 // ============================================
 // Stream helpers (YouTube ID extraction, config, player options)
 // ============================================
+
+function resolveYouTubePlayback(player) {
+  try {
+    const src = player?.currentSrc?.();
+    if (!src) return null;
+
+    const videoId = extractYouTubeID(src);
+    if (!videoId) return null;
+
+    const liveFeeds = safeJSONParse(
+      localStorage.getItem(LS_KEYS.LIVE),
+      []
+    );
+
+    const match = liveFeeds.find(feed =>
+      feed?.name &&
+      document.body.textContent.includes(feed.name)
+    );
+
+    return match ? extractChannelId(match.url) : null;
+  } catch {
+    return null;
+  }
+}
+
 
 function extractYouTubeID(url) {
   if (!url) return null;
@@ -2791,6 +2932,11 @@ function closeModal() {
     if (typeof removeFullscreenPrompt === 'function') removeFullscreenPrompt(true);
   } catch (e) {
     console.warn('Error clearing fullscreen prompt during modal close', e);
+  }
+
+  if (window.player && typeof window.player.dispose === 'function') {
+    window.player.dispose();
+    window.player = null;
   }
 
   // Player cleanup
@@ -5453,93 +5599,122 @@ document.addEventListener("visibilitychange", () => {
     }
   }
 });
-
 /**
  * Sets up Progressive Web App features (Service Worker registration and prompt).
- * Skips registration on localhost to allow seamless live reloading.
+ * Integrated with IPTV Service Worker v2 messaging.
  */
 function setupPWA() {
   const isLocalHost = ['localhost', '127.0.0.1'].includes(location.hostname);
 
-  // Skip Service Worker registration during local development
   if (isLocalHost) {
-    console.warn("⚠️ Service Worker skipped for local development.");
+    console.warn('Service Worker skipped for local development.');
     return;
   }
 
-  // --- 1. Determine the Base Path (needed for GitHub Pages like /LiveTV/) ---
+  /* --------------------------------------------------
+     Resolve base path (GitHub Pages safe)
+  -------------------------------------------------- */
   let basePath = '/';
   if (location.hostname.endsWith('github.io')) {
-    const pathParts = location.pathname.split('/').filter(Boolean);
-    if (pathParts.length > 0) {
-      basePath = `/${pathParts[0]}/`;
-    }
+    const parts = location.pathname.split('/').filter(Boolean);
+    if (parts.length) basePath = `/${parts[0]}/`;
   }
 
-  // --- 2. Service Worker registration with update logic ---
-  if ('serviceWorker' in navigator) {
-    const swPath = `${basePath}sw.js`;
+  if (!('serviceWorker' in navigator)) return;
 
-    navigator.serviceWorker.register(swPath)
-      .then(registration => {
-        console.log(`✅ SW registered successfully with scope: ${registration.scope}`);
+  const swPath = `${basePath}sw.js`;
 
-        registration.addEventListener('updatefound', () => {
-          const newWorker = registration.installing;
-          if (!newWorker) return;
+  navigator.serviceWorker.register(swPath)
+    .then(registration => {
+      console.log('SW registered:', registration.scope);
 
-          newWorker.addEventListener('statechange', () => {
-            if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-              showUpdateNotification();
-            }
-          });
+      /* Update detection */
+      registration.addEventListener('updatefound', () => {
+        const worker = registration.installing;
+        if (!worker) return;
+
+        worker.addEventListener('statechange', () => {
+          if (
+            worker.state === 'installed' &&
+            navigator.serviceWorker.controller
+          ) {
+            showUpdateNotification(worker);
+          }
         });
-      })
-      .catch(error => {
-        console.error('❌ SW registration failed:', error);
       });
-  }
+    })
+    .catch(err => {
+      console.error('SW registration failed:', err);
+    });
 
-  // --- 3. Add to homescreen prompt logic ---
-  let deferredPrompt;
-  window.addEventListener('beforeinstallprompt', (e) => {
-    e.preventDefault();
-    deferredPrompt = e;
-    console.log('✨ Before Install Prompt deferred. Ready to show UI.');
-    // You can trigger a custom "Install" button here using deferredPrompt.prompt()
+  /* --------------------------------------------------
+     SW → Client messages
+  -------------------------------------------------- */
+  navigator.serviceWorker.addEventListener('message', event => {
+    const { type, payload } = event.data || {};
+
+    switch (type) {
+      case 'SW_READY':
+        console.log('SW ready, version:', payload?.version);
+        break;
+
+      case 'CACHE_CLEARED':
+        console.log('SW caches cleared');
+        break;
+
+      case 'PONG':
+        console.log('SW alive:', payload?.version);
+        break;
+    }
   });
 
-  // --- Helper: show update notification ---
-  function showUpdateNotification() {
-    const updateNotification = document.createElement('div');
-    updateNotification.className = 'update-notification';
-    updateNotification.innerHTML = `
-      <span>New version available!</span>
-      <button class="update-btn">Update Now</button>
-    `;
+  /* --------------------------------------------------
+     Add-to-Home-Screen prompt
+  -------------------------------------------------- */
+  let deferredPrompt;
+  window.addEventListener('beforeinstallprompt', e => {
+    e.preventDefault();
+    deferredPrompt = e;
+  });
 
-    Object.assign(updateNotification.style, {
+  /* --------------------------------------------------
+     Update UI
+  -------------------------------------------------- */
+  function showUpdateNotification(worker) {
+    const bar = document.createElement('div');
+    bar.textContent = 'New version available';
+
+    const btn = document.createElement('button');
+    btn.textContent = 'Update';
+    btn.onclick = () => {
+      worker.postMessage({ type: 'SKIP_WAITING' });
+    };
+
+    Object.assign(bar.style, {
       position: 'fixed',
-      bottom: '20px',
       right: '20px',
+      bottom: '20px',
       background: '#2196F3',
-      color: 'white',
-      padding: '15px 20px',
+      color: '#fff',
+      padding: '12px 16px',
       borderRadius: '8px',
-      boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
-      zIndex: '10000',
       display: 'flex',
       gap: '10px',
-      alignItems: 'center'
+      zIndex: 10000
     });
 
-    updateNotification.querySelector('.update-btn').addEventListener('click', () => {
-      location.reload();
-    });
-
-    document.body.appendChild(updateNotification);
+    bar.appendChild(btn);
+    document.body.appendChild(bar);
   }
+
+  /* --------------------------------------------------
+     Reload when new SW takes control
+  -------------------------------------------------- */
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    window.location.reload();
+  });
 }
+
 
 
 function fixImageUrl(imageUrl) {
