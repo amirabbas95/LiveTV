@@ -4785,11 +4785,11 @@ function startChannelAutoUpdate() {
       const minutesRemaining = Math.ceil(timeRemaining / (60 * 1000));
       const hoursRemaining = Math.floor(minutesRemaining / 60);
       const minsRemaining = minutesRemaining % 60;
-      if (hoursRemaining > 0) {
+/*       if (hoursRemaining > 0) {
         console.log(`Cache is valid. Expires in ${hoursRemaining}h ${minsRemaining}m`);
       } else {
         console.log(`Cache is valid. Expires in ${minutesRemaining} minutes.`);
-      }
+      } */
     }
   };
 
@@ -4828,12 +4828,12 @@ function startChannelAutoUpdate() {
     checkAndUpdate();
   }
 
-  console.log(
+/*   console.log(
     `Auto-update service started (RSS feeds only). Checking every ${updateIntervalHours} hours. Status: ${isAutoUpdateEnabled ? "Enabled" : "Disabled"}`
   );
   console.log(
     `ℹ️ Live feeds are NOT auto-updated but will be retried automatically on errors via retry checker.`
-  );
+  ); */
   
   // ✅ Start the retry checker service (handles LIVE feed retries for error 1150 etc.)
   startRetryChecker();
@@ -5771,7 +5771,7 @@ class ServiceWorkerManager {
         this._startUpdateChecker();
       }
 
-      console.log('✅ ServiceWorkerManager initialized successfully');
+      //console.log('✅ ServiceWorkerManager initialized successfully');
       return true;
     } catch (error) {
       console.error('❌ ServiceWorkerManager initialization failed:', error);
@@ -5818,7 +5818,7 @@ class ServiceWorkerManager {
     this.config.swPath = `${basePath}sw.js`;
     this.config.scope = basePath;
 
-    console.log('📍 PWA Base Path:', basePath);
+    //console.log('📍 PWA Base Path:', basePath);
   }
 
   /**
@@ -5831,7 +5831,7 @@ class ServiceWorkerManager {
         { scope: this.config.scope }
       );
 
-      console.log('✅ Service Worker registered:', this.registration.scope);
+      //console.log('✅ Service Worker registered:', this.registration.scope);
 
       // Check for updates immediately
       await this._checkForUpdates();
@@ -6061,13 +6061,13 @@ class ServiceWorkerManager {
    */
   async _checkForUpdates() {
     if (!this.registration) {
-      console.warn('⚠️ No registration to check for updates');
+      //console.warn('⚠️ No registration to check for updates');
       return;
     }
 
     try {
       await this.registration.update();
-      console.log('🔍 Checked for Service Worker updates');
+      //console.log('🔍 Checked for Service Worker updates');
     } catch (error) {
       console.warn('⚠️ Update check failed:', error);
     }
@@ -6087,7 +6087,7 @@ class ServiceWorkerManager {
       this._checkForUpdates();
     }, interval);
 
-    console.log(`⏱️ Update checker started (interval: ${interval / 1000 / 60} minutes)`);
+    //console.log(`⏱️ Update checker started (interval: ${interval / 1000 / 60} minutes)`);
 
     // Store in appState
     try {
@@ -6113,7 +6113,7 @@ class ServiceWorkerManager {
     window.addEventListener('beforeinstallprompt', this._handleBeforeInstallPrompt);
     window.addEventListener('appinstalled', this._handleAppInstalled);
     
-    console.log('📱 A2HS ready');
+    //console.log('📱 A2HS ready');
   }
 
   /**
@@ -6345,7 +6345,7 @@ function setupPWA() {
   swManager.initialize()
     .then(success => {
       if (success) {
-        console.log('✅ PWA setup complete');
+        //console.log('✅ PWA setup complete');
         
         // Store in global scope for access via console
         window.swManager = swManager;
