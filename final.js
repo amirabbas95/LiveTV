@@ -5551,7 +5551,7 @@ async function initialize() {
       { name: 'Settings Modal', fn: setupSettingsModal },
       { name: 'Search Bar', fn: setupSearchBar },
       { name: 'Touch Gestures', fn: setupTouchGestures },
-      { name: 'PWA', fn: setupPWA },
+/*       { name: 'PWA', fn: setupPWA }, */
       { name: 'Keyboard Navigation', fn: setupKeyboardNavigation }
     ];
 
@@ -5701,107 +5701,6 @@ document.addEventListener("visibilitychange", () => {
   }
 });
 
-
-// ============================================
-// SIMPLE SERVICE WORKER MANAGER
-// ============================================
-
-class ServiceWorkerManager {
-  constructor() {
-    this.updateFound = false;
-    this.newWorker = null;
-  }
-
-  async initialize() {
-    if (!('serviceWorker' in navigator)) return false;
-
-    try {
-      const registration = await navigator.serviceWorker.register('/sw.js');
-      
-      // Listen for updates
-      registration.addEventListener('updatefound', () => {
-        this.newWorker = registration.installing;
-        this.newWorker.addEventListener('statechange', () => {
-          if (this.newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-            this.showUpdateNotification();
-          }
-        });
-      });
-
-      // Listen for controller change (auto-reload)
-      navigator.serviceWorker.addEventListener('controllerchange', () => {
-        window.location.reload();
-      });
-
-      // Listen for messages from SW
-      navigator.serviceWorker.addEventListener('message', (event) => {
-        if (event.data.type === 'FORCE_RELOAD') {
-          window.location.reload();
-        }
-      });
-
-      console.log('✅ Service Worker registered');
-      return true;
-    } catch (error) {
-      console.error('❌ Service Worker registration failed:', error);
-      return false;
-    }
-  }
-
-  showUpdateNotification() {
-    // Create simple notification
-    const notification = document.createElement('div');
-    notification.style.cssText = `
-      position: fixed;
-      top: 10px;
-      right: 10px;
-      background: #4CAF50;
-      color: white;
-      padding: 15px;
-      border-radius: 5px;
-      z-index: 10000;
-      box-shadow: 0 2px 10px rgba(0,0,0,0.2);
-      font-family: Arial, sans-serif;
-    `;
-    
-    notification.innerHTML = `
-      <div style="margin-bottom: 10px;">New update available!</div>
-      <button onclick="this.parentElement.remove()" style="margin-right: 10px; padding: 5px 10px; background: white; color: #333; border: none; border-radius: 3px; cursor: pointer;">
-        Later
-      </button>
-      <button onclick="window.swManager?.activateUpdate()" style="padding: 5px 10px; background: #2196F3; color: white; border: none; border-radius: 3px; cursor: pointer;">
-        Update Now
-      </button>
-    `;
-    
-    document.body.appendChild(notification);
-  }
-
-  async activateUpdate() {
-    if (this.newWorker) {
-      // Tell service worker to skip waiting
-      this.newWorker.postMessage({ type: 'SKIP_WAITING' });
-    }
-  }
-
-  async clearCache() {
-    if (navigator.serviceWorker.controller) {
-      navigator.serviceWorker.controller.postMessage({ type: 'CLEAR_CACHE' });
-    }
-  }
-
-  async checkForUpdates() {
-    if (navigator.serviceWorker.controller) {
-      navigator.serviceWorker.controller.postMessage({ type: 'UPDATE_AVAILABLE' });
-    }
-  }
-}
-
-
-function setupPWA() {
-  window.swManager = new ServiceWorkerManager();
-  window.swManager.initialize();
-}
 
 function fixImageUrl(imageUrl) {
   if (!imageUrl) return 'placeholder.png';
