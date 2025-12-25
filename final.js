@@ -2231,13 +2231,6 @@ class ChannelLoader {
       if (isYouTube && error?.code === 1150) {
         console.warn('⚠️ YouTube Error 1150 detected - Video restricted/unavailable');
 
-        // Always show user feedback for 1150 errors
-        showNotification(
-          'This YouTube video is unavailable (may be restricted or private).',
-          'error',
-          5000
-        );
-
         // Record the failure for retry system
         const channelId =
           resolveYouTubePlayback(this.playerInstance);
@@ -4635,6 +4628,87 @@ function _updateUI(channels) {
 }
 
 // ============================================
+// RETRY CHECKER SERVICE
+// ============================================
+/**
+ * Checks for pending retries and processes them when ready
+ * Runs more frequently than the main update cycle
+ */
+async function checkAndProcessRetries() {
+  try {
+    let hadRetries = false;
+    
+    // Check RSS retries
+    if (rssRetryManager.hasReadyRetries()) {
+      console.log('🔁 RSS retry check: Processing ready retries...');
+      const processor = new RSSProcessor();
+      const result = await processor.loadFeeds({ force: false });
+      if (result && result.successful > 0) {
+        hadRetries = true;
+        console.log(`✅ RSS retry successful: ${result.successful} feeds recovered`);
+      }
+    }
+
+    // Check LIVE retries
+    if (liveRetryManager.hasReadyRetries()) {
+      console.log('🔁 LIVE retry check: Processing ready retries...');
+      const processor = new LiveProcessor();
+      const result = await processor.loadFeeds({ force: false });
+      if (result && result.successful > 0) {
+        hadRetries = true;
+        console.log(`✅ LIVE retry successful: ${result.successful} feeds recovered`);
+      }
+    }
+
+    // If we had successful retries, save channels and update UI
+    if (hadRetries) {
+      const channels = appState.get('channels.all') || [];
+      const success = safeLocalStorageSet(LS_KEYS.CHANNELS, JSON.stringify(channels));
+      
+      if (success) {
+        console.log('✅ Updated channels saved after retry');
+        // Update UI
+        _updateUI(channels);
+        showNotification('🔁 Retried feeds updated successfully', 'success');
+      } else {
+        console.warn('⚠️ Failed to save retried channels to storage');
+      }
+    }
+  } catch (error) {
+    console.error('❌ Error during retry check:', error);
+  }
+}
+
+/**
+ * Starts the retry checker service
+ * Checks every minute for pending retries that are ready
+ */
+function startRetryChecker() {
+  // Clear any existing retry checker
+  const existing = appState.get('intervals.retryChecker');
+  if (existing) clearInterval(existing);
+
+  // Check every 1 minute (60000ms) for pending retries
+  const RETRY_CHECK_INTERVAL = 60_000;
+  
+  const id = setInterval(checkAndProcessRetries, RETRY_CHECK_INTERVAL);
+  appState.set('intervals.retryChecker', id);
+
+  console.log('🔁 Retry checker service started. Checking every 1 minute.');
+  
+  // Run initial check after a short delay
+  setTimeout(checkAndProcessRetries, 5000);
+}
+
+/**
+ * Stops the retry checker service
+ */
+function stopRetryChecker() {
+  appState.clearIntervalRef('retryChecker');
+  console.log('🔁 Retry checker service stopped');
+}
+
+// ============================================
 // AUTO-UPDATE SERVICE
 // ============================================
 function startChannelAutoUpdate() {
@@ -4745,12 +4819,16 @@ function startChannelAutoUpdate() {
   console.log(
     `Auto-update service started. Checking every ${updateIntervalHours} hours. Status: ${isAutoUpdateEnabled ? "Enabled" : "Disabled"}`
   );
+  
+  // ✅ Start the retry checker service
+  startRetryChecker();
 }
 
 
 function stopAutoUpdateService() {
   // ✅ Clear interval using appState instead of global variable
   appState.clearIntervalRef('autoUpdate');
+  stopRetryChecker();
   console.log("Auto-update service stopped");
 }
 // ============================================
