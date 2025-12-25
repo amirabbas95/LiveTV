@@ -5702,665 +5702,105 @@ document.addEventListener("visibilitychange", () => {
 });
 
 
-/**
- * Sets up Progressive Web App features (Service Worker registration and prompt).
- * Integrated with IPTV Service Worker v2 messaging.
- */
 // ============================================
-// SERVICE WORKER MANAGER CLASS
+// SIMPLE SERVICE WORKER MANAGER
 // ============================================
 
-/**
- * Comprehensive Service Worker Manager
- * Handles registration, updates, caching, messaging, and PWA features
- */
 class ServiceWorkerManager {
-  constructor(options = {}) {
-    this.config = {
-      swPath: options.swPath || '/sw.js',
-      scope: options.scope || '/',
-      updateCheckInterval: options.updateCheckInterval || 60 * 60 * 1000, // 1 hour
-      skipWaitingOnUpdate: options.skipWaitingOnUpdate ?? true,
-      enableAutoUpdate: options.enableAutoUpdate ?? true,
-      enableA2HS: options.enableA2HS ?? true,
-      skipLocalhost: options.skipLocalhost ?? true,
-      ...options
-    };
-
-    // State
-    this.registration = null;
-    this.deferredPrompt = null;
-    this.updateCheckTimer = null;
-    this.isUpdateAvailable = false;
+  constructor() {
+    this.updateFound = false;
     this.newWorker = null;
-
-    // Bind methods
-    this._handleUpdateFound = this._handleUpdateFound.bind(this);
-    this._handleControllerChange = this._handleControllerChange.bind(this);
-    this._handleMessage = this._handleMessage.bind(this);
-    this._handleBeforeInstallPrompt = this._handleBeforeInstallPrompt.bind(this);
-    this._handleAppInstalled = this._handleAppInstalled.bind(this);
   }
 
-  /**
-   * Initialize the Service Worker Manager
-   */
   async initialize() {
+    if (!('serviceWorker' in navigator)) return false;
+
     try {
-      // Check if should skip (localhost or no support)
-      if (!this._checkSupport()) {
-        return false;
-      }
+      const registration = await navigator.serviceWorker.register('/sw.js');
+      
+      // Listen for updates
+      registration.addEventListener('updatefound', () => {
+        this.newWorker = registration.installing;
+        this.newWorker.addEventListener('statechange', () => {
+          if (this.newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+            this.showUpdateNotification();
+          }
+        });
+      });
 
-      // Resolve paths for GitHub Pages
-      this._resolveBasePath();
+      // Listen for controller change (auto-reload)
+      navigator.serviceWorker.addEventListener('controllerchange', () => {
+        window.location.reload();
+      });
 
-      // Register service worker
-      await this._registerServiceWorker();
+      // Listen for messages from SW
+      navigator.serviceWorker.addEventListener('message', (event) => {
+        if (event.data.type === 'FORCE_RELOAD') {
+          window.location.reload();
+        }
+      });
 
-      // Setup event listeners
-      this._setupEventListeners();
-
-      // Setup A2HS if enabled
-      if (this.config.enableA2HS) {
-        this._setupA2HS();
-      }
-
-      // Start periodic update checks if enabled
-      if (this.config.enableAutoUpdate) {
-        this._startUpdateChecker();
-      }
-
-      //console.log('✅ ServiceWorkerManager initialized successfully');
+      console.log('✅ Service Worker registered');
       return true;
-    } catch (error) {
-      console.error('❌ ServiceWorkerManager initialization failed:', error);
-      return false;
-    }
-  }
-
-  /**
-   * Check if service workers are supported and if we should proceed
-   */
-  _checkSupport() {
-    // Check browser support
-    if (!('serviceWorker' in navigator)) {
-      console.warn('⚠️ Service Workers not supported in this browser');
-      return false;
-    }
-
-    // Check if running on localhost
-    const isLocalhost = ['localhost', '127.0.0.1', ''].includes(location.hostname);
-    
-    if (isLocalhost && this.config.skipLocalhost) {
-      console.warn('⚠️ Service Worker skipped for localhost development');
-      return false;
-    }
-
-    return true;
-  }
-
-  /**
-   * Resolve base path for GitHub Pages or subdirectory hosting
-   */
-  _resolveBasePath() {
-    let basePath = '/';
-    
-    // Check if on GitHub Pages
-    if (location.hostname.endsWith('github.io')) {
-      const parts = location.pathname.split('/').filter(Boolean);
-      if (parts.length) {
-        basePath = `/${parts[0]}/`;
-      }
-    }
-
-    // Update config with resolved paths
-    this.config.swPath = `${basePath}sw.js`;
-    this.config.scope = basePath;
-
-    //console.log('📍 PWA Base Path:', basePath);
-  }
-
-  /**
-   * Register the service worker
-   */
-  async _registerServiceWorker() {
-    try {
-      this.registration = await navigator.serviceWorker.register(
-        this.config.swPath,
-        { scope: this.config.scope }
-      );
-
-      //console.log('✅ Service Worker registered:', this.registration.scope);
-
-      // Check for updates immediately
-      await this._checkForUpdates();
-
-      return this.registration;
     } catch (error) {
       console.error('❌ Service Worker registration failed:', error);
-      throw error;
-    }
-  }
-
-  /**
-   * Setup all event listeners
-   */
-  _setupEventListeners() {
-    // Update detection
-    if (this.registration) {
-      this.registration.addEventListener('updatefound', this._handleUpdateFound);
-    }
-
-    // Controller change (new SW activated)
-    navigator.serviceWorker.addEventListener('controllerchange', this._handleControllerChange);
-
-    // Messages from service worker
-    navigator.serviceWorker.addEventListener('message', this._handleMessage);
-
-    // Store in appState for cleanup
-    try {
-      if (typeof appState?.addCleanup === 'function') {
-        appState.addCleanup(() => this.cleanup());
-      }
-    } catch (e) { /* ignore */ }
-  }
-
-  /**
-   * Handle update found event
-   */
-  _handleUpdateFound() {
-    console.log('🔄 Service Worker update detected');
-
-    const newWorker = this.registration.installing;
-    if (!newWorker) return;
-
-    this.newWorker = newWorker;
-
-    newWorker.addEventListener('statechange', () => {
-      console.log('SW State:', newWorker.state);
-
-      if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-        // New service worker installed but waiting
-        this.isUpdateAvailable = true;
-        this._showUpdateNotification();
-      }
-    });
-  }
-
-  /**
-   * Handle controller change event (new SW activated)
-   */
-  _handleControllerChange() {
-    console.log('🔄 New Service Worker activated, reloading page...');
-    
-    // Remove update banner if exists
-    const banner = document.getElementById('sw-update-banner');
-    if (banner) banner.remove();
-
-    // Reload to get new assets
-    window.location.reload();
-  }
-
-  /**
-   * Handle messages from service worker
-   */
-  _handleMessage(event) {
-    const { type, payload } = event.data || {};
-
-    switch (type) {
-      case 'SW_READY':
-        console.log('✅ Service Worker ready. Version:', payload?.version || 'unknown');
-        try {
-          appState.set('sw.ready', true);
-          appState.set('sw.version', payload?.version);
-        } catch (e) { /* ignore */ }
-        break;
-
-      case 'CACHE_CLEARED':
-        console.log('🗑️ Service Worker cache cleared');
-        showNotification?.('Cache cleared successfully', 'success');
-        break;
-
-      case 'CACHE_SIZE':
-        console.log('📦 Cache size:', payload?.size);
-        try {
-          appState.set('sw.cacheSize', payload?.size);
-        } catch (e) { /* ignore */ }
-        break;
-
-      case 'PONG':
-        console.log('🏓 Service Worker keep-alive:', payload?.version || 'unknown');
-        break;
-
-      case 'ERROR':
-        console.error('❌ Service Worker error:', payload?.message);
-        break;
-
-      default:
-        console.log('📨 SW Message:', type, payload);
-    }
-  }
-
-  /**
-   * Show update notification banner
-   */
-  _showUpdateNotification() {
-    // Prevent duplicates
-    if (document.getElementById('sw-update-banner')) return;
-
-    const banner = document.createElement('div');
-    banner.id = 'sw-update-banner';
-    
-    const message = document.createElement('span');
-    message.textContent = '🎉 New version available!';
-    
-    const updateBtn = document.createElement('button');
-    updateBtn.textContent = 'Update Now';
-    updateBtn.onclick = () => this.activateUpdate();
-    
-    const dismissBtn = document.createElement('button');
-    dismissBtn.textContent = '✕';
-    dismissBtn.onclick = () => banner.remove();
-
-    // Styles
-    Object.assign(banner.style, {
-      position: 'fixed',
-      bottom: '20px',
-      right: '20px',
-      background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-      color: '#ffffff',
-      padding: '16px 20px',
-      borderRadius: '12px',
-      display: 'flex',
-      alignItems: 'center',
-      gap: '12px',
-      zIndex: '10000',
-      boxShadow: '0 8px 24px rgba(0,0,0,0.3)',
-      fontFamily: 'system-ui, -apple-system, sans-serif',
-      fontSize: '14px',
-      fontWeight: '500',
-      animation: 'slideInUp 0.3s ease-out'
-    });
-
-    Object.assign(updateBtn.style, {
-      background: '#ffffff',
-      color: '#667eea',
-      border: 'none',
-      padding: '8px 16px',
-      borderRadius: '6px',
-      cursor: 'pointer',
-      fontWeight: '600',
-      fontSize: '13px',
-      transition: 'transform 0.2s'
-    });
-
-    Object.assign(dismissBtn.style, {
-      background: 'transparent',
-      color: '#ffffff',
-      border: 'none',
-      padding: '4px 8px',
-      cursor: 'pointer',
-      fontSize: '18px',
-      lineHeight: '1',
-      opacity: '0.7',
-      transition: 'opacity 0.2s'
-    });
-
-    updateBtn.onmouseover = () => updateBtn.style.transform = 'scale(1.05)';
-    updateBtn.onmouseout = () => updateBtn.style.transform = 'scale(1)';
-    dismissBtn.onmouseover = () => dismissBtn.style.opacity = '1';
-    dismissBtn.onmouseout = () => dismissBtn.style.opacity = '0.7';
-
-    banner.appendChild(message);
-    banner.appendChild(updateBtn);
-    banner.appendChild(dismissBtn);
-    document.body.appendChild(banner);
-
-    // Add animation keyframes if not exists
-    if (!document.getElementById('sw-animation-styles')) {
-      const style = document.createElement('style');
-      style.id = 'sw-animation-styles';
-      style.textContent = `
-        @keyframes slideInUp {
-          from {
-            transform: translateY(100px);
-            opacity: 0;
-          }
-          to {
-            transform: translateY(0);
-            opacity: 1;
-          }
-        }
-      `;
-      document.head.appendChild(style);
-    }
-
-    console.log('📢 Update notification shown');
-  }
-
-  /**
-   * Activate the waiting service worker
-   */
-  activateUpdate() {
-    if (!this.newWorker) {
-      console.warn('⚠️ No new worker to activate');
-      return;
-    }
-
-    console.log('🚀 Activating new Service Worker...');
-    
-    // Tell the waiting worker to skip waiting
-    this.newWorker.postMessage({ type: 'SKIP_WAITING' });
-    
-    // The controllerchange event will trigger reload
-  }
-
-  /**
-   * Check for service worker updates manually
-   */
-  async _checkForUpdates() {
-    if (!this.registration) {
-      //console.warn('⚠️ No registration to check for updates');
-      return;
-    }
-
-    try {
-      await this.registration.update();
-      //console.log('🔍 Checked for Service Worker updates');
-    } catch (error) {
-      console.warn('⚠️ Update check failed:', error);
-    }
-  }
-
-  /**
-   * Start periodic update checker
-   */
-  _startUpdateChecker() {
-    if (this.updateCheckTimer) {
-      clearInterval(this.updateCheckTimer);
-    }
-
-    const interval = this.config.updateCheckInterval;
-    
-    this.updateCheckTimer = setInterval(() => {
-      this._checkForUpdates();
-    }, interval);
-
-    //console.log(`⏱️ Update checker started (interval: ${interval / 1000 / 60} minutes)`);
-
-    // Store in appState
-    try {
-      appState.set('intervals.swUpdateChecker', this.updateCheckTimer);
-    } catch (e) { /* ignore */ }
-  }
-
-  /**
-   * Stop periodic update checker
-   */
-  _stopUpdateChecker() {
-    if (this.updateCheckTimer) {
-      clearInterval(this.updateCheckTimer);
-      this.updateCheckTimer = null;
-      console.log('⏹️ Update checker stopped');
-    }
-  }
-
-  /**
-   * Setup Add to Home Screen (A2HS) functionality
-   */
-  _setupA2HS() {
-    window.addEventListener('beforeinstallprompt', this._handleBeforeInstallPrompt);
-    window.addEventListener('appinstalled', this._handleAppInstalled);
-    
-    //console.log('📱 A2HS ready');
-  }
-
-  /**
-   * Handle before install prompt
-   */
-  _handleBeforeInstallPrompt(event) {
-    // Prevent the default mini-infobar
-    event.preventDefault();
-    
-    // Stash the event for later use
-    this.deferredPrompt = event;
-    
-    console.log('📱 Install prompt available');
-    
-    // Update appState
-    try {
-      appState.set('pwa.installable', true);
-    } catch (e) { /* ignore */ }
-
-    // Optional: Show custom install button
-    this._showInstallButton();
-  }
-
-  /**
-   * Handle app installed event
-   */
-  _handleAppInstalled(event) {
-    console.log('✅ PWA installed successfully');
-    
-    this.deferredPrompt = null;
-    
-    try {
-      appState.set('pwa.installed', true);
-      appState.set('pwa.installable', false);
-    } catch (e) { /* ignore */ }
-
-    showNotification?.('App installed! You can now use it offline.', 'success');
-    
-    // Hide install button if exists
-    const installBtn = document.getElementById('pwa-install-btn');
-    if (installBtn) installBtn.style.display = 'none';
-  }
-
-  /**
-   * Show install button (optional)
-   */
-  _showInstallButton() {
-    // Check if button already exists
-    if (document.getElementById('pwa-install-btn')) return;
-
-    const btn = document.createElement('button');
-    btn.id = 'pwa-install-btn';
-    btn.innerHTML = '📱 Install App';
-    btn.onclick = () => this.promptInstall();
-
-    Object.assign(btn.style, {
-      position: 'fixed',
-      bottom: '20px',
-      left: '20px',
-      background: '#4CAF50',
-      color: '#fff',
-      border: 'none',
-      padding: '12px 20px',
-      borderRadius: '8px',
-      cursor: 'pointer',
-      fontWeight: '600',
-      fontSize: '14px',
-      boxShadow: '0 4px 12px rgba(0,0,0,0.2)',
-      zIndex: '9999',
-      transition: 'transform 0.2s',
-      fontFamily: 'system-ui, -apple-system, sans-serif'
-    });
-
-    btn.onmouseover = () => btn.style.transform = 'scale(1.05)';
-    btn.onmouseout = () => btn.style.transform = 'scale(1)';
-
-    document.body.appendChild(btn);
-  }
-
-  /**
-   * Prompt user to install PWA
-   */
-  async promptInstall() {
-    if (!this.deferredPrompt) {
-      console.warn('⚠️ Install prompt not available');
-      showNotification?.('App is already installed or not installable', 'info');
-      return false;
-    }
-
-    try {
-      // Show the install prompt
-      this.deferredPrompt.prompt();
-
-      // Wait for the user's response
-      const { outcome } = await this.deferredPrompt.userChoice;
-      
-      console.log(`📱 Install prompt outcome: ${outcome}`);
-
-      if (outcome === 'accepted') {
-        console.log('✅ User accepted the install prompt');
-      } else {
-        console.log('❌ User dismissed the install prompt');
-      }
-
-      // Clear the deferredPrompt
-      this.deferredPrompt = null;
-
-      return outcome === 'accepted';
-    } catch (error) {
-      console.error('❌ Install prompt error:', error);
       return false;
     }
   }
 
-  /**
-   * Send message to service worker
-   */
-  sendMessage(type, payload = {}) {
-    if (!navigator.serviceWorker.controller) {
-      console.warn('⚠️ No active service worker to send message to');
-      return false;
-    }
-
-    try {
-      navigator.serviceWorker.controller.postMessage({ type, payload });
-      console.log('📤 Message sent to SW:', type);
-      return true;
-    } catch (error) {
-      console.error('❌ Failed to send message to SW:', error);
-      return false;
-    }
-  }
-
-  /**
-   * Clear service worker caches
-   */
-  clearCache() {
-    return this.sendMessage('CLEAR_CACHE');
-  }
-
-  /**
-   * Get cache size from service worker
-   */
-  getCacheSize() {
-    return this.sendMessage('GET_CACHE_SIZE');
-  }
-
-  /**
-   * Ping service worker (keep-alive)
-   */
-  ping() {
-    return this.sendMessage('PING');
-  }
-
-  /**
-   * Unregister service worker
-   */
-  async unregister() {
-    if (!this.registration) {
-      console.warn('⚠️ No registration to unregister');
-      return false;
-    }
-
-    try {
-      const success = await this.registration.unregister();
-      console.log('✅ Service Worker unregistered');
-      
-      this.registration = null;
-      this._stopUpdateChecker();
-      
-      return success;
-    } catch (error) {
-      console.error('❌ Failed to unregister service worker:', error);
-      return false;
-    }
-  }
-
-  /**
-   * Get registration state
-   */
-  getState() {
-    return {
-      isRegistered: !!this.registration,
-      isUpdateAvailable: this.isUpdateAvailable,
-      isInstallable: !!this.deferredPrompt,
-      scope: this.registration?.scope || null,
-      updateCheckInterval: this.config.updateCheckInterval
-    };
-  }
-
-  /**
-   * Cleanup resources
-   */
-  cleanup() {
-    this._stopUpdateChecker();
+  showUpdateNotification() {
+    // Create simple notification
+    const notification = document.createElement('div');
+    notification.style.cssText = `
+      position: fixed;
+      top: 10px;
+      right: 10px;
+      background: #4CAF50;
+      color: white;
+      padding: 15px;
+      border-radius: 5px;
+      z-index: 10000;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+      font-family: Arial, sans-serif;
+    `;
     
-    // Remove event listeners
-    if (this.registration) {
-      this.registration.removeEventListener('updatefound', this._handleUpdateFound);
+    notification.innerHTML = `
+      <div style="margin-bottom: 10px;">New update available!</div>
+      <button onclick="this.parentElement.remove()" style="margin-right: 10px; padding: 5px 10px; background: white; color: #333; border: none; border-radius: 3px; cursor: pointer;">
+        Later
+      </button>
+      <button onclick="window.swManager?.activateUpdate()" style="padding: 5px 10px; background: #2196F3; color: white; border: none; border-radius: 3px; cursor: pointer;">
+        Update Now
+      </button>
+    `;
+    
+    document.body.appendChild(notification);
+  }
+
+  async activateUpdate() {
+    if (this.newWorker) {
+      // Tell service worker to skip waiting
+      this.newWorker.postMessage({ type: 'SKIP_WAITING' });
     }
-    
-    window.removeEventListener('beforeinstallprompt', this._handleBeforeInstallPrompt);
-    window.removeEventListener('appinstalled', this._handleAppInstalled);
-    
-    console.log('🧹 ServiceWorkerManager cleaned up');
+  }
+
+  async clearCache() {
+    if (navigator.serviceWorker.controller) {
+      navigator.serviceWorker.controller.postMessage({ type: 'CLEAR_CACHE' });
+    }
+  }
+
+  async checkForUpdates() {
+    if (navigator.serviceWorker.controller) {
+      navigator.serviceWorker.controller.postMessage({ type: 'UPDATE_AVAILABLE' });
+    }
   }
 }
 
-// ============================================
-// SETUP PWA FUNCTION (REWRITTEN)
-// ============================================
 
-/**
- * Initialize PWA functionality using ServiceWorkerManager
- */
 function setupPWA() {
-  // Create service worker manager instance
-  const swManager = new ServiceWorkerManager({
-    swPath: '/sw.js',
-    scope: '/',
-    updateCheckInterval: 60 * 60 * 1000, // Check for updates every hour
-    skipWaitingOnUpdate: true,
-    enableAutoUpdate: true,
-    enableA2HS: true,
-    skipLocalhost: true
-  });
-
-  // Initialize
-  swManager.initialize()
-    .then(success => {
-      if (success) {
-        //console.log('✅ PWA setup complete');
-        
-        // Store in global scope for access via console
-        window.swManager = swManager;
-        
-        // Store in appState
-        try {
-          appState.set('sw.manager', swManager);
-        } catch (e) { /* ignore */ }
-      } else {
-        console.log('ℹ️ PWA setup skipped or failed');
-      }
-    })
-    .catch(error => {
-      console.error('❌ PWA setup error:', error);
-    });
+  window.swManager = new ServiceWorkerManager();
+  window.swManager.initialize();
 }
 
 function fixImageUrl(imageUrl) {
