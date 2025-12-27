@@ -136,9 +136,9 @@
           </div>
 
 
-            <div class="modal-body">
-              <!-- all existing settings items go here -->
-            </div>
+          <div class="modal-body">
+            <!-- all existing settings items go here -->
+          </div>
 
           <!-- Manual Update -->
           <div class="setting-item">
@@ -283,171 +283,67 @@
 
         </div>
       </div>
+    </div>
 
-      <div id="updateManagerModal" class="update-modal">
-        <div class="update-modal-content">
 
-          <div class="update-modal-header">
-            <h2><i class="fa fa-line-chart" aria-hidden="true"></i> Update Manager</h2>
-            <button class="close-btn" onclick="hideUpdateManagerModal()" aria-label="Close update manager">
-              <i class="fa fa-times"></i>
+    <!-- API Key Modal -->
+    <!-- Replace your API Key Modal with this -->
+    <div id="apiKeyModal" class="settings-modal" style="display: none;">
+      <div class="settings-content">
+        <h2>🔑 YouTube API Configuration</h2>
+
+        <div class="setting-item">
+          <label for="apiKeyInput">API Key</label>
+
+          <div class="input-button-wrapper">
+            <input type="password" id="apiKeyInput" class="api-key-input" placeholder="Enter your YouTube API key"
+              autocomplete="off">
+            <button type="button" id="toggleApiKeyVisibility" class="toggle-visibility-btn">
+              👁️ Show
             </button>
           </div>
 
-          <div class="update-modal-body">
-            <!-- Summary Cards -->
-            <div class="update-summary-grid">
-              <div class="summary-card rss-card">
-                <h3>📡 RSS Feeds</h3>
-                <div class="stat-grid">
-                  <div class="stat-item">
-                    <span class="stat-label">Ready</span>
-                    <span class="stat-value" id="rssReadyCount">0</span>
-                  </div>
-                  <div class="stat-item">
-                    <span class="stat-label">Pending</span>
-                    <span class="stat-value" id="rssPendingCount">0</span>
-                  </div>
-                  <div class="stat-item">
-                    <span class="stat-label">Failed</span>
-                    <span class="stat-value" id="rssFailedCount">0</span>
-                  </div>
-                </div>
-              </div>
+          <p class="setting-description">
+            Required for live stream detection. Get your API key from
+            <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener">
+              Google Cloud Console
+            </a>
+          </p>
 
-              <div class="summary-card live-card">
-                <h3>🔴 Live Feeds</h3>
-                <div class="stat-grid">
-                  <div class="stat-item">
-                    <span class="stat-label">Ready</span>
-                    <span class="stat-value" id="liveReadyCount">0</span>
-                  </div>
-                  <div class="stat-item">
-                    <span class="stat-label">Pending</span>
-                    <span class="stat-value" id="livePendingCount">0</span>
-                  </div>
-                  <div class="stat-item">
-                    <span class="stat-label">Failed</span>
-                    <span class="stat-value" id="liveFailedCount">0</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <!-- Action Buttons -->
-            <div class="button-group">
-              <button class="btn-primary" onclick="retryAllReady()" title="Retry all ready entries">
-                <i class="fa fa-refresh"></i> Retry All Ready
-              </button>
-              <button class="btn-secondary" onclick="refreshUpdateManagerData()" title="Refresh data">
-                <i class="fa fa-sync"></i> Refresh
-              </button>
-              <button class="btn-danger" onclick="clearAllHistory()" title="Clear all history">
-                <i class="fa fa-trash"></i> Clear History
-              </button>
-            </div>
-
-            <div class="setting-divider"></div>
-
-            <!-- Tab Navigation -->
-            <div class="tab-navigation">
-              <button class="tab-btn active" data-tab="rss-active" onclick="switchUpdateTab('rss-active')">
-                RSS Active
-              </button>
-              <button class="tab-btn" data-tab="rss-history" onclick="switchUpdateTab('rss-history')">
-                RSS History
-              </button>
-              <button class="tab-btn" data-tab="live-active" onclick="switchUpdateTab('live-active')">
-                Live Active
-              </button>
-              <button class="tab-btn" data-tab="live-history" onclick="switchUpdateTab('live-history')">
-                Live History
-              </button>
-            </div>
-
-            <!-- Tab Content -->
-            <div id="rss-active" class="tab-content active">
-              <h3>RSS Active Retries</h3>
-              <div id="rssActiveList" class="entry-list"></div>
-            </div>
-
-            <div id="rss-history" class="tab-content">
-              <h3>RSS Update History</h3>
-              <div id="rssHistoryList" class="history-list"></div>
-            </div>
-
-            <div id="live-active" class="tab-content">
-              <h3>Live Active Retries</h3>
-              <div id="liveActiveList" class="entry-list"></div>
-            </div>
-
-            <div id="live-history" class="tab-content">
-              <h3>Live Update History</h3>
-              <div id="liveHistoryList" class="history-list"></div>
-            </div>
-          </div>
+          <p class="setting-description text-yellow-300">
+            ⚠️ Warning: This key is stored in your browser.
+            For security, create a YouTube API key restricted to your domain or app in Google Cloud Console.
+          </p>
         </div>
-      </div>
 
-
-      <!-- API Key Modal -->
-      <!-- Replace your API Key Modal with this -->
-      <div id="apiKeyModal" class="settings-modal" style="display: none;">
-        <div class="settings-content">
-          <h2>🔑 YouTube API Configuration</h2>
-
-          <div class="setting-item">
-            <label for="apiKeyInput">API Key</label>
-
-            <div class="input-button-wrapper">
-              <input type="password" id="apiKeyInput" class="api-key-input" placeholder="Enter your YouTube API key"
-                autocomplete="off">
-              <button type="button" id="toggleApiKeyVisibility" class="toggle-visibility-btn">
-                👁️ Show
-              </button>
-            </div>
-
-            <p class="setting-description">
-              Required for live stream detection. Get your API key from
-              <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener">
-                Google Cloud Console
-              </a>
-            </p>
-
-            <p class="setting-description text-yellow-300">
-              ⚠️ Warning: This key is stored in your browser.
-              For security, create a YouTube API key restricted to your domain or app in Google Cloud Console.
-            </p>
-          </div>
-
-          <div class="setting-item">
-            <label class="checkbox-label">
-              <input type="checkbox" id="rememberKey" checked>
-              <span>Remember API key (stored locally)</span>
-            </label>
-            <p class="setting-description">
-              Your API key will be stored securely in your browser's local storage
-            </p>
-          </div>
-
-          <div class="api-key-actions">
-            <button id="submitApiKey" class="btn-primary">
-              ✓ Save & Continue
-            </button>
-            <button id="skipApiKey" class="btn-secondary">
-              Skip for now
-            </button>
-          </div>
-
-          <div class="api-key-info">
-            <p><strong>Why do we need this?</strong></p>
-            <p>The YouTube API key allows us to detect which channels are currently live streaming.</p>
-          </div>
-
-          <!-- Close Button -->
-          <button id="closeApiKeyModal" class="btn-secondary">Close</button>
+        <div class="setting-item">
+          <label class="checkbox-label">
+            <input type="checkbox" id="rememberKey" checked>
+            <span>Remember API key (stored locally)</span>
+          </label>
+          <p class="setting-description">
+            Your API key will be stored securely in your browser's local storage
+          </p>
         </div>
+
+        <div class="api-key-actions">
+          <button id="submitApiKey" class="btn-primary">
+            ✓ Save & Continue
+          </button>
+          <button id="skipApiKey" class="btn-secondary">
+            Skip for now
+          </button>
+        </div>
+
+        <div class="api-key-info">
+          <p><strong>Why do we need this?</strong></p>
+          <p>The YouTube API key allows us to detect which channels are currently live streaming.</p>
+        </div>
+
+        <!-- Close Button -->
+        <button id="closeApiKeyModal" class="btn-secondary">Close</button>
       </div>
+    </div>
 
 
 

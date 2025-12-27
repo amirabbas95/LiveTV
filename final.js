@@ -2236,7 +2236,7 @@ class ChannelLoader {
           resolveYouTubePlayback(this.playerInstance);
 
         if (channelId) {
-          enhancedLiveRetryManager.recordFailure(
+          liveRetryManager.recordFailure(
             channelId,
             'YouTube error 1150'
           );
@@ -4201,163 +4201,6 @@ class RetryManager {
   }
 }
 
-
-/**
- * Enhanced RetryManager with detailed history tracking
- * Extends the existing RetryManager functionality
- */
-class EnhancedRetryManager extends RetryManager {
-  constructor(storageKey, options = {}) {
-    super(storageKey, options);
-    this.historyKey = `${storageKey}_history`;
-    this.maxHistoryEntries = options.maxHistoryEntries || 100;
-  }
-
-  /**
-   * Get complete retry entry with all details
-   */
-  getEntry(id) {
-    const data = this._load();
-    return data[id] || null;
-  }
-
-  /**
-   * Get all entries (active retry queue)
-   */
-  getAllEntries() {
-    const data = this._load();
-    return Object.entries(data).map(([id, entry]) => ({
-      id,
-      ...entry,
-      status: this._determineStatus(entry)
-    }));
-  }
-
-  /**
-   * Determine entry status
-   */
-  _determineStatus(entry) {
-    const now = Date.now();
-    if (entry.retries >= this.maxRetries) return 'failed';
-    if (now >= entry.nextRetry) return 'ready';
-    return 'pending';
-  }
-
-  /**
-   * Get history of all updates (success and failures)
-   */
-  getHistory() {
-    const raw = localStorage.getItem(this.historyKey);
-    const history = safeJSONParse(raw, []) || [];
-    return Array.isArray(history) ? history : [];
-  }
-
-  /**
-   * Add entry to history
-   */
-  _addToHistory(id, status, error = null) {
-    const history = this.getHistory();
-    const entry = {
-      id,
-      status,
-      timestamp: Date.now(),
-      error: error || null
-    };
-    
-    history.unshift(entry);
-    
-    // Limit history size
-    if (history.length > this.maxHistoryEntries) {
-      history.splice(this.maxHistoryEntries);
-    }
-    
-    try {
-      localStorage.setItem(this.historyKey, JSON.stringify(history));
-    } catch (e) {
-      console.warn('Failed to save history:', e);
-    }
-  }
-
-  /**
-   * Override recordFailure to add to history
-   */
-  recordFailure(id, error = "Unknown error") {
-    super.recordFailure(id, error);
-    this._addToHistory(id, 'failed', error);
-  }
-
-  /**
-   * Override recordSuccess to add to history
-   */
-  recordSuccess(id) {
-    super.recordSuccess(id);
-    this._addToHistory(id, 'success');
-  }
-
-  /**
-   * Get statistics for display
-   */
-  getDetailedStats() {
-    const entries = this.getAllEntries();
-    const history = this.getHistory();
-    const now = Date.now();
-
-    const stats = {
-      total: entries.length,
-      ready: entries.filter(e => e.status === 'ready').length,
-      pending: entries.filter(e => e.status === 'pending').length,
-      failed: entries.filter(e => e.status === 'failed').length,
-      history: {
-        total: history.length,
-        success: history.filter(h => h.status === 'success').length,
-        failed: history.filter(h => h.status === 'failed').length,
-        last24h: history.filter(h => (now - h.timestamp) < 24 * 60 * 60 * 1000).length
-      }
-    };
-
-    return stats;
-  }
-
-  /**
-   * Clear history
-   */
-  clearHistory() {
-    try {
-      localStorage.removeItem(this.historyKey);
-      console.log(`🗑️ Cleared history for ${this.storageKey}`);
-    } catch (e) {
-      console.warn('Failed to clear history:', e);
-    }
-  }
-
-  /**
-   * Manual retry for a specific entry
-   */
-  async manualRetry(id, retryFunction) {
-    const entry = this.getEntry(id);
-    if (!entry) {
-      console.warn(`No entry found for ID: ${id}`);
-      return { success: false, error: 'Entry not found' };
-    }
-
-    try {
-      // Call the retry function
-      const result = await retryFunction(id);
-      
-      if (result) {
-        this.recordSuccess(id);
-        return { success: true };
-      } else {
-        this.recordFailure(id, 'Retry function returned false');
-        return { success: false, error: 'Retry function returned false' };
-      }
-    } catch (error) {
-      this.recordFailure(id, error.message);
-      return { success: false, error: error.message };
-    }
-  }
-}
-
 // ============================================
 // HELPER FUNCTIONS
 // ============================================
@@ -4426,473 +4269,8 @@ function processRSSData(data, feed) {
 // FEED LOADERS
 // ============================================
 
-/* const rssRetryManager = new RetryManager("rss_retry_queue", RETRY_CONFIG.RSS);
-const liveRetryManager = new RetryManager("live_retry_queue", RETRY_CONFIG.LIVE); */
-
-const enhancedRssRetryManager = new EnhancedRetryManager("rss_retry_queue", {
-  ...RETRY_CONFIG.RSS,
-  maxHistoryEntries: 50
-});
-
-const enhancedLiveRetryManager = new EnhancedRetryManager("live_retry_queue", {
-  ...RETRY_CONFIG.LIVE,
-  maxHistoryEntries: 50
-});
-
-
-// ============================================
-// UPDATE MANAGER UI FUNCTIONS
-// ============================================
-
-/**
- * Show Update Manager Modal
- */
-function showUpdateManagerModal() {
-  let modal = document.getElementById('updateManagerModal');  
-  modal.style.display = 'flex';
-  refreshUpdateManagerData();
-}
-
-/**
- * Hide Update Manager Modal
- */
-function hideUpdateManagerModal() {
-  const modal = document.getElementById('updateManagerModal');
-  if (modal) {
-    modal.style.display = 'none';
-  }
-}
-
-/**
- * Switch between tabs
- */
-function switchUpdateTab(tabName) {
-  // Hide all tabs
-  document.querySelectorAll('.tab-content').forEach(tab => {
-    tab.style.display = 'none';
-  });
-  
-  // Remove active class from all buttons
-  document.querySelectorAll('.tab-btn').forEach(btn => {
-    btn.classList.remove('active');
-  });
-  
-  // Show selected tab
-  const selectedTab = document.getElementById(tabName);
-  if (selectedTab) {
-    selectedTab.style.display = 'block';
-  }
-  
-  // Add active class to clicked button
-  const selectedBtn = document.querySelector(`[data-tab="${tabName}"]`);
-  if (selectedBtn) {
-    selectedBtn.classList.add('active');
-  }
-}
-
-/**
- * Refresh all data in the Update Manager
- */
-function refreshUpdateManagerData() {
-  updateSummaryCards();
-  updateActiveEntriesLists();
-  updateHistoryLists();
-}
-
-/**
- * Update summary cards with current statistics
- */
-function updateSummaryCards() {
-  const rssStats = enhancedRssRetryManager.getDetailedStats();
-  const liveStats = enhancedLiveRetryManager.getDetailedStats();
-
-  // RSS stats
-  document.getElementById('rssReadyCount').textContent = rssStats.ready;
-  document.getElementById('rssPendingCount').textContent = rssStats.pending;
-  document.getElementById('rssFailedCount').textContent = rssStats.failed;
-
-  // Live stats
-  document.getElementById('liveReadyCount').textContent = liveStats.ready;
-  document.getElementById('livePendingCount').textContent = liveStats.pending;
-  document.getElementById('liveFailedCount').textContent = liveStats.failed;
-}
-
-/**
- * Update active entries lists
- */
-function updateActiveEntriesLists() {
-  updateActiveList('rss', enhancedRssRetryManager);
-  updateActiveList('live', enhancedLiveRetryManager);
-}
-
-/**
- * Update a specific active list
- */
-function updateActiveList(type, manager) {
-  const listId = `${type}ActiveList`;
-  const listElement = document.getElementById(listId);
-  if (!listElement) return;
-
-  const entries = manager.getAllEntries();
-  
-  if (entries.length === 0) {
-    listElement.innerHTML = '<p class="empty-message">No active retry entries</p>';
-    return;
-  }
-
-  const html = entries.map(entry => createActiveEntryHTML(entry, type)).join('');
-  listElement.innerHTML = html;
-}
-
-/**
- * Create HTML for an active entry
- */
-function createActiveEntryHTML(entry, type) {
-  const statusClass = `status-${entry.status}`;
-  const statusIcon = getStatusIcon(entry.status);
-  const timeUntilRetry = entry.nextRetry ? getTimeUntil(entry.nextRetry) : 'N/A';
-  
-  return `
-    <div class="entry-card ${statusClass}">
-      <div class="entry-header">
-        <span class="entry-id" title="${entry.id}">${truncateText(entry.id, 40)}</span>
-        <span class="entry-status">${statusIcon} ${entry.status.toUpperCase()}</span>
-      </div>
-      <div class="entry-details">
-        <div class="detail-row">
-          <span class="detail-label">Retries:</span>
-          <span class="detail-value">${entry.retries} / ${type === 'rss' ? RETRY_CONFIG.RSS.maxRetries : RETRY_CONFIG.LIVE.maxRetries}</span>
-        </div>
-        <div class="detail-row">
-          <span class="detail-label">Last Attempt:</span>
-          <span class="detail-value">${getTimeAgo(entry.lastAttempt)}</span>
-        </div>
-        ${entry.status !== 'failed' ? `
-        <div class="detail-row">
-          <span class="detail-label">Next Retry:</span>
-          <span class="detail-value">${timeUntilRetry}</span>
-        </div>
-        ` : ''}
-        ${entry.lastError ? `
-        <div class="detail-row error-row">
-          <span class="detail-label">Error:</span>
-          <span class="detail-value error-text">${escapeHtml(entry.lastError)}</span>
-        </div>
-        ` : ''}
-      </div>
-      <div class="entry-actions">
-        ${entry.status !== 'failed' ? `
-          <button class="btn-small btn-retry" onclick="manualRetryEntry('${escapeHtml(entry.id)}', '${type}')" 
-                  title="Retry this entry now">
-            <i class="fa fa-redo"></i> Retry Now
-          </button>
-        ` : ''}
-        <button class="btn-small btn-remove" onclick="removeEntry('${escapeHtml(entry.id)}', '${type}')" 
-                title="Remove from queue">
-          <i class="fa fa-times"></i> Remove
-        </button>
-      </div>
-    </div>
-  `;
-}
-
-/**
- * Update history lists
- */
-function updateHistoryLists() {
-  updateHistoryList('rss', enhancedRssRetryManager);
-  updateHistoryList('live', enhancedLiveRetryManager);
-}
-
-/**
- * Update a specific history list
- */
-function updateHistoryList(type, manager) {
-  const listId = `${type}HistoryList`;
-  const listElement = document.getElementById(listId);
-  if (!listElement) return;
-
-  const history = manager.getHistory();
-  
-  if (history.length === 0) {
-    listElement.innerHTML = '<p class="empty-message">No history available</p>';
-    return;
-  }
-
-  // Group history by date
-  const grouped = groupHistoryByDate(history);
-  const html = Object.entries(grouped).map(([date, entries]) => 
-    createHistoryGroupHTML(date, entries)
-  ).join('');
-  
-  listElement.innerHTML = html;
-}
-
-/**
- * Group history entries by date
- */
-function groupHistoryByDate(history) {
-  const grouped = {};
-  
-  history.forEach(entry => {
-    const date = new Date(entry.timestamp).toLocaleDateString();
-    if (!grouped[date]) {
-      grouped[date] = [];
-    }
-    grouped[date].push(entry);
-  });
-  
-  return grouped;
-}
-
-/**
- * Create HTML for a history group
- */
-function createHistoryGroupHTML(date, entries) {
-  const entriesHTML = entries.map(entry => createHistoryEntryHTML(entry)).join('');
-  
-  return `
-    <div class="history-group">
-      <h4 class="history-date">${date}</h4>
-      <div class="history-entries">
-        ${entriesHTML}
-      </div>
-    </div>
-  `;
-}
-
-/**
- * Create HTML for a history entry
- */
-function createHistoryEntryHTML(entry) {
-  const statusClass = `status-${entry.status}`;
-  const statusIcon = entry.status === 'success' ? '✅' : '❌';
-  const time = new Date(entry.timestamp).toLocaleTimeString();
-  
-  return `
-    <div class="history-entry ${statusClass}">
-      <span class="history-time">${time}</span>
-      <span class="history-id" title="${entry.id}">${truncateText(entry.id, 35)}</span>
-      <span class="history-status">${statusIcon} ${entry.status}</span>
-      ${entry.error ? `<span class="history-error" title="${escapeHtml(entry.error)}">⚠️</span>` : ''}
-    </div>
-  `;
-}
-
-/**
- * Manual retry for a specific entry
- */
-async function manualRetryEntry(id, type) {
-  const manager = type === 'rss' ? enhancedRssRetryManager : enhancedLiveRetryManager;
-  const button = event.target.closest('button');
-  
-  if (button) {
-    button.disabled = true;
-    button.innerHTML = '<i class="fa fa-spinner fa-spin"></i> Retrying...';
-  }
-
-  try {
-    // Determine the retry function based on type
-    const retryFunction = type === 'rss' ? retryRSSFeed : retryLiveFeed;
-    const result = await manager.manualRetry(id, retryFunction);
-    
-    if (result.success) {
-      showNotification(`✅ Successfully retried: ${truncateText(id, 30)}`, 'success');
-    } else {
-      showNotification(`❌ Retry failed: ${result.error}`, 'error');
-    }
-  } catch (error) {
-    showNotification(`❌ Error: ${error.message}`, 'error');
-  } finally {
-    refreshUpdateManagerData();
-  }
-}
-
-/**
- * Retry RSS feed function
- */
-async function retryRSSFeed(feedId) {
-  try {
-    // Get the RSS feed configuration
-    const rssFeeds = safeJSONParse(localStorage.getItem(LS_KEYS.FEEDS) || '[]', []);
-    const feed = rssFeeds.find(f => f.url === feedId || f.name === feedId);
-    
-    if (!feed) {
-      console.warn('RSS feed not found:', feedId);
-      return false;
-    }
-
-    // Use the existing RSS processor
-    const processor = new FeedProcessor('rss', rssCache, enhancedRssRetryManager);
-    const result = await processor.processSingleFeed(feed);
-    
-    return result !== null;
-  } catch (error) {
-    console.error('RSS retry error:', error);
-    return false;
-  }
-}
-
-/**
- * Retry live feed function
- */
-async function retryLiveFeed(feedId) {
-  try {
-    // Get the live channel configuration
-    const liveChannels = safeJSONParse(localStorage.getItem(LS_KEYS.LIVE) || '[]', []);
-    const channel = liveChannels.find(c => c.url === feedId || c.name === feedId);
-    
-    if (!channel) {
-      console.warn('Live channel not found:', feedId);
-      return false;
-    }
-
-    // Use the existing live processor
-    const processor = new FeedProcessor('live', liveCache, enhancedLiveRetryManager);
-    const result = await processor.processSingleFeed(channel);
-    
-    return result !== null;
-  } catch (error) {
-    console.error('Live retry error:', error);
-    return false;
-  }
-}
-
-/**
- * Remove entry from retry queue
- */
-function removeEntry(id, type) {
-  if (!confirm(`Are you sure you want to remove this entry from the retry queue?`)) {
-    return;
-  }
-
-  const manager = type === 'rss' ? enhancedRssRetryManager : enhancedLiveRetryManager;
-  manager.recordSuccess(id); // This removes it from the queue
-  
-  showNotification('Entry removed from queue', 'success');
-  refreshUpdateManagerData();
-}
-
-/**
- * Retry all ready entries
- */
-async function retryAllReady() {
-  const rssReady = enhancedRssRetryManager.getPendingIds();
-  const liveReady = enhancedLiveRetryManager.getPendingIds();
-  const totalReady = rssReady.length + liveReady.length;
-
-  if (totalReady === 0) {
-    showNotification('No entries ready for retry', 'info');
-    return;
-  }
-
-  if (!confirm(`Retry ${totalReady} entries?`)) {
-    return;
-  }
-
-  showNotification(`Starting retry of ${totalReady} entries...`, 'info');
-  
-  let successCount = 0;
-  let failCount = 0;
-
-  // Retry RSS feeds
-  for (const id of rssReady) {
-    try {
-      const result = await manualRetryEntry(id, 'rss');
-      if (result) successCount++;
-      else failCount++;
-    } catch (e) {
-      failCount++;
-    }
-  }
-
-  // Retry Live feeds
-  for (const id of liveReady) {
-    try {
-      const result = await manualRetryEntry(id, 'live');
-      if (result) successCount++;
-      else failCount++;
-    } catch (e) {
-      failCount++;
-    }
-  }
-
-  showNotification(
-    `Retry complete: ${successCount} succeeded, ${failCount} failed`,
-    successCount > failCount ? 'success' : 'warning'
-  );
-  
-  refreshUpdateManagerData();
-}
-
-/**
- * Clear all history
- */
-function clearAllHistory() {
-  if (!confirm('Are you sure you want to clear all update history? This action cannot be undone.')) {
-    return;
-  }
-
-  enhancedRssRetryManager.clearHistory();
-  enhancedLiveRetryManager.clearHistory();
-  
-  showNotification('All history cleared', 'success');
-  refreshUpdateManagerData();
-}
-
-// ============================================
-// UTILITY FUNCTIONS
-// ============================================
-
-/**
- * Get status icon based on status
- */
-function getStatusIcon(status) {
-  const icons = {
-    'ready': '🟢',
-    'pending': '🟡',
-    'failed': '🔴',
-    'success': '✅',
-    'error': '❌'
-  };
-  return icons[status] || '⚪';
-}
-
-/**
- * Get time until next retry
- */
-function getTimeUntil(timestamp) {
-  const diff = timestamp - Date.now();
-  if (diff <= 0) return 'Ready now';
-  
-  const minutes = Math.floor(diff / 60000);
-  const hours = Math.floor(minutes / 60);
-  const days = Math.floor(hours / 24);
-  
-  if (days > 0) return `${days}d ${hours % 24}h`;
-  if (hours > 0) return `${hours}h ${minutes % 60}m`;
-  return `${minutes}m`;
-}
-
-/**
- * Truncate text to specified length
- */
-function truncateText(text, maxLength) {
-  if (!text) return '';
-  if (text.length <= maxLength) return text;
-  return text.substring(0, maxLength - 3) + '...';
-}
-
-/**
- * Escape HTML to prevent XSS
- */
-function escapeHtml(text) {
-  if (!text) return '';
-  const div = document.createElement('div');
-  div.textContent = text;
-  return div.innerHTML;
-}
-
+const rssRetryManager = new RetryManager("rss_retry_queue", RETRY_CONFIG.RSS);
+const liveRetryManager = new RetryManager("live_retry_queue", RETRY_CONFIG.LIVE);
 
 class FeedProcessor {
   constructor(type, cache, retryManager) {
@@ -4975,7 +4353,7 @@ class FeedProcessor {
 
 class RSSProcessor extends FeedProcessor {
   constructor() {
-    super('rss', rssCache, enhancedRssRetryManager);
+    super('rss', rssCache, rssRetryManager);
   }
 
   async _processFeed(feed, signal, results) {
@@ -5039,7 +4417,7 @@ class RSSProcessor extends FeedProcessor {
 
 class LiveProcessor extends FeedProcessor {
   constructor() {
-    super('live', liveCache, enhancedRssRetryManager);
+    super('live', liveCache, liveRetryManager);
   }
 
   async _processFeed(feed, signal, results, context = { apiQuotaExceeded: false }) {
@@ -5179,7 +4557,7 @@ async function loadYouTubeLatestFeeds({ force = false } = {}) {
     async ({ signal } = {}) => {
       const result = await processor.loadFeeds({ force, signal });
 
-      if (result && !enhancedRssRetryManager.hasPending()) {
+      if (result && !rssRetryManager.hasPending()) {
         localStorage.setItem(CACHE_KEY, Date.now().toString());
       } else if (result) {
         console.log("⚠️ RSS retries pending — global cache timestamp unchanged");
@@ -5273,7 +4651,7 @@ async function checkAndProcessRetries() {
     let hadRetries = false;
     
     // Check RSS retries
-    if (enhancedRssRetryManager.hasReadyRetries()) {
+    if (rssRetryManager.hasReadyRetries()) {
       console.log('🔁 RSS retry check: Processing ready retries...');
       const processor = new RSSProcessor();
       const result = await processor.loadFeeds({ force: false });
@@ -5284,7 +4662,7 @@ async function checkAndProcessRetries() {
     }
 
     // Check LIVE retries
-    if (enhancedLiveRetryManager.hasReadyRetries()) {
+    if (liveRetryManager.hasReadyRetries()) {
       console.log('🔁 LIVE retry check: Processing ready retries...');
       const processor = new LiveProcessor();
       const result = await processor.loadFeeds({ force: false });
@@ -5517,9 +4895,6 @@ function showSettingsModal() {
 
 }
 
-
-
-
 function updateNetworkInfoDisplay() {
   const networkInfoEl = document.getElementById('networkInfoDisplay');
   if (!networkInfoEl) return;
@@ -5589,7 +4964,7 @@ function setupNetworkStatusIndicator() {
   const existing = document.getElementById('network-status-indicator');
   if (existing) existing.remove();
 
-  // 1. Create the main container (Now transparent)
+  // 1. Create the main container
   const indicator = document.createElement('div');
   indicator.id = 'network-status-indicator';
   indicator.className = 'network-status-indicator';
@@ -5603,25 +4978,21 @@ function setupNetworkStatusIndicator() {
     display: flex;
     align-items: center;
     justify-content: center;
-    background: transparent; /* No background */
+    background: transparent;
+    font-size: 18px;
   `;
 
-  // 2. Create the FontAwesome Icon
-  const icon = document.createElement('i');
-  icon.className = 'fa fa-signal';
-  icon.setAttribute('aria-hidden', 'true');
-  icon.style.fontSize = '18px'; // Adjust size as needed
-  icon.style.textShadow = '0 1px 3px rgba(0,0,0,0.5)'; // Makes it visible on light/dark backgrounds
-  indicator.appendChild(icon);
+  // 2. Create Emoji Marker (default neutral)
+  const emojiMarker = document.createElement('span');
+  emojiMarker.textContent = '⚪'; // neutral default
+  indicator.appendChild(emojiMarker);
 
   // 3. Click handler for details
   indicator.addEventListener('click', () => {
     const isOnline = appState.get('settings.isOnline');
     const quality = appState.get('settings.networkQuality') || 'unknown';
     const connectionType = appState.get('settings.connectionType') || 'unknown';
-    const latency = appState.get('settings.networkLatency') || 0; // Retrieve latency from state
-
-    // Format Strings
+    const latency = appState.get('settings.networkLatency') || 0;
 
     const currentStatus = isOnline ? 'Online' : 'Offline';
     const qualityText = quality.charAt(0).toUpperCase() + quality.slice(1);
@@ -5637,43 +5008,39 @@ function setupNetworkStatusIndicator() {
     );
   });
 
-
   document.body.appendChild(indicator);
 
-  // 4. Update logic: Change ONLY the icon color
+  // 4. Update logic: Change emoji only
   const updateIndicator = (isOnline, quality) => {
     if (!indicator.isConnected) return;
 
-    // Set data attributes for CSS animations
     indicator.setAttribute('data-status', isOnline ? 'online' : 'offline');
     indicator.setAttribute('data-quality', quality);
 
     if (!isOnline) {
-      icon.style.color = '#ff4d4d'; // Bright Red for offline (alert)
+      emojiMarker.textContent = '🔴'; // Red for offline
       indicator.title = 'Offline';
       return;
     }
 
-    // Change color based on quality (modern palette)
     switch (quality) {
       case 'excellent':
-        icon.style.color = '#009688'; // Spotify Green (Excellent)
+        emojiMarker.textContent = '🟢'; // Green
         break;
       case 'good':
-        icon.style.color = '#1DB954'; // Indigo Blue (Good)
+        emojiMarker.textContent = '🔵'; // Blue
         break;
       case 'fair':
-        icon.style.color = '#FFC107'; // Amber Yellow (Fair)
+        emojiMarker.textContent = '🟡'; // Yellow
         break;
       case 'poor':
-        icon.style.color = '#D32F2F'; // Crimson Red (Poor)
+        emojiMarker.textContent = '🟠'; // Orange
         break;
       default:
-        icon.style.color = '#455A64'; // Blue Gray (Unknown/Neutral)
+        emojiMarker.textContent = '⚪'; // Neutral
     }
 
     indicator.title = `Quality: ${quality}`;
-
   };
 
   // 5. Listeners
@@ -5690,17 +5057,14 @@ function setupNetworkStatusIndicator() {
   // Initial update
   updateIndicator(appState.get('settings.isOnline'), appState.get('settings.networkQuality') || 'unknown');
 
-  /**
-   * 6. MODAL HIDE LOGIC
-   * This ensures the icon disappears completely when a video/modal is open
-   */
+  // 6. Modal hide logic
   const syncVisibility = (isOpen) => {
     if (!isOpen) {
       indicator.style.opacity = '0';
       indicator.style.pointerEvents = 'none';
       indicator.style.visibility = 'hidden';
     } else {
-      indicator.style.opacity = '1'; // Full visibility for the icon
+      indicator.style.opacity = '1';
       indicator.style.pointerEvents = 'auto';
       indicator.style.visibility = 'visible';
     }
@@ -5711,6 +5075,7 @@ function setupNetworkStatusIndicator() {
 
   return indicator;
 }
+
 
 
 function hideSettingsModal() {
@@ -5816,10 +5181,6 @@ function setupSettingsModal() {
   const manageApiKeyBtn = document.getElementById("manageApiKeyBtn");
   const sortSelect = document.getElementById("sortSelect");
 
-
-
-
-
   // --- SHOW/HIDE MODAL ---
   if (settingsBtn) {
     settingsBtn.addEventListener("click", () => {
@@ -5872,7 +5233,6 @@ function setupSettingsModal() {
     manualUpdateBtn.addEventListener("click", manualUpdate);
   }
 
-
   // --- API KEY ---
   if (manageApiKeyBtn) {
     manageApiKeyBtn.addEventListener("click", () => {
@@ -5887,6 +5247,7 @@ function setupSettingsModal() {
   // --- STORAGE MANAGEMENT BUTTONS ---
   setupStorageControls();
 
+
   // --- ESC KEY CLOSES MODAL ---
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape" && settingsModal.style.display === "flex") {
@@ -5898,7 +5259,6 @@ function setupSettingsModal() {
   updateUserAgentDisplay();
   updateStorageDisplay();
 }
-
 
 function updateUserAgentDisplay() {
   const display = document.getElementById('currentUserAgent');
@@ -6083,8 +5443,6 @@ function setupAPIKeyModalEvents() {
   }
 }
 
-
-
 // ============================================
 // CLEANUP & INITIALIZATION
 // ============================================
@@ -6183,7 +5541,7 @@ async function initialize() {
       { name: 'Settings Modal', fn: setupSettingsModal },
       { name: 'Search Bar', fn: setupSearchBar },
       { name: 'Touch Gestures', fn: setupTouchGestures },
-      { name: 'Update Manager', fn: initializeUpdateManager },
+/*       { name: 'PWA', fn: setupPWA }, */
       { name: 'Keyboard Navigation', fn: setupKeyboardNavigation }
     ];
 
@@ -6294,65 +5652,6 @@ window.addEventListener("DOMContentLoaded", async () => {
     console.error("Initialization failed:", e);
   }
 });
-
-/**
- * Setup Update Manager button in Settings Modal
- */
-function setupUpdateManager() {
-
-  // Find the settings modal
-  const settingsModal = document.getElementById('settingsModal');
-  if (!settingsModal) {
-    console.warn('Settings modal not found, cannot add Update Manager button');
-    return;
-  }
-
-  // Check if button already exists
-  if (document.getElementById('updateManagerBtn')) {
-    console.log('Update Manager button already exists');
-    return;
-  }
-
-  // Find the modal body or appropriate location
-  const modalBody = settingsModal.querySelector('.modal-body');
-  if (!modalBody) {
-    console.warn('Settings modal body not found');
-    return;
-  }
-
-  // Create the button
-  const button = document.createElement('button');
-  button.id = 'updateManagerBtn';
-  button.className = 'btn-primary';
-  button.style.cssText = 'margin-top: 10px; width: 100%;';
-  button.innerHTML = '<i class="fa fa-chart-line"></i> Update Manager';
-  button.onclick = showUpdateManagerModal;
-
-  // Try to add button after the manual update button
-  const manualUpdateBtn = document.getElementById('manualUpdateBtn');
-  if (manualUpdateBtn && manualUpdateBtn.parentNode) {
-    // Insert after manual update button
-    manualUpdateBtn.parentNode.insertBefore(button, manualUpdateBtn.nextSibling);
-    console.log('✅ Update Manager button added after manual update button');
-  } else {
-    // Fallback: append to modal body
-    modalBody.appendChild(button);
-    console.log('✅ Update Manager button added to modal body');
-  }
-}
-
-// Initialize Update Manager when DOM is ready
-function initializeUpdateManager() {  
-  try {
-   
-    // Add button to settings modal
-    setupUpdateManager();
-    
-    console.log('✅ Update Manager initialized');
-  } catch (error) {
-    console.error('❌ Failed to initialize Update Manager:', error);
-  }
-}
 
 // Clean up before leaving the page
 window.addEventListener("beforeunload", () => {
@@ -7303,6 +6602,12 @@ function cleanupAllEventListeners() {
 }
 
 
+// ADD SANITIZATION:
+function escapeHtml(text) {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}
 
 // Add proactive monitoring
 function checkStorageHealth() {
@@ -7789,14 +7094,3 @@ const __iptv = {
 
 // Attach to global scope
 window.__iptv = Object.freeze(__iptv);
-
-// Export functions to global scope for onclick handlers
-window.showUpdateManagerModal = showUpdateManagerModal;
-window.hideUpdateManagerModal = hideUpdateManagerModal;
-window.switchUpdateTab = switchUpdateTab;
-window.refreshUpdateManagerData = refreshUpdateManagerData;
-window.manualRetryEntry = manualRetryEntry;
-window.removeEntry = removeEntry;
-window.retryAllReady = retryAllReady;
-window.clearAllHistory = clearAllHistory;
-window.initializeUpdateManager = initializeUpdateManager;
