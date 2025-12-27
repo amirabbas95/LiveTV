@@ -4269,8 +4269,9 @@ function processRSSData(data, feed) {
 // FEED LOADERS
 // ============================================
 
-const rssRetryManager = new RetryManager("rss_retry_queue", RETRY_CONFIG.RSS);
-const liveRetryManager = new RetryManager("live_retry_queue", RETRY_CONFIG.LIVE);
+/* const rssRetryManager = new RetryManager("rss_retry_queue", RETRY_CONFIG.RSS);
+const liveRetryManager = new RetryManager("live_retry_queue", RETRY_CONFIG.LIVE); */
+
 
 class FeedProcessor {
   constructor(type, cache, retryManager) {
@@ -4406,7 +4407,7 @@ class RSSProcessor extends FeedProcessor {
 
   _handleError(feed, error, results) {
     results.failed++;
-    this.retryManager.recordFailure(feed.url, error?.message || "RSS fetch error");
+this.retryManager.recordFailure(feed.url, error?.message || "RSS fetch error", feed.name);
     console.log(`❌ Error loading RSS feed for ${feed.name}:`, error?.message || error);
   }
 }
@@ -4539,7 +4540,7 @@ class LiveProcessor extends FeedProcessor {
     }
 
     if (channelId) {
-      this.retryManager.recordFailure(channelId, error?.message || "Live fetch error");
+this.retryManager.recordFailure(channelId, error?.message || "Live fetch error", feed.name);
     }
 
     console.log(`❌ Error loading live feed for ${feed.name}:`, error?.message || error);
@@ -5541,7 +5542,7 @@ async function initialize() {
       { name: 'Settings Modal', fn: setupSettingsModal },
       { name: 'Search Bar', fn: setupSearchBar },
       { name: 'Touch Gestures', fn: setupTouchGestures },
-/*       { name: 'PWA', fn: setupPWA }, */
+      { name: 'PWA', fn: addUpdateManagerButton },
       { name: 'Keyboard Navigation', fn: setupKeyboardNavigation }
     ];
 
@@ -7049,6 +7050,1066 @@ window.addEventListener('error', (ev) => {
 window.addEventListener('unhandledrejection', (ev) => {
   try { logErrorToService(ev.reason || { message: String(ev) }); } catch (e) { /* ignore */ }
 });
+
+
+// ============================================
+// UPDATE MANAGER MODAL CLASS
+// ============================================
+
+class UpdateManagerModal {
+  constructor() {
+    this.modalId = 'updateManagerModal';
+    this.isOpen = false;
+    this.updateCheckInterval = null;
+    
+    // Create modal element
+    this.createModal();
+    
+    // Setup event listeners
+    this.setupEventListeners();
+  }
+  
+  /**
+   * Create the modal DOM structure
+   */
+  createModal() {
+    // Check if modal already exists
+    if (document.getElementById(this.modalId)) return;
+    
+    const modal = document.createElement('div');
+    modal.id = this.modalId;
+    modal.className = 'settings-modal';
+    modal.style.display = 'none';
+    
+    modal.innerHTML = `
+      <div class="settings-content update-manager-content">
+        <div class="settings-header">
+          <h2><i class="fas fa-sync-alt"></i> Update Manager</h2>
+          <button class="close-btn" id="closeUpdateManager" aria-label="Close Update Manager">
+            <i class="fas fa-times"></i>
+          </button>
+        </div>
+        
+        <!-- Summary Stats -->
+        <div class="update-summary">
+          <div class="summary-card">
+            <div class="summary-icon success">
+              <i class="fas fa-check-circle"></i>
+            </div>
+            <div class="summary-details">
+              <span class="summary-label">Successful</span>
+              <span class="summary-value" id="successfulCount">0</span>
+            </div>
+          </div>
+          
+          <div class="summary-card">
+            <div class="summary-icon pending">
+              <i class="fas fa-clock"></i>
+            </div>
+            <div class="summary-details">
+              <span class="summary-label">Pending</span>
+              <span class="summary-value" id="pendingCount">0</span>
+            </div>
+          </div>
+          
+          <div class="summary-card">
+            <div class="summary-icon failed">
+              <i class="fas fa-exclamation-circle"></i>
+            </div>
+            <div class="summary-details">
+              <span class="summary-label">Failed</span>
+              <span class="summary-value" id="failedCount">0</span>
+            </div>
+          </div>
+          
+          <div class="summary-card">
+            <div class="summary-icon blocked">
+              <i class="fas fa-ban"></i>
+            </div>
+            <div class="summary-details">
+              <span class="summary-label">Blocked</span>
+              <span class="summary-value" id="blockedCount">0</span>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Controls -->
+        <div class="update-controls">
+          <button id="retryAllBtn" class="btn-primary">
+            <i class="fas fa-redo"></i> Retry All Ready
+          </button>
+          <button id="clearFailedBtn" class="btn-warning">
+            <i class="fas fa-trash"></i> Clear Failed
+          </button>
+          <button id="forceCheckBtn" class="btn-secondary">
+            <i class="fas fa-sync"></i> Force Check
+          </button>
+        </div>
+        
+        <!-- Tabs -->
+        <div class="update-tabs">
+          <button class="tab-btn active" data-tab="rss">RSS Feeds</button>
+          <button class="tab-btn" data-tab="live">Live Feeds</button>
+        </div>
+        
+        <!-- Content Areas -->
+        <div class="update-content">
+          <!-- RSS Tab Content -->
+          <div id="rssTab" class="tab-content active">
+            <div class="update-list-header">
+              <span>Feed Name</span>
+              <span>Status</span>
+              <span>Retries</span>
+              <span>Next Retry</span>
+              <span>Actions</span>
+            </div>
+            <div id="rssList" class="update-list">
+              <!-- Dynamic content -->
+            </div>
+          </div>
+          
+          <!-- Live Tab Content -->
+          <div id="liveTab" class="tab-content">
+            <div class="update-list-header">
+              <span>Channel Name</span>
+              <span>Status</span>
+              <span>Retries</span>
+              <span>Next Retry</span>
+              <span>Actions</span>
+            </div>
+            <div id="liveList" class="update-list">
+              <!-- Dynamic content -->
+            </div>
+          </div>
+        </div>
+        
+        <!-- Last Update Info -->
+        <div class="last-update-info">
+          <div class="info-item">
+            <span class="info-label">Last Update:</span>
+            <span id="lastUpdateTime" class="info-value">Never</span>
+          </div>
+          <div class="info-item">
+            <span class="info-label">Next Check:</span>
+            <span id="nextCheckTime" class="info-value">-</span>
+          </div>
+          <div class="info-item">
+            <span class="info-label">Auto Update:</span>
+            <span id="autoUpdateStatus" class="info-value status-on">ON</span>
+          </div>
+        </div>
+        
+        <!-- Footer -->
+        <div class="update-footer">
+          <button id="refreshUpdateManager" class="btn-secondary">
+            <i class="fas fa-redo"></i> Refresh
+          </button>
+          <button id="closeUpdateManagerFooter" class="btn-primary">
+            Close
+          </button>
+        </div>
+      </div>
+    `;
+    
+    document.body.appendChild(modal);
+  }
+  
+  /**
+   * Setup event listeners
+   */
+  setupEventListeners() {
+    // Close buttons
+    document.addEventListener('click', (e) => {
+      if (e.target.id === 'closeUpdateManager' || 
+          e.target.closest('#closeUpdateManager') ||
+          e.target.id === 'closeUpdateManagerFooter') {
+        this.close();
+      }
+    });
+    
+    // Tab switching
+    document.addEventListener('click', (e) => {
+      if (e.target.classList.contains('tab-btn')) {
+        const tab = e.target.dataset.tab;
+        this.switchTab(tab);
+      }
+    });
+    
+    // Control buttons
+    document.addEventListener('click', async (e) => {
+      if (e.target.id === 'retryAllBtn' || e.target.closest('#retryAllBtn')) {
+        await this.retryAllReady();
+      } else if (e.target.id === 'clearFailedBtn' || e.target.closest('#clearFailedBtn')) {
+        this.clearFailedItems();
+      } else if (e.target.id === 'forceCheckBtn' || e.target.closest('#forceCheckBtn')) {
+        this.forceRetryCheck();
+      } else if (e.target.id === 'refreshUpdateManager' || e.target.closest('#refreshUpdateManager')) {
+        this.refresh();
+      }
+    });
+    
+    // Close modal on escape
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && this.isOpen) {
+        this.close();
+      }
+    });
+    
+    // Click outside to close
+    document.addEventListener('click', (e) => {
+      const modal = document.getElementById(this.modalId);
+      if (e.target === modal && this.isOpen) {
+        this.close();
+      }
+    });
+  }
+  
+  /**
+   * Switch between tabs
+   */
+  switchTab(tab) {
+    // Update tab buttons
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+      btn.classList.remove('active');
+      if (btn.dataset.tab === tab) {
+        btn.classList.add('active');
+      }
+    });
+    
+    // Update tab content
+    document.querySelectorAll('.tab-content').forEach(content => {
+      content.classList.remove('active');
+      if (content.id === `${tab}Tab`) {
+        content.classList.add('active');
+      }
+    });
+  }
+  
+  /**
+   * Open the modal
+   */
+  open() {
+    const modal = document.getElementById(this.modalId);
+    if (!modal) {
+      this.createModal();
+    }
+    
+    modal.style.display = 'flex';
+    this.isOpen = true;
+    
+    // Update content
+    this.refresh();
+    
+    // Start auto-refresh (every 10 seconds)
+    this.startAutoRefresh();
+    
+    // Focus first button for accessibility
+    setTimeout(() => {
+      const firstBtn = modal.querySelector('button');
+      if (firstBtn) firstBtn.focus();
+    }, 100);
+  }
+  
+  /**
+   * Close the modal
+   */
+  close() {
+    const modal = document.getElementById(this.modalId);
+    if (modal) {
+      modal.style.display = 'none';
+      this.isOpen = false;
+    }
+    
+    // Stop auto-refresh
+    this.stopAutoRefresh();
+  }
+  
+  /**
+   * Refresh all data in the modal
+   */
+  refresh() {
+    this.updateSummaryStats();
+    this.updateRSSList();
+    this.updateLiveList();
+    this.updateLastUpdateInfo();
+  }
+  
+  /**
+   * Update summary statistics
+   */
+  updateSummaryStats() {
+    if (!this.isOpen) return;
+    
+    const rssStats = rssRetryManager.getStats();
+    const liveStats = liveRetryManager.getStats();
+    
+    // Combine stats
+    const totalSuccessful = (rssRetryManager._load() ? Object.keys(rssRetryManager._load()).length : 0) - rssStats.total;
+    const totalPending = rssStats.pending + liveStats.pending;
+    const totalFailed = rssStats.blocked + liveStats.blocked;
+    const totalBlocked = rssStats.ready + liveStats.ready;
+    
+    // Update UI
+    document.getElementById('successfulCount').textContent = totalSuccessful;
+    document.getElementById('pendingCount').textContent = totalPending;
+    document.getElementById('failedCount').textContent = totalFailed;
+    document.getElementById('blockedCount').textContent = totalBlocked;
+  }
+  
+  /**
+   * Update RSS feed list
+   */
+  updateRSSList() {
+    if (!this.isOpen) return;
+    
+    const rssList = document.getElementById('rssList');
+    if (!rssList) return;
+    
+    const data = rssRetryManager._load();
+    const feeds = safeJSONParse(localStorage.getItem(LS_KEYS.FEEDS) || '[]', []);
+    
+    if (!data || Object.keys(data).length === 0) {
+      rssList.innerHTML = '<div class="empty-state">No RSS feed retries pending</div>';
+      return;
+    }
+    
+    let html = '';
+    
+    for (const [url, entry] of Object.entries(data)) {
+      // Find feed name
+      const feed = feeds.find(f => f.url === url);
+      const feedName = feed?.name || url.substring(0, 30) + '...';
+      
+      // Determine status
+      const now = Date.now();
+      let status = 'pending';
+      let statusText = 'Pending';
+      let statusClass = 'status-pending';
+      
+      if (entry.retries >= rssRetryManager.maxRetries) {
+        status = 'blocked';
+        statusText = 'Blocked';
+        statusClass = 'status-blocked';
+      } else if (now >= entry.nextRetry) {
+        status = 'ready';
+        statusText = 'Ready';
+        statusClass = 'status-ready';
+      }
+      
+      // Format next retry time
+      const nextRetryTime = entry.nextRetry ? new Date(entry.nextRetry).toLocaleTimeString() : '-';
+      const timeUntil = entry.nextRetry ? Math.max(0, Math.round((entry.nextRetry - now) / 1000 / 60)) : 0;
+      
+      html += `
+        <div class="update-item ${statusClass}" data-id="${url}" data-type="rss">
+          <span class="item-name">${escapeHtml(feedName)}</span>
+          <span class="item-status">
+            <span class="status-badge ${statusClass}">${statusText}</span>
+          </span>
+          <span class="item-retries">${entry.retries}/${rssRetryManager.maxRetries}</span>
+          <span class="item-next">
+            ${timeUntil > 0 ? `in ${timeUntil} min` : nextRetryTime}
+          </span>
+          <span class="item-actions">
+            ${status === 'ready' ? `
+              <button class="action-btn retry-btn" title="Retry now" data-id="${url}" data-type="rss">
+                <i class="fas fa-redo"></i>
+              </button>
+            ` : ''}
+            <button class="action-btn remove-btn" title="Remove from retry queue" data-id="${url}" data-type="rss">
+              <i class="fas fa-times"></i>
+            </button>
+          </span>
+        </div>
+      `;
+    }
+    
+    rssList.innerHTML = html;
+    
+    // Add event listeners for action buttons
+    this.setupItemActionListeners();
+  }
+  
+  /**
+   * Update Live feed list
+   */
+  updateLiveList() {
+    if (!this.isOpen) return;
+    
+    const liveList = document.getElementById('liveList');
+    if (!liveList) return;
+    
+    const data = liveRetryManager._load();
+    const liveFeeds = safeJSONParse(localStorage.getItem(LS_KEYS.LIVE) || '[]', []);
+    
+    if (!data || Object.keys(data).length === 0) {
+      liveList.innerHTML = '<div class="empty-state">No live feed retries pending</div>';
+      return;
+    }
+    
+    let html = '';
+    
+    for (const [channelId, entry] of Object.entries(data)) {
+      // Find channel name
+      const feed = liveFeeds.find(f => extractChannelId(f.url) === channelId);
+      const channelName = feed?.name || entry.name || `Channel ${channelId.substring(0, 8)}...`;
+      
+      // Determine status
+      const now = Date.now();
+      let status = 'pending';
+      let statusText = 'Pending';
+      let statusClass = 'status-pending';
+      
+      if (entry.retries >= liveRetryManager.maxRetries) {
+        status = 'blocked';
+        statusText = 'Blocked';
+        statusClass = 'status-blocked';
+      } else if (now >= entry.nextRetry) {
+        status = 'ready';
+        statusText = 'Ready';
+        statusClass = 'status-ready';
+      }
+      
+      // Format next retry time
+      const nextRetryTime = entry.nextRetry ? new Date(entry.nextRetry).toLocaleTimeString() : '-';
+      const timeUntil = entry.nextRetry ? Math.max(0, Math.round((entry.nextRetry - now) / 1000 / 60)) : 0;
+      
+      html += `
+        <div class="update-item ${statusClass}" data-id="${channelId}" data-type="live">
+          <span class="item-name">${escapeHtml(channelName)}</span>
+          <span class="item-status">
+            <span class="status-badge ${statusClass}">${statusText}</span>
+          </span>
+          <span class="item-retries">${entry.retries}/${liveRetryManager.maxRetries}</span>
+          <span class="item-next">
+            ${timeUntil > 0 ? `in ${timeUntil} min` : nextRetryTime}
+          </span>
+          <span class="item-actions">
+            ${status === 'ready' ? `
+              <button class="action-btn retry-btn" title="Retry now" data-id="${channelId}" data-type="live">
+                <i class="fas fa-redo"></i>
+              </button>
+            ` : ''}
+            <button class="action-btn remove-btn" title="Remove from retry queue" data-id="${channelId}" data-type="live">
+              <i class="fas fa-times"></i>
+            </button>
+          </span>
+        </div>
+      `;
+    }
+    
+    liveList.innerHTML = html;
+    
+    // Add event listeners for action buttons
+    this.setupItemActionListeners();
+  }
+  
+  /**
+   * Setup action button listeners for list items
+   */
+  setupItemActionListeners() {
+    document.addEventListener('click', async (e) => {
+      // Retry button
+      if (e.target.classList.contains('retry-btn') || e.target.closest('.retry-btn')) {
+        const btn = e.target.classList.contains('retry-btn') ? e.target : e.target.closest('.retry-btn');
+        const id = btn.dataset.id;
+        const type = btn.dataset.type;
+        
+        await this.retrySingleItem(id, type);
+      }
+      
+      // Remove button
+      if (e.target.classList.contains('remove-btn') || e.target.closest('.remove-btn')) {
+        const btn = e.target.classList.contains('remove-btn') ? e.target : e.target.closest('.remove-btn');
+        const id = btn.dataset.id;
+        const type = btn.dataset.type;
+        
+        this.removeSingleItem(id, type);
+      }
+    });
+  }
+  
+  /**
+   * Update last update information
+   */
+  updateLastUpdateInfo() {
+    if (!this.isOpen) return;
+    
+    // Last update time
+    const lastUpdate = parseInt(localStorage.getItem(CACHE_KEY) || "0");
+    const lastUpdateEl = document.getElementById('lastUpdateTime');
+    if (lastUpdateEl) {
+      if (lastUpdate === 0) {
+        lastUpdateEl.textContent = "Never";
+        lastUpdateEl.className = 'info-value status-off';
+      } else {
+        const timeAgo = getTimeAgo(lastUpdate);
+        lastUpdateEl.textContent = timeAgo;
+        lastUpdateEl.className = 'info-value status-on';
+      }
+    }
+    
+    // Next check time
+    const nextCheckEl = document.getElementById('nextCheckTime');
+    if (nextCheckEl) {
+      const updateIntervalHours = appState.get('settings.updateIntervalHours') || 8;
+      const cacheExpiryMs = updateIntervalHours * 60 * 60 * 1000;
+      const nextCheck = lastUpdate + cacheExpiryMs;
+      const now = Date.now();
+      
+      if (nextCheck > now) {
+        const minsRemaining = Math.ceil((nextCheck - now) / 1000 / 60);
+        nextCheckEl.textContent = `in ${minsRemaining} min`;
+      } else {
+        nextCheckEl.textContent = 'Now';
+      }
+    }
+    
+    // Auto update status
+    const autoUpdateStatusEl = document.getElementById('autoUpdateStatus');
+    if (autoUpdateStatusEl) {
+      const isAutoUpdateEnabled = appState.get('settings.isAutoUpdateEnabled');
+      if (isAutoUpdateEnabled) {
+        autoUpdateStatusEl.textContent = 'ON';
+        autoUpdateStatusEl.className = 'info-value status-on';
+      } else {
+        autoUpdateStatusEl.textContent = 'OFF';
+        autoUpdateStatusEl.className = 'info-value status-off';
+      }
+    }
+  }
+  
+  /**
+   * Retry all ready items
+   */
+  async retryAllReady() {
+    try {
+      showNotification('🔄 Retrying all ready items...', 'info');
+      
+      // Retry RSS feeds
+      if (rssRetryManager.hasReadyRetries()) {
+        const processor = new RSSProcessor();
+        await processor.loadFeeds({ force: false });
+      }
+      
+      // Retry Live feeds
+      if (liveRetryManager.hasReadyRetries()) {
+        const processor = new LiveProcessor();
+        await processor.loadFeeds({ force: false });
+      }
+      
+      // Update UI
+      this.refresh();
+      showNotification('✅ All ready items retried successfully', 'success');
+      
+    } catch (error) {
+      console.error('Failed to retry all items:', error);
+      showNotification('❌ Failed to retry some items', 'error');
+    }
+  }
+  
+  /**
+   * Retry a single item
+   */
+  async retrySingleItem(id, type) {
+    try {
+      if (type === 'rss') {
+        // Find the feed
+        const feeds = safeJSONParse(localStorage.getItem(LS_KEYS.FEEDS) || '[]', []);
+        const feed = feeds.find(f => f.url === id);
+        
+        if (feed) {
+          const processor = new RSSProcessor();
+          await processor._processFeed(feed, new AbortController().signal, { successful: 0, failed: 0, cacheHits: 0 });
+        }
+      } else if (type === 'live') {
+        // Find the feed
+        const feeds = safeJSONParse(localStorage.getItem(LS_KEYS.LIVE) || '[]', []);
+        const feed = feeds.find(f => extractChannelId(f.url) === id);
+        
+        if (feed) {
+          const processor = new LiveProcessor();
+          await processor._processFeed(feed, new AbortController().signal, { successful: 0, failed: 0, cacheHits: 0 }, { apiQuotaExceeded: false });
+        }
+      }
+      
+      // Update UI
+      this.refresh();
+      showNotification('✅ Item retried successfully', 'success');
+      
+    } catch (error) {
+      console.error('Failed to retry item:', error);
+      showNotification('❌ Failed to retry item', 'error');
+    }
+  }
+  
+  /**
+   * Remove a single item from retry queue
+   */
+  removeSingleItem(id, type) {
+    if (type === 'rss') {
+      rssRetryManager.recordSuccess(id);
+    } else if (type === 'live') {
+      liveRetryManager.recordSuccess(id);
+    }
+    
+    // Update UI
+    this.refresh();
+    showNotification('✅ Item removed from retry queue', 'success');
+  }
+  
+  /**
+   * Clear all failed items
+   */
+  clearFailedItems() {
+    if (!confirm('Are you sure you want to clear all failed items? This cannot be undone.')) {
+      return;
+    }
+    
+    // Cleanup old entries (older than 1 hour)
+    const rssCleared = rssRetryManager.cleanup(60 * 60 * 1000);
+    const liveCleared = liveRetryManager.cleanup(60 * 60 * 1000);
+    
+    // Update UI
+    this.refresh();
+    showNotification(`✅ Cleared ${rssCleared + liveCleared} failed items`, 'success');
+  }
+  
+  /**
+   * Force a retry check
+   */
+  forceRetryCheck() {
+    checkAndProcessRetries();
+    this.refresh();
+    showNotification('🔁 Force checking retries...', 'info');
+  }
+  
+  /**
+   * Start auto-refresh interval
+   */
+  startAutoRefresh() {
+    this.stopAutoRefresh(); // Clear any existing interval
+    
+    this.updateCheckInterval = setInterval(() => {
+      if (this.isOpen) {
+        this.refresh();
+      }
+    }, 10000); // Refresh every 10 seconds
+  }
+  
+  /**
+   * Stop auto-refresh interval
+   */
+  stopAutoRefresh() {
+    if (this.updateCheckInterval) {
+      clearInterval(this.updateCheckInterval);
+      this.updateCheckInterval = null;
+    }
+  }
+}
+
+// Create global instance
+const updateManager = new UpdateManagerModal();
+
+// ============================================
+// ENHANCED RETRY MANAGER WITH CHANNEL NAME SUPPORT
+// ============================================
+
+class EnhancedRetryManager extends RetryManager {
+  constructor(storageKey, options = {}) {
+    super(storageKey, options);
+  }
+
+  /**
+   * Enhanced recordFailure with channel name support
+   */
+  recordFailure(id, error = "Unknown error", name = null) {
+    const data = this._load();
+    const entry = this._createRetryEntry(data[id]);
+    entry.lastError = error;
+    
+    // Store channel name if provided
+    if (name) {
+      entry.name = name;
+    } else if (data[id] && data[id].name) {
+      // Preserve existing name
+      entry.name = data[id].name;
+    }
+    
+    data[id] = entry;
+    this._save(data);
+  }
+
+  /**
+   * Get entry with name
+   */
+  getEntry(id) {
+    const data = this._load();
+    return data[id] || null;
+  }
+
+  /**
+   * Get all entries with names
+   */
+  getAllEntries() {
+    const data = this._load();
+    return Object.entries(data).map(([id, entry]) => ({
+      id,
+      ...entry
+    }));
+  }
+
+  /**
+   * Find entries by name (case-insensitive partial match)
+   */
+  findEntriesByName(searchTerm) {
+    const entries = this.getAllEntries();
+    const term = searchTerm.toLowerCase();
+    
+    return entries.filter(entry => 
+      entry.name && entry.name.toLowerCase().includes(term)
+    );
+  }
+}
+
+
+// Replace existing retry managers with enhanced versions
+const rssRetryManager = new EnhancedRetryManager("rss_retry_queue", RETRY_CONFIG.RSS);
+const liveRetryManager = new EnhancedRetryManager("live_retry_queue", RETRY_CONFIG.LIVE);
+
+// ============================================
+// UPDATE RSS & LIVE PROCESSORS TO USE ENHANCED RETRY MANAGER
+// ============================================
+
+// In RSSProcessor._handleError method, update the recordFailure call:
+// Change: this.retryManager.recordFailure(feed.url, error?.message || "RSS fetch error");
+// To: this.retryManager.recordFailure(feed.url, error?.message || "RSS fetch error", feed.name);
+
+// In LiveProcessor._handleError method, update the recordFailure call:
+// Change: this.retryManager.recordFailure(channelId, error?.message || "Live fetch error");
+// To: this.retryManager.recordFailure(channelId, error?.message || "Live fetch error", feed.name);
+
+// ============================================
+// ADD UPDATE MANAGER BUTTON TO SETTINGS MODAL
+// ============================================
+
+function addUpdateManagerButton() {
+  // Wait for settings modal to be available
+  const checkModal = setInterval(() => {
+    const settingsModal = document.getElementById('settingsModal');
+    if (settingsModal) {
+      clearInterval(checkModal);
+      
+      // Add Update Manager button after API Key button
+      const apiKeySection = document.querySelector('#manageApiKeyBtn')?.closest('.setting-item');
+      if (apiKeySection) {
+        const updateManagerHtml = `
+          <div class="setting-item">
+            <h3><i class="fas fa-tasks"></i> Update Manager</h3>
+            <p class="setting-description">
+              Monitor and manage RSS & Live feed updates, retries, and failures
+            </p>
+            <button id="openUpdateManager" class="btn-secondary">
+              <i class="fas fa-external-link-alt"></i> Open Update Manager
+            </button>
+          </div>
+        `;
+        
+        apiKeySection.insertAdjacentHTML('afterend', updateManagerHtml);
+        
+        // Add event listener
+        document.getElementById('openUpdateManager').addEventListener('click', () => {
+          hideSettingsModal();
+          setTimeout(() => updateManager.open(), 300);
+        });
+      }
+    }
+  }, 100);
+}
+
+// Call this in your initialize function
+// Add to your initialize() function:
+// addUpdateManagerButton();
+
+// ============================================
+// ADD CSS STYLES FOR UPDATE MANAGER
+// ============================================
+
+function addUpdateManagerStyles() {
+  const style = document.createElement('style');
+  style.textContent = `
+    .update-manager-content {
+      max-width: 900px;
+      max-height: 90vh;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+    
+    .update-summary {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 10px;
+      margin: 15px 0;
+    }
+    
+    .summary-card {
+      background: rgba(255, 255, 255, 0.05);
+      border-radius: 8px;
+      padding: 12px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    
+    .summary-icon {
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+    }
+    
+    .summary-icon.success {
+      background: rgba(76, 175, 80, 0.2);
+      color: #4CAF50;
+    }
+    
+    .summary-icon.pending {
+      background: rgba(255, 193, 7, 0.2);
+      color: #FFC107;
+    }
+    
+    .summary-icon.failed {
+      background: rgba(244, 67, 54, 0.2);
+      color: #F44336;
+    }
+    
+    .summary-icon.blocked {
+      background: rgba(158, 158, 158, 0.2);
+      color: #9E9E9E;
+    }
+    
+    .summary-details {
+      display: flex;
+      flex-direction: column;
+    }
+    
+    .summary-label {
+      font-size: 12px;
+      color: #aaa;
+    }
+    
+    .summary-value {
+      font-size: 20px;
+      font-weight: bold;
+    }
+    
+    .update-controls {
+      display: flex;
+      gap: 10px;
+      margin: 15px 0;
+    }
+    
+    .update-tabs {
+      display: flex;
+      border-bottom: 1px solid #444;
+      margin: 10px 0;
+    }
+    
+    .tab-btn {
+      padding: 10px 20px;
+      background: transparent;
+      border: none;
+      color: #aaa;
+      cursor: pointer;
+      border-bottom: 3px solid transparent;
+      transition: all 0.2s;
+    }
+    
+    .tab-btn.active {
+      color: #fff;
+      border-bottom-color: #007bff;
+    }
+    
+    .update-content {
+      flex: 1;
+      overflow-y: auto;
+      margin: 10px 0;
+    }
+    
+    .tab-content {
+      display: none;
+    }
+    
+    .tab-content.active {
+      display: block;
+    }
+    
+    .update-list-header {
+      display: grid;
+      grid-template-columns: 2fr 1fr 1fr 1fr 1fr;
+      padding: 10px;
+      background: rgba(255, 255, 255, 0.05);
+      border-radius: 6px;
+      font-weight: bold;
+      color: #aaa;
+      margin-bottom: 5px;
+    }
+    
+    .update-list {
+      max-height: 300px;
+      overflow-y: auto;
+    }
+    
+    .update-item {
+      display: grid;
+      grid-template-columns: 2fr 1fr 1fr 1fr 1fr;
+      padding: 12px 10px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+      align-items: center;
+    }
+    
+    .update-item:hover {
+      background: rgba(255, 255, 255, 0.05);
+    }
+    
+    .update-item.status-ready {
+      border-left: 4px solid #4CAF50;
+    }
+    
+    .update-item.status-pending {
+      border-left: 4px solid #FFC107;
+    }
+    
+    .update-item.status-blocked {
+      border-left: 4px solid #F44336;
+    }
+    
+    .status-badge {
+      padding: 3px 8px;
+      border-radius: 12px;
+      font-size: 12px;
+      font-weight: bold;
+    }
+    
+    .status-badge.status-ready {
+      background: rgba(76, 175, 80, 0.2);
+      color: #4CAF50;
+    }
+    
+    .status-badge.status-pending {
+      background: rgba(255, 193, 7, 0.2);
+      color: #FFC107;
+    }
+    
+    .status-badge.status-blocked {
+      background: rgba(244, 67, 54, 0.2);
+      color: #F44336;
+    }
+    
+    .item-actions {
+      display: flex;
+      gap: 5px;
+    }
+    
+    .action-btn {
+      width: 30px;
+      height: 30px;
+      border-radius: 4px;
+      border: none;
+      background: rgba(255, 255, 255, 0.1);
+      color: #fff;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background 0.2s;
+    }
+    
+    .action-btn:hover {
+      background: rgba(255, 255, 255, 0.2);
+    }
+    
+    .retry-btn {
+      color: #4CAF50;
+    }
+    
+    .remove-btn {
+      color: #F44336;
+    }
+    
+    .last-update-info {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 15px;
+      margin: 15px 0;
+      padding: 15px;
+      background: rgba(255, 255, 255, 0.05);
+      border-radius: 8px;
+    }
+    
+    .info-item {
+      display: flex;
+      flex-direction: column;
+    }
+    
+    .info-label {
+      font-size: 12px;
+      color: #aaa;
+      margin-bottom: 5px;
+    }
+    
+    .info-value {
+      font-size: 14px;
+      font-weight: bold;
+    }
+    
+    .status-on {
+      color: #4CAF50;
+    }
+    
+    .status-off {
+      color: #F44336;
+    }
+    
+    .update-footer {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 15px;
+      padding-top: 15px;
+      border-top: 1px solid #444;
+    }
+    
+    .empty-state {
+      text-align: center;
+      padding: 40px;
+      color: #aaa;
+      font-style: italic;
+    }
+  `;
+  
+  document.head.appendChild(style);
+}
+
+// Add styles when DOM is ready
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', addUpdateManagerStyles);
+} else {
+  addUpdateManagerStyles();
+}
+
+// ============================================
+// EXPORT UPDATE MANAGER TO GLOBAL SCOPE
+// ============================================
+
+if (typeof window.__iptv !== 'undefined') {
+  window.__iptv.updateManager = updateManager;
+  window.__iptv.rssRetryManager = rssRetryManager;
+  window.__iptv.liveRetryManager = liveRetryManager;
+}
 
 // ============================================
 // EXPORT GLOBAL FUNCTIONS
