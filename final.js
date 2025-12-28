@@ -1,9 +1,7 @@
 // ============================================
-// IPTV CHANNEL MANAGER - ENHANCED VERSION
 // ============================================
 
 // ============================================
-// USER AGENT OVERRIDE - MUST BE FIRST!
 // ============================================
 (function initUserAgentOverride() {
   const _originalUserAgent = navigator.userAgent;
@@ -18,7 +16,6 @@
       configurable: true
     });
 
-    //console.log('✅ User Agent override initialized');
   } catch (error) {
     console.error('❌ Failed to override User Agent:', error);
   }
@@ -82,7 +79,7 @@ class LRUCache {
   constructor(maxSize = 50, maxAge = 3600000, maxBytes = 5 * 1024 * 1024) {
     this.cache = new Map();
     this.maxSize = maxSize;
-    this.maxAge = maxAge; // milliseconds
+    this.maxAge = maxAge;
     this.maxBytes = maxBytes;
     this.hits = 0;
     this.misses = 0;
@@ -102,18 +99,16 @@ class LRUCache {
     const item = this.cache.get(key);
     const now = Date.now();
 
-    // Check if expired
     if (now - item.timestamp > this.maxAge) {
       this.cache.delete(key);
       this.misses++;
       return null;
     }
 
-    // Move to end (mark as recently used)
     this.cache.delete(key);
     this.cache.set(key, {
       ...item,
-      timestamp: now, // Update timestamp
+      timestamp: now,
       accessCount: (item.accessCount || 0) + 1
     });
 
@@ -129,23 +124,19 @@ class LRUCache {
     const now = Date.now();
     const size = this.estimateSize(data);
 
-    // ✅ Evict until we have space for new item
     while (this.getTotalSize() + size > this.maxBytes && this.cache.size > 0) {
       this.evictOldest();
     }
 
-    // If still can't fit, reject
     if (size > this.maxBytes) {
       console.warn(`⚠️ Item too large for cache: ${size} bytes`);
       return false;
     }
 
-    // Remove oldest if at capacity
     if (this.cache.size >= this.maxSize && !this.cache.has(key)) {
       this.evictOldest();
     }
 
-    // If key exists, delete it first to move to end
     if (this.cache.has(key)) {
       this.cache.delete(key);
     }
@@ -188,7 +179,6 @@ class LRUCache {
   evictOldest() {
     if (this.cache.size === 0) return;
 
-    // First key is oldest (Map maintains insertion order)
     const oldestKey = this.cache.keys().next().value;
     this.cache.delete(oldestKey);
 
@@ -248,14 +238,12 @@ class LRUCache {
    */
   estimateSize(data) {
     try {
-      // JSON length is char count; Blob gives byte size which is more accurate
       const str = typeof data === 'string' ? data : JSON.stringify(data);
       return new Blob([str]).size;
     } catch (e) {
       return 0;
     }
   }
-
 
   /**
    * Get total cache size in bytes (approximate)
@@ -268,8 +256,6 @@ class LRUCache {
     return total;
   }
 }
-
-
 
 /**
  * Cancellation token for async operations
@@ -320,24 +306,21 @@ class PerformanceMonitor {
  */
 class NetworkMonitor {
   constructor(options = {}) {
-    // Configurable options with sensible defaults
     this.config = {
-      checkInterval: options.checkInterval || 30000, // ms
-      healthCheckTimeout: options.healthCheckTimeout || 5000, // ms
+      checkInterval: options.checkInterval || 30000,
+      healthCheckTimeout: options.healthCheckTimeout || 5000,
       qualitySamples: options.qualitySamples || 5,
       maxRetries: options.maxRetries || 3,
       autoResumeDelay: options.autoResumeDelay || 1000,
-      // Connection quality thresholds (in milliseconds)
       thresholds: {
-        EXCELLENT: (options.thresholds && options.thresholds.EXCELLENT) || 100, // < 100ms
-        GOOD: (options.thresholds && options.thresholds.GOOD) || 300,           // 100-300ms
-        FAIR: (options.thresholds && options.thresholds.FAIR) || 600,           // 300-600ms
-        POOR: (options.thresholds && options.thresholds.POOR) || 1000           // > 600ms
+        EXCELLENT: (options.thresholds && options.thresholds.EXCELLENT) || 100,
+        GOOD: (options.thresholds && options.thresholds.GOOD) || 300,
+        FAIR: (options.thresholds && options.thresholds.FAIR) || 600,
+        POOR: (options.thresholds && options.thresholds.POOR) || 1000
       },
       ...options
     };
 
-    // Basic runtime state (keeps original public fields for compatibility)
     this.isOnline = navigator.onLine;
     this.latency = 0;
     this.quality = 'unknown';
@@ -347,7 +330,6 @@ class NetworkMonitor {
     this.statusListeners = new Set();
     this.qualityListeners = new Set();
 
-    // Resilience and telemetry
     this.retryCount = 0;
     this.maxRetries = this.config.maxRetries;
 
@@ -359,7 +341,6 @@ class NetworkMonitor {
       lastDowntimeStart: null
     };
 
-    // Internal bound handlers (populated in setupEventListeners)
     this._onOnline = null;
     this._onOffline = null;
     this._onVisibilityChange = null;
@@ -370,7 +351,6 @@ class NetworkMonitor {
    * Initialize network monitoring
    */
   initialize() {
-    // Avoid double initialization if desired (optional)
     if (this._initialized) return this;
     this._initialized = true;
 
@@ -378,16 +358,13 @@ class NetworkMonitor {
     this.startQualityMonitoring();
     this.detectConnectionType();
 
-    // Update appState
     try {
       appState.set('settings.isOnline', this.isOnline);
       appState.set('settings.networkQuality', this.quality);
       appState.set('settings.connectionType', this.connectionType);
     } catch (e) {
-      // appState may be unavailable in some contexts; ignore safely
     }
 
-    // Register cleanup with appState if available
     try {
       if (typeof appState?.addCleanup === 'function') {
         this._appStateCleanupUnsub = appState.addCleanup(() => this.cleanup());
@@ -402,26 +379,21 @@ class NetworkMonitor {
    * Setup online/offline event listeners (stores bound handlers for cleanup)
    */
   setupEventListeners() {
-    // store bound handlers so they can be removed later
     this._onOnline = this.handleOnline.bind(this);
     this._onOffline = this.handleOffline.bind(this);
     this._onVisibilityChange = this.handleVisibilityChange.bind(this);
     this._onConnectionChange = this.handleConnectionChange.bind(this);
 
-    // Online/Offline events
     window.addEventListener('online', this._onOnline);
     window.addEventListener('offline', this._onOffline);
 
-    // Network Information API (if available)
     if (navigator.connection) {
       try {
         navigator.connection.addEventListener('change', this._onConnectionChange);
       } catch (e) {
-        // Some browsers may not support addEventListener on connection
       }
     }
 
-    // Page visibility changes (tab switch)
     document.addEventListener('visibilitychange', this._onVisibilityChange);
   }
 
@@ -429,7 +401,6 @@ class NetworkMonitor {
    * Start periodic network quality checks
    */
   startQualityMonitoring() {
-    // Clear existing interval
     if (this.checkInterval) {
       clearInterval(this.checkInterval);
       this.checkInterval = null;
@@ -437,26 +408,22 @@ class NetworkMonitor {
 
     const intervalMs = this.config.checkInterval || 30000;
 
-    // Check periodically when online
     this.checkInterval = setInterval(() => {
       if (this.isOnline) {
         this.checkConnectionQuality();
       }
     }, intervalMs);
 
-    // Initial check (short delay)
     if (this.isOnline) {
       setTimeout(() => this.checkConnectionQuality(), 1000);
     }
 
-    // Store interval in appState for centralized cleanup
     try {
       if (typeof appState?.setIntervalRef === 'function') {
         appState.setIntervalRef('networkMonitor', this.checkInterval);
       }
     } catch (e) { /* ignore */ }
   }
-
 
   /**
    * Detect connection type using Network Information API
@@ -471,7 +438,6 @@ class NetworkMonitor {
         }
       }
     } catch (e) {
-      // ignore
     }
   }
 
@@ -486,18 +452,15 @@ class NetworkMonitor {
     this.lastCheck = startTime;
 
     try {
-      // Use multiple endpoints for reliability
       const endpoints = [
         'https://connectivitycheck.gstatic.com/generate_204',
         'https://clients3.google.com/generate_204'
       ];
 
-
       const results = await Promise.allSettled(
         endpoints.map(url => this.measureLatency(url))
       );
 
-      // Calculate average latency from successful measurements
       const successful = results.filter(r => r.status === 'fulfilled');
       const successRate = successful.length / endpoints.length;
 
@@ -507,35 +470,26 @@ class NetworkMonitor {
           latencies.reduce((a, b) => a + b, 0) / latencies.length
         );
 
-        // Determine quality based on latency thresholds
         this.quality = this.determineQuality(this.latency);
 
-        // Update appState
         try {
           appState.set('settings.networkLatency', this.latency);
           appState.set('settings.networkQuality', this.quality);
         } catch (e) { /* ignore */ }
 
-        // Notify listeners
         this.notifyQualityChange();
 
-        //console.log(`📡 Network Quality: ${this.quality} (${this.latency}ms)`);
-
-        // Show warning if quality is poor
         if (this.quality === 'poor') {
           this.showQualityWarning();
         }
 
-        // success bookkeeping
         this.stats.successfulChecks++;
-        this.retryCount = 0; // reset retry counter on success
+        this.retryCount = 0;
       } else {
-        // no successful checks — treat as partial failure
         this.stats.failedChecks++;
         this.retryCount++;
         console.warn(`Network checks failed (${this.retryCount}/${this.maxRetries})`);
         if (this.retryCount >= this.maxRetries) {
-          // escalate to offline state
           this.handleOffline({ manual: false });
         }
       }
@@ -548,7 +502,6 @@ class NetworkMonitor {
       }
     }
   }
-
 
   /**
    * Measure latency to a specific endpoint
@@ -597,12 +550,11 @@ class NetworkMonitor {
    * Handle online event
    */
   handleOnline(event) {
-    if (this.isOnline) return; // already online
+    if (this.isOnline) return;
 
     this.isOnline = true;
     try { appState.set('settings.isOnline', true); } catch (e) { /* ignore */ }
 
-    // Track downtime
     if (this.stats.lastDowntimeStart) {
       this.stats.totalDowntime += Date.now() - this.stats.lastDowntimeStart;
       this.stats.lastDowntimeStart = null;
@@ -611,19 +563,14 @@ class NetworkMonitor {
     console.log('🌐 Network: Online');
     showNotification('📶 Network connection restored', 'success');
 
-    // Update connection type
     this.detectConnectionType();
 
-    // Start quality monitoring
     this.startQualityMonitoring();
 
-    // Notify listeners
     this.notifyStatusChange();
 
-    // Auto-resume playback if applicable
     this.handleAutoResume();
 
-    // Immediate re-check
     setTimeout(() => this.checkConnectionQuality(), 1000);
   }
 
@@ -631,14 +578,13 @@ class NetworkMonitor {
    * Handle offline event
    */
   handleOffline(options = {}) {
-    if (!this.isOnline && !options.force) return; // already offline
+    if (!this.isOnline && !options.force) return;
 
     this.isOnline = false;
     appState.set('settings.isOnline', false);
     this.quality = 'offline';
     try { appState.set('settings.isOnline', false); } catch (e) { /* ignore */ }
 
-    // Start downtime timer
     if (!this.stats.lastDowntimeStart) {
       this.stats.lastDowntimeStart = Date.now();
     }
@@ -646,10 +592,8 @@ class NetworkMonitor {
     console.log('🌐 Network: Offline');
     showNotification('📴 Network connection lost', 'error');
 
-    // Notify listeners
     this.notifyStatusChange();
 
-    // Handle playback interruption
     this.handlePlaybackInterruption();
   }
 
@@ -671,7 +615,6 @@ class NetworkMonitor {
    */
   handleVisibilityChange() {
     if (!document.hidden && this.isOnline) {
-      // Tab became visible - recheck network
       setTimeout(() => this.checkConnectionQuality(), 1000);
     }
   }
@@ -683,7 +626,6 @@ class NetworkMonitor {
     const player = channelLoader?.getPlayer?.();
     if (!player) return;
 
-    // Pause player if playing
     try {
       if (!player.paused()) {
         player.pause();
@@ -693,14 +635,12 @@ class NetworkMonitor {
       console.warn('Failed to pause player:', error);
     }
 
-    // Clear buffers if using video.js with HLS
     try {
       if (player.tech_ && player.tech_.vhs && typeof player.tech_.vhs.resetEverything === 'function') {
         player.tech_.vhs.resetEverything();
         console.log('🧹 Cleared video buffers');
       }
     } catch (error) {
-      // Ignore - not all players support this
     }
   }
 
@@ -713,7 +653,6 @@ class NetworkMonitor {
 
     if (!player || !currentChannel) return;
 
-    // Only auto-resume if player was playing before network loss
     if (player && player.paused()) {
       setTimeout(() => {
         if (this.isOnline && player.paused()) {
@@ -723,7 +662,6 @@ class NetworkMonitor {
               showNotification('Playback resumed', 'success');
             })
             .catch((error) => {
-              // Check for user-driven errors (like 'NotAllowedError' for unmuted play)
               if (error && (error.name === 'NotAllowedError' || error.name === 'AbortError')) {
                 console.warn("Could not auto-resume playback due to browser policy or interruption:", error?.message);
                 try { channelLoader.showPlayButton(); } catch (e) { /* ignore */ }
@@ -744,7 +682,6 @@ class NetworkMonitor {
   showQualityWarning() {
     if (!this.isOnline) return;
 
-    // Don't show too frequently (max once per 2 minutes)
     const lastWarning = (typeof appState?.get === 'function') ? appState.get('ui.lastNetworkWarning') || 0 : 0;
     if (Date.now() - lastWarning < 120000) return;
 
@@ -826,7 +763,6 @@ class NetworkMonitor {
    * Cleanup resources
    */
   cleanup() {
-    // Clear interval and appState reference
     if (this.checkInterval) {
       clearInterval(this.checkInterval);
       this.checkInterval = null;
@@ -840,7 +776,6 @@ class NetworkMonitor {
     this.statusListeners.clear();
     this.qualityListeners.clear();
 
-    // Remove bound event listeners (only if we stored them)
     if (this._onOnline) window.removeEventListener('online', this._onOnline);
     if (this._onOffline) window.removeEventListener('offline', this._onOffline);
     if (this._onVisibilityChange) document.removeEventListener('visibilitychange', this._onVisibilityChange);
@@ -850,7 +785,6 @@ class NetworkMonitor {
       } catch (e) { /* ignore */ }
     }
 
-    // Unregister appState cleanup if we registered one
     try {
       if (this._appStateCleanupUnsub) {
         this._appStateCleanupUnsub();
@@ -858,7 +792,6 @@ class NetworkMonitor {
       }
     } catch (e) { /* ignore */ }
 
-    // Clear any other references
     this._onOnline = null;
     this._onOffline = null;
     this._onVisibilityChange = null;
@@ -868,39 +801,31 @@ class NetworkMonitor {
   }
 }
 
-
 // ============================================
-// NETWORK MONITOR INSTANCE
 // ============================================
 const networkMonitor = new NetworkMonitor();
 
 // ============================================
-// CONSTANTS - MUST BE FIRST
 // ============================================
-const CACHE_DURATION = 60 * 60 * 1000; // 1 hour
+const CACHE_DURATION = 60 * 60 * 1000;
 const DOUBLE_TAP_DELAY = 300;
 
 // ============================================
-// CACHE INSTANCES
 // ============================================
 const rssCache = new LRUCache(50, CACHE_DURATION);
 const liveCache = new LRUCache(30, CACHE_DURATION);
 
 // ============================================
-// GLOBAL STATE VARIABLES
 // ============================================
 let fullscreenPrompt = null;
 let hasUserInteracted = false;
 
 // ============================================
-// CONSTANTS & CONFIGURATION
 // ============================================
 const AUTO_UPDATE_KEY = "autoUpdateEnabled";
 const UPDATE_INTERVAL_KEY = "updateIntervalHours";
 const MAX_RECENT = 18;
 
-
-// ✅ NEW: Improved localStorage keys with namespace
 const LS_KEYS = {
   FAVORITES: "favorites",
   RECENT: "recentlyWatched",
@@ -915,7 +840,7 @@ const LS_KEYS = {
 const API_KEY_STORAGE_KEY = "youtube_api_key";
 const CACHE_KEY = "lastChannelsUpdate";
 
-const MAX_MB = 6; // total quota in MB
+const MAX_MB = 6;
 
 const VERSION = "1.0.0";
 
@@ -927,12 +852,9 @@ const PLAYBACK_CONSTANTS = {
   TRANSITION_DELAY: 0,
 };
 
-
-// ✅ NEW: Debounce configuration
 const DEBOUNCE_MS = 180;
 
 const pendingRequests = new Map();
-
 
 class AppStateManager {
   constructor() {
@@ -991,7 +913,6 @@ class AppStateManager {
     this.cleanupCallbacks = new Set();
   }
 
-
   get userAgent() {
     return this._state.system.userAgent.current;
   }
@@ -1009,7 +930,6 @@ class AppStateManager {
     const version = (this._version || 0) + 1;
     this._version = version;
 
-    // Apply state
     const keys = path.split('.');
     const last = keys.pop();
     let target = this.state;
@@ -1019,7 +939,6 @@ class AppStateManager {
     }
     target[last] = value;
 
-    // Delay localStorage save safely
     this._queuePersist(path, value, version);
 
     this.notify(path, value);
@@ -1028,7 +947,6 @@ class AppStateManager {
   _queuePersist(path, value, version) {
     clearTimeout(this._persistTimer);
     this._persistTimer = setTimeout(() => {
-      // Only persist if version is still the latest
       if (this._version === version) {
         this._doPersist(path, value);
       }
@@ -1040,14 +958,11 @@ class AppStateManager {
       if (path === 'channels.all') {
         safeLocalStorageSet(LS_KEYS.CHANNELS, JSON.stringify(this.state.channels?.all || []));
       } else {
-        // keep legacy behavior if needed for other paths (no-op)
       }
     } catch (e) {
       console.warn("Failed to persist", e);
     }
   }
-
-
 
   merge(path, obj) {
     const cur = this.get(path) || {};
@@ -1083,7 +998,6 @@ class AppStateManager {
     }
   }
 
-  // interval / timeout helpers (centralized)
   setIntervalRef(name, id) {
     const prev = this.get(`intervals.${name}`);
     if (prev) clearInterval(prev);
@@ -1142,7 +1056,6 @@ class AppStateManager {
     try { this.reset('intervals'); } catch (e) { }
     try { this.reset('cache'); } catch (e) { }
 
-    // Call each cleanup callback safely
     for (const cb of Array.from(this.cleanupCallbacks)) {
       try { cb(); } catch (e) { console.warn(e); }
     }
@@ -1156,13 +1069,7 @@ class AppStateManager {
 
 const appState = new AppStateManager();
 
-
-
-
-
-
 // ============================================
-// Utilities
 // ============================================
 function safeJSONParse(value, fallback = null) {
   try {
@@ -1204,17 +1111,14 @@ function writeArray(key, arr) {
 }
 
 // ============================================
-// SAFE LOCALSTORAGE WRAPPER
 // ============================================
 function getActualStorageSize(str) {
-  // Blob.size already reports the byte length
   return new Blob([str]).size;
 }
 
-
 function getAvailableSpace() {
   const MAX_BYTES = MAX_MB * 1024 * 1024;
-  const usage = getStorageUsage();   // { totalBytes, totalKB, totalMB, itemCount, items }
+  const usage = getStorageUsage();
 
   if (!usage || typeof usage.totalBytes !== "number") {
     console.warn("⚠️ Storage usage unavailable.");
@@ -1236,49 +1140,39 @@ function safeLocalStorageSet(key, value, retryOnFail = true) {
   const actualSize = getActualStorageSize(value);
   const available = getAvailableSpace();
 
-  // 1. Get backup just in case we need to roll back
   const backup = localStorage.getItem(key);
 
-  // 2. Pre-check: If we already know it won't fit, clean up first
   if (actualSize > available) {
     console.warn(`⚠️ Data size (${actualSize}) exceeds available space (${available})`);
 
     if (retryOnFail) {
-      // Try smart cleanup first
       predictiveCleanup();
 
-      // If still not enough, try aggressive cleanup
       if (getAvailableSpace() < actualSize) {
         clearOldStorageData();
       }
     } else {
-      // If we already retried and it still doesn't fit, fail early
       return false;
     }
   }
 
   try {
-    // 3. Attempt Write
     localStorage.setItem(key, value);
     return true;
   } catch (e) {
     console.warn("Storage write failed:", e);
 
-    // 4. Restore Backup (Critical: Wrap in try-catch to prevent crash)
     if (backup !== null) {
       try {
         localStorage.setItem(key, backup);
       } catch (backupErr) {
         console.error("CRITICAL: Failed to restore backup!", backupErr);
-        // Data is likely lost for this key, but app won't crash
       }
     }
 
-    // 5. Handle Quota Error specifically
     if ((e.name === 'QuotaExceededError' || e.code === 22) && retryOnFail) {
       console.log("Quota exceeded, attempting aggressive cleanup and retry...");
       clearOldStorageData();
-      // Retry exactly once (pass false to prevent infinite recursion)
       return safeLocalStorageSet(key, value, false);
     }
 
@@ -1288,7 +1182,6 @@ function safeLocalStorageSet(key, value, retryOnFail = true) {
 }
 
 // ============================================
-// ✅ NEW: DEBOUNCE UTILITY
 // ============================================
 
 /**
@@ -1355,73 +1248,54 @@ function getTimeAgo(timestamp) {
 
 }
 
-
 // ============================================
-// Notifications & error helpers
 // ============================================
 function showNotification(message, type = 'info', time = 3000) {
-  // --- Clear any existing notification timeout from AppStateManager ---
-  // This ensures a new notification won't be removed prematurely by an old timer.
   appState.clearTimeoutRef('notificationTimer');
 
-  // --- Remove existing notifications gracefully ---
-  // Fade them out by removing 'visible', then remove from DOM after transition.
   document.querySelectorAll('.iptv-notification').forEach(n => {
     n.classList.remove('visible');
     setTimeout(() => {
       if (n.isConnected) n.remove();
-    }, 400); // Match this delay with your CSS transition duration
+    }, 400);
   });
 
-  // --- Create new notification element ---
   const el = document.createElement('div');
   el.className = `iptv-notification notification-${type}`;
 
-  // Accessibility roles: 'alert' for errors, 'status' for others
   el.setAttribute('role', type === 'error' ? 'alert' : 'status');
   el.setAttribute('aria-live', type === 'error' ? 'assertive' : 'polite');
   el.setAttribute('aria-atomic', 'true');
 
-  // Allow HTML markup (icons, SVG, etc.) inside the message
   el.innerHTML = message;
 
-  // Add to DOM
   document.body.appendChild(el);
 
-  // --- Trigger CSS transition ---
-  // Using requestAnimationFrame ensures the 'visible' class is applied
-  // after the element is in the DOM, so transitions animate correctly.
   requestAnimationFrame(() => {
     el.classList.add('visible');
   });
 
-  // --- Cleanup helper ---
-  // Removes event listeners when notification is dismissed.
   const cleanup = () => {
     document.removeEventListener('keydown', handleKeydown);
   };
 
-  // --- Hide function ---
-  // Handles fade out, DOM removal, timeout clearing, and cleanup.
   const hide = () => {
     if (!el.isConnected) return;
     el.classList.remove('visible');
     setTimeout(() => {
       if (el.isConnected) {
         el.remove();
-        cleanup(); // Ensure Escape listener is removed
+        cleanup();
         appState.clearTimeoutRef('notificationTimer');
       }
-    }, 400); // Match CSS transition duration
+    }, 400);
   };
 
-  // --- Click to dismiss ---
   el.addEventListener('click', () => {
     appState.clearTimeoutRef('notificationTimer');
     hide();
   });
 
-  // --- Escape key to dismiss ---
   const handleKeydown = (e) => {
     if (e.key === 'Escape' && el.isConnected) {
       appState.clearTimeoutRef('notificationTimer');
@@ -1430,13 +1304,9 @@ function showNotification(message, type = 'info', time = 3000) {
   };
   document.addEventListener('keydown', handleKeydown);
 
-  // --- Centralized timeout management ---
-  // Automatically hide after 'time' ms, stored in AppStateManager.
   const timer = setTimeout(hide, time);
   appState.setTimeoutRef('notificationTimer', timer);
 
-  // --- Register cleanup with AppStateManager ---
-  // Ensures notification and listeners are removed if appState triggers cleanup.
   appState.addCleanup(() => {
     if (el.isConnected) {
       cleanup();
@@ -1444,8 +1314,6 @@ function showNotification(message, type = 'info', time = 3000) {
     }
   });
 
-  // --- Return controls for external management ---
-  // Allows manual hide or cleanup from outside if needed.
   return { hide, cleanup };
 }
 
@@ -1471,10 +1339,7 @@ function showErrorToUser(message) {
   }, PLAYBACK_CONSTANTS.PLAYER_READY_TIMEOUT);
 }
 
-
-
 // ============================================
-// Favorites & Recently Watched - unchanged semantics but now use appState
 // ============================================
 
 /**
@@ -1536,8 +1401,6 @@ function toggleFavoriteStatus(channelData) {
   return isFavorite(channelData.url) ? removeFavorite(channelData.url) : addFavorite(channelData);
 }
 
-
-
 function clearAllFavorites() {
   if (confirm('Are you sure you want to clear ALL favorites? This cannot be undone!')) {
     const ok = writeArray(LS_KEYS.FAVORITES, []);
@@ -1572,10 +1435,8 @@ function addToRecentlyWatched(channelData, opts = {}) {
   const timestamp = opts.timestamp ?? Date.now();
   let recent = getRecentlyWatched();
 
-  // Remove if already exists
   recent = recent.filter(r => r.url !== channelData.url);
 
-  // Add to beginning with timestamp
   recent.unshift({
     name: channelData.name,
     url: channelData.url,
@@ -1587,7 +1448,6 @@ function addToRecentlyWatched(channelData, opts = {}) {
     watchedAt: timestamp
   });
 
-  // Keep only MAX_RECENT items
   recent = recent.slice(0, MAX_RECENT);
   const ok = writeArray(LS_KEYS.RECENT, recent);
   if (ok) dispatchStorageUpdate('recent');
@@ -1655,7 +1515,6 @@ function toggleFavorite(url, name, image, description, number, isLive, category,
 /**
  * Dispatch custom event for storage updates
  */
-// Cross-tab sync helpers
 function dispatchStorageUpdate(type) {
   try {
     window.dispatchEvent(new CustomEvent('iptv-storage-updated', {
@@ -1692,12 +1551,9 @@ window.addEventListener('iptv-storage-updated', (e) => {
   }
 });
 
-
 // ============================================
-// ChannelLoader: manages player lifecycle, events, and cleanup
 // ============================================
 // ======================================================================
-// ChannelLoader – Final, Leak-Safe, Error-Proof Version
 // ======================================================================
 /**
  * Manages video player lifecycle with race condition protection
@@ -1708,28 +1564,21 @@ window.addEventListener('iptv-storage-updated', (e) => {
  */
 class ChannelLoader {
   constructor(opts = {}) {
-    // async operation control
     this.currentOperation = null;
     this.currentOperationId = null;
 
-    // modern WeakRef player
     this.playerRef = null;
 
-    // legacy player reference (your file still uses this in places)
     this.playerInstance = null;
 
-    // legacy event cleanup list
     this.eventCleanupCallbacks = [];
 
-    // automatic GC cleanup
     this.cleanupRegistry = new FinalizationRegistry((cleanup) => {
       try { cleanup(); } catch (e) { console.warn("Finalizer cleanup error:", e); }
     });
 
-    // optional config (timeouts, container id)
     this.config = Object.assign({ playerContainerId: "player-container", persistDelay: 100 }, opts);
 
-    // make sure app-level cleanup triggers player cleanup on app shutdown
     if (typeof appState !== "undefined" && typeof appState.addCleanup === "function") {
       appState.addCleanup(() => {
         try { this.cleanupPlayer(true); } catch (e) { console.warn(e); }
@@ -1737,11 +1586,7 @@ class ChannelLoader {
     }
   }
 
-  // ----------------------------------------------------------------------
-  // SAFE: used to bind event listeners
-  // ----------------------------------------------------------------------
   _bindPlayerEvent(player, event, handler) {
-    // Bind listener with whatever API exists
     try {
       if (typeof player.addEventListener === "function") {
         player.addEventListener(event, handler);
@@ -1752,12 +1597,10 @@ class ChannelLoader {
       }
     } catch (e) { /* ignore */ }
 
-    // Track for manual disposal
     try {
       if (!player._boundEvents) player._boundEvents = [];
       player._boundEvents.push({ event, handler });
 
-      // GC-based cleanup
       this.cleanupRegistry.register(player, () => {
         try {
           if (typeof player.removeEventListener === "function") {
@@ -1772,13 +1615,6 @@ class ChannelLoader {
     } catch (e) { /* ignore */ }
   }
 
-
-
-
-  // --------------------------
-  // Video.js / HLS safe disposal routine
-  // --------------------------
-
   /**
  * Safely disposes video.js player with HLS cleanup
  * @private
@@ -1789,16 +1625,12 @@ class ChannelLoader {
     try {
       if (!player) return;
 
-      // Pause playback if possible
       try { player.pause?.(); } catch (e) { }
 
-      // Remove generic event listeners
       try {
         if (typeof player.off === "function") {
-          // video.js: off() removes all handlers
           try { player.off(); } catch (e) { }
         } else if (typeof player.removeEventListener === "function") {
-          // best-effort removal for tracked events
           const events = player._boundEvents;
           if (events && typeof events.forEach === "function") {
             try {
@@ -1813,9 +1645,7 @@ class ChannelLoader {
         }
       } catch (e) { }
 
-      // Attempt to dispose internal HLS/VHS instances
       try {
-        // video.js tech internals vary by version; handle common cases
         const tech = player.tech_ || (typeof player.tech === "function" && player.tech(true)) || null;
         const hls = tech?.hls || tech?.vhs || tech?.hlsHandler || tech?.vhsHandler;
         if (hls) {
@@ -1824,29 +1654,24 @@ class ChannelLoader {
         }
       } catch (e) { }
 
-      // Call video.js dispose() if available (safest path)
       try {
         if (typeof player.dispose === "function") {
-          // video.js dispose is synchronous; wrap in try/catch
           try { player.dispose(); } catch (e) { console.warn("player.dispose() error:", e); }
         }
       } catch (e) { }
 
-      // As a fallback, call destroy() if available
       try {
         if (typeof player.destroy === "function") {
           try { await player.destroy(); } catch (e) { }
         }
       } catch (e) { }
 
-      // Remove DOM node created by player
       try {
         const el = (typeof player.el === "function") ? player.el() : player.element || null;
         if (el && el.parentNode) {
           try { el.parentNode.removeChild(el); } catch (e) { }
         }
 
-        // Also attempt to remove known wrappers
         const container = document.getElementById(this.config.playerContainerId);
         if (container) {
           container.querySelectorAll("video, .video-js, .vjs-tech, .vjs-video").forEach(node => {
@@ -1860,26 +1685,20 @@ class ChannelLoader {
   }
 
   // ======================================================================
-  // FINAL cleanupPlayer() — Universal, Safe, Leak-Free, Video.js Compatible
   // ======================================================================
   async cleanupPlayer(force = false) {
-    // Stop any playback timers / analytics
     try { stopWatching?.(); } catch { }
 
-    // Get player from either source
     const player = this.playerRef?.deref?.() || this.playerInstance;
 
     if (player) {
-      // Single unified cleanup
       await this._disposeVideoJS(player);
     }
 
-    // Clear all references
     this.playerRef = null;
     this.playerInstance = null;
     this.eventCleanupCallbacks = [];
 
-    // Clear DOM
     const container = document.getElementById(this.config.playerContainerId);
     if (container) container.innerHTML = '';
 
@@ -1890,24 +1709,13 @@ class ChannelLoader {
     }
   }
 
-
-  // ----------------------------------------------------------------------
-  // initializePlayer – handles creation and event binding
-  // ----------------------------------------------------------------------
-  // --------------------------
-  // initializePlayer — loads a player (video.js / Clappr / custom) and binds events
-  // Note: relies on your existing loadVideoPlayer(url, options) function to create the player
-  // --------------------------
   async initializePlayer(url, name, isLive, token) {
-    // Wait for container
     const container = await this.waitForElement("player-container");
     token.throwIfCancelled();
 
-    // Build stream + metadata
     const streamConfig = createStreamConfig(url);
     const metadata = { isLive: !!isLive };
 
-    // Create video element
     const videoId = `player-${Date.now()}`;
     const videoElement = this.createVideoElement(videoId);
     container.innerHTML = "";
@@ -1916,11 +1724,8 @@ class ChannelLoader {
     await this.waitForElement(videoId);
     token.throwIfCancelled();
 
-    // Build player config
     const playerConfig = buildPlayerOptions(streamConfig, metadata);
     console.log('🎬 Initializing Video.js player...');
-
-    // ✅ This is your actual player creation
 
     let player;
     try {
@@ -1935,19 +1740,16 @@ class ChannelLoader {
     token.throwIfCancelled();
     if (!player) throw new Error("Player failed to initialize");
 
-    // Store references safely
     try {
       this.playerRef = new WeakRef(player);
     } catch {
       this.playerRef = { deref: () => player };
     }
 
-    // Defensive event container
     if (!player._boundEvents) {
       player._boundEvents = new Set();
     }
 
-    // Safe event binding
     try {
       this._bindPlayerEvent(player, "error", (e) => {
         try { console.warn("⚠️ Player error event:", e); } catch { }
@@ -1962,7 +1764,6 @@ class ChannelLoader {
       console.warn("Event binding failed:", e);
     }
 
-    // Register cleanup
     try {
       this.cleanupRegistry.register(player, () => {
         try { this._disposeVideoJS(player); } catch { }
@@ -1971,7 +1772,6 @@ class ChannelLoader {
       console.warn("Cleanup registry failed:", e);
     }
 
-    // Error recovery for HLS
     try {
       if (streamConfig.type === "hls" && player.tech({ IWillNotUseThisInPlugins: true })) {
         this.setupHLSErrorRecovery();
@@ -1982,15 +1782,12 @@ class ChannelLoader {
 
     appState.set('player.instance', player);
 
-    // Setup events and monitoring
     this.setupPlayerEvents(name, isLive, streamConfig.type === 'youtube', token);
     if (streamConfig.type === 'youtube') this.setupYouTubeQualityMonitoring(token);
 
-    // Wait for ready
     await this.waitForPlayerReady(token);
     token.throwIfCancelled();
 
-    // UI setup
     showChannelInfoOverlay();
     await this.attemptAutoplay();
     this.setupFullscreenCloseButton();
@@ -1998,10 +1795,6 @@ class ChannelLoader {
     return player;
   }
 
-
-  // ----------------------------------------------------------------------
-  // Cancel active load operation
-  // ----------------------------------------------------------------------
   cancelOperation() {
     try {
       if (this.currentOperation) {
@@ -2011,9 +1804,6 @@ class ChannelLoader {
     } catch (e) { }
   }
 
-  // ----------------------------------------------------------------------
-  // Race-condition protection
-  // ----------------------------------------------------------------------
   verifyOperation(expectedId, token) {
     token.throwIfCancelled();
     if (this.currentOperationId !== expectedId) {
@@ -2021,9 +1811,6 @@ class ChannelLoader {
     }
   }
 
-  // ----------------------------------------------------------------------
-  // loadChannel – main entry point
-  // ----------------------------------------------------------------------
   /**
  * Loads a channel with race-condition protection and cleanup
  * @param {string} url - Stream URL (HLS/DASH/YouTube)
@@ -2038,7 +1825,6 @@ class ChannelLoader {
   async loadChannel(url, name, image, description, number, isLive) {
     if (!url) return;
 
-    // cancel previous load
     this.cancelOperation();
 
     const token = new CancellationToken();
@@ -2048,7 +1834,6 @@ class ChannelLoader {
 
     console.log(`🚀 Loading channel: ${name} (OpID: ${opId})`);
 
-    // Add token checks before EVERY async operation:
     try {
       this.verifyOperation(opId, token);
 
@@ -2074,7 +1859,6 @@ class ChannelLoader {
         console.log(`⏹️ Channel load cancelled: ${name}`);
       }
     } finally {
-      // Only clear current op if it's strictly THIS operation finishing
       if (this.currentOperationId === opId) {
         this.currentOperation = null;
       }
@@ -2098,7 +1882,6 @@ class ChannelLoader {
     }
     appState.set('ui.lastFocusedElement', document.activeElement);
   }
-
 
   setupHLSErrorRecovery() {
     if (!this.playerInstance) return;
@@ -2125,8 +1908,6 @@ class ChannelLoader {
     } catch (e) { console.warn(e); }
   }
 
-
-
   createVideoElement(id) {
     const video = document.createElement('video');
     video.id = id;
@@ -2144,7 +1925,7 @@ class ChannelLoader {
       const existing = document.getElementById(id);
       if (existing) return resolve(existing);
 
-      let tid = null; // <-- declared early
+      let tid = null;
       const obs = new MutationObserver(() => {
         const el = document.getElementById(id);
         if (el) {
@@ -2162,7 +1943,6 @@ class ChannelLoader {
       }, PLAYBACK_CONSTANTS.MAX_ELEMENT_WAIT_TIME);
     });
   }
-
 
   async waitForPlayerReady(token) {
     return new Promise((resolve, reject) => {
@@ -2231,7 +2011,6 @@ class ChannelLoader {
       if (isYouTube && error?.code === 1150) {
         console.warn('⚠️ YouTube Error 1150 detected - Video restricted/unavailable');
 
-        // Record the failure for retry system
         const channelId =
           resolveYouTubePlayback(this.playerInstance);
 
@@ -2249,8 +2028,6 @@ class ChannelLoader {
           'This live stream is temporarily unavailable. It will be retried automatically.'
         );
 
-        // Don't stop watching immediately - let user decide
-        // But pause the player to prevent continuous errors
         if (this.playerInstance && !this.playerInstance.paused()) {
           this.playerInstance.pause();
         }
@@ -2566,12 +2343,9 @@ class ChannelLoader {
   }
 }
 
-
 const channelLoader = new ChannelLoader();
 
-
 // ============================================
-// Stream helpers (YouTube ID extraction, config, player options)
 // ============================================
 
 function resolveYouTubePlayback(player) {
@@ -2598,16 +2372,13 @@ function resolveYouTubePlayback(player) {
   }
 }
 
-
 function extractYouTubeID(url) {
   if (!url) return null;
   const match = url.match(/(?:youtube\.com\/(?:.*v=|live\/|embed\/)|youtu\.be\/)([^&?/]+)/i);
   return match ? match[1] : null;
 }
 
-
 // ============================================
-// Settings helpers (API key, modals)
 // ============================================
 
 function saveAPIKey(apiKey) {
@@ -2646,11 +2417,9 @@ function clearAPIKey() {
 }
 
 // ============================================
-// STREAM CONFIGURATION
 // ============================================
 
 // ======================================================================
-// createStreamConfig() — Final, complete version with Mixed Content Fix
 // ======================================================================
 function createStreamConfig(url, opts = {}) {
   if (!url || typeof url !== "string") {
@@ -2658,7 +2427,6 @@ function createStreamConfig(url, opts = {}) {
     return null;
   }
 
-  // normalize
   url = url.trim();
   const isHTTPS = window.location.protocol === "https:";
   const isHTTP = url.startsWith("http://");
@@ -2668,14 +2436,9 @@ function createStreamConfig(url, opts = {}) {
   const isTS = url.endsWith(".ts");
   const isYouTube = url.includes("youtube.com") || url.includes("youtu.be");
 
-
-  // ------------------------------------------------------------------
-  // 1. Mixed Content Protection (HTTPS site → HTTP stream = block)
-  // ------------------------------------------------------------------
   if (isHTTPS && isHTTP) {
     console.error("❌ Mixed Content Blocked:", url);
 
-    // Try fallback: direct HTTPS rewrite (rarely works, but try)
     let httpsRewrite = null;
     try {
       if (url.startsWith("http://")) {
@@ -2683,7 +2446,6 @@ function createStreamConfig(url, opts = {}) {
       }
     } catch { }
 
-    // Try user-defined proxy (best)
     const proxy = opts.proxyUrl || "https://cors-anywhere.herokuapp.com/";
     const proxiedUrl = proxy + url;
 
@@ -2711,9 +2473,6 @@ function createStreamConfig(url, opts = {}) {
     };
   }
 
-  // ------------------------------------------------------------------
-  // 2. YouTube video support
-  // ------------------------------------------------------------------
   if (isYouTube) {
     return {
       type: "youtube",
@@ -2722,9 +2481,6 @@ function createStreamConfig(url, opts = {}) {
     };
   }
 
-  // ------------------------------------------------------------------
-  // 3. HLS (.m3u8)
-  // ------------------------------------------------------------------
   if (isM3U8) {
     return {
       type: "hls",
@@ -2747,9 +2503,6 @@ function createStreamConfig(url, opts = {}) {
     };
   }
 
-  // ------------------------------------------------------------------
-  // 4. DASH (.mpd)
-  // ------------------------------------------------------------------
   if (isMPD) {
     return {
       type: "dash",
@@ -2761,9 +2514,6 @@ function createStreamConfig(url, opts = {}) {
     };
   }
 
-  // ------------------------------------------------------------------
-  // 5. MP4
-  // ------------------------------------------------------------------
   if (isMP4) {
     return {
       type: "mp4",
@@ -2771,9 +2521,6 @@ function createStreamConfig(url, opts = {}) {
     };
   }
 
-  // ------------------------------------------------------------------
-  // 6. MPEG-TS / direct TS link
-  // ------------------------------------------------------------------
   if (isTS) {
     return {
       type: "ts",
@@ -2782,18 +2529,14 @@ function createStreamConfig(url, opts = {}) {
     };
   }
 
-  // ------------------------------------------------------------------
-  // 7. Unknown → Auto-detect fallback
-  // ------------------------------------------------------------------
   console.warn("createStreamConfig: unknown format, using auto-detect →", url);
 
   return {
     type: "auto",
     techOrder: ["html5"],
-    source: { src: url, type: "video/mp4" }, // safe generic
+    source: { src: url, type: "video/mp4" },
   };
 }
-
 
 function buildPlayerOptions(streamConfig, metadata) {
   const baseOptions = {
@@ -2868,7 +2611,6 @@ function buildPlayerOptions(streamConfig, metadata) {
     });
   }
 
-
   if (!baseOptions.sources || baseOptions.sources.length === 0) {
     console.warn('⚠️ buildPlayerOptions: sources are empty. Check streamConfig.source');
   }
@@ -2879,10 +2621,7 @@ function buildPlayerOptions(streamConfig, metadata) {
   return baseOptions;
 }
 
-
-
 // ============================================
-// Public selection wrapper
 // ============================================
 
 async function selectChannel(url, name, image, description, number, isLive) {
@@ -2900,9 +2639,7 @@ async function selectChannel(url, name, image, description, number, isLive) {
   });
 }
 
-
 // ============================================
-// Overlay / modal / fullscreen helpers
 // ============================================
 function showChannelInfoOverlay() {
   const overlay = document.getElementById('channel-info-overlay');
@@ -2925,11 +2662,8 @@ function closeModal() {
     modal.classList.add('hidden');
   }
 
-  // Ensure fullscreen prompt is removed immediately to avoid orphaned elements/timers
   try {
-    // clear centralized auto-hide timer and force immediate removal
     appState.clearTimeoutRef('promptTimeout');
-    // removeFullscreenPrompt(forceImmediate = true) - ensure your implementation accepts this flag
     if (typeof removeFullscreenPrompt === 'function') removeFullscreenPrompt(true);
   } catch (e) {
     console.warn('Error clearing fullscreen prompt during modal close', e);
@@ -2940,14 +2674,12 @@ function closeModal() {
     window.player = null;
   }
 
-  // Player cleanup
   try {
     channelLoader.cleanupPlayer().catch(e => console.warn('⚠️ Error during player cleanup:', e));
   } catch (e) {
     console.error("Error cleaning up player:", e);
   }
 
-  // Refresh UI
   try {
     renderRecentlyWatched();
   } catch (e) {
@@ -2960,7 +2692,6 @@ function closeModal() {
     console.error("Error updating channel items:", e);
   }
 
-  // Restore focus
   const lastFocused = appState.get('ui.lastFocusedElement');
   const items = appState.get('uiCollections.allChannelItems') || [];
   if (lastFocused && lastFocused.isConnected) {
@@ -2979,24 +2710,19 @@ function closeModal() {
     appState.set('ui.focusedIndex', 0);
   }
 
-  // Update app state
   appState.set('ui.isModalOpen', false);
   appState.set('player.currentChannel', null);
 }
 
-
 /**
  * Show enhanced fullscreen prompt with controls for mobile users
  */
-// single module-scoped state for prompt internals
 let promptHandlers = null;
 
-// show or reset prompt
 function showFullscreenPrompt() {
   const modal = document.getElementById('videoModal');
   if (!modal || modal.style.display !== 'flex') return;
 
-  // If prompt already exists, just reset auto-hide timer and return
   if (window.fullscreenPrompt) {
     appState.clearTimeoutRef('promptTimeout');
     const tid = setTimeout(() => removeFullscreenPrompt(), 8000);
@@ -3004,10 +2730,8 @@ function showFullscreenPrompt() {
     return;
   }
 
-  // Ensure any leftover prompt is removed immediately (avoid fade race)
   removeFullscreenPrompt(true);
 
-  // Create prompt element
   const el = document.createElement('div');
   el.className = 'minimal-fullscreen-prompt';
   el.innerHTML = `
@@ -3029,7 +2753,6 @@ function showFullscreenPrompt() {
   modal.appendChild(el);
   window.fullscreenPrompt = el;
 
-  // attach handlers and keep references for removal
   const prevBtn = el.querySelector('#promptPrevBtn');
   const nextBtn = el.querySelector('#promptNextBtn');
   const fsBtn = el.querySelector('#promptFullscreenBtn');
@@ -3047,12 +2770,10 @@ function showFullscreenPrompt() {
   fsBtn && fsBtn.addEventListener('click', promptHandlers.fs);
   closeBtn && closeBtn.addEventListener('click', promptHandlers.close);
 
-  // centralized auto-hide timer
   appState.clearTimeoutRef('promptTimeout');
   const tid = setTimeout(() => removeFullscreenPrompt(), 8000);
   appState.setTimeoutRef('promptTimeout', tid);
 
-  // ensure cleanup on app teardown (only add once ideally)
   appState.addCleanup(() => removeFullscreenPrompt(true));
 }
 
@@ -3061,12 +2782,10 @@ function removeFullscreenPrompt(forceImmediate = false) {
   const el = window.fullscreenPrompt;
   if (!el) return;
 
-  // 1. Synchronously remove listeners
   try {
     if (promptHandlers) {
       const btns = el.querySelectorAll('button');
       btns.forEach(btn => {
-        // Generic listener removal if specific ones are lost
         btn.replaceWith(btn.cloneNode(true));
       });
     }
@@ -3074,7 +2793,6 @@ function removeFullscreenPrompt(forceImmediate = false) {
 
   promptHandlers = null;
 
-  // 2. Determine if we can wait for animation
   if (forceImmediate) {
     if (el.parentNode) el.parentNode.removeChild(el);
     window.fullscreenPrompt = null;
@@ -3088,9 +2806,6 @@ function removeFullscreenPrompt(forceImmediate = false) {
     }, 250);
   }
 }
-
-
-
 
 function toggleFullscreen() {
   const player = channelLoader.getPlayer();
@@ -3123,9 +2838,7 @@ function toggleFullscreen() {
   }
 }
 
-
 // ============================================
-// Watch time management (centralized)
 // ============================================
 
 function startWatching(channelId) {
@@ -3178,7 +2891,6 @@ function saveCurrentWatchTime() {
   }
 }
 
-
 function loadWatchTime() {
   try {
     const data = localStorage.getItem(LS_KEYS.WATCH_TIME);
@@ -3189,7 +2901,6 @@ function loadWatchTime() {
     console.error("Error loading watch time:", e);
     logErrorToService({ type: 'storage_parse_error', key: LS_KEYS.WATCH_TIME, error: e });
 
-    // Try to recover
     try {
       localStorage.removeItem(LS_KEYS.WATCH_TIME);
     } catch { }
@@ -3198,7 +2909,6 @@ function loadWatchTime() {
     return {};
   }
 }
-
 
 function sortChannelsByWatchTime(channels) {
   const watchData = loadWatchTime();
@@ -3210,7 +2920,6 @@ function sortChannelsByWatchTime(channels) {
 }
 
 // ============================================
-// Channel UI rendering and helpers
 // ============================================
 
 /**
@@ -3222,8 +2931,6 @@ function createChannelItem(channel) {
 
   item.className = 'content-card channel-item';
 
-
-  // Better ARIA attributes
   item.setAttribute('role', 'button');
   item.setAttribute('aria-label',
     `${channel.name}, Channel ${channel.number}${channel.isLive ? ', Live' : ''}`
@@ -3231,13 +2938,11 @@ function createChannelItem(channel) {
   item.setAttribute('aria-pressed', 'false');
   item.setAttribute('tabindex', '-1');
 
-  // Add live region for updates
   if (channel.isLive) {
     item.setAttribute('aria-live', 'polite');
     item.setAttribute('aria-atomic', 'true');
   }
 
-  // Keyboard support
   item.addEventListener('keydown', (e) => {
     if (e.key === ' ' || e.key === 'Enter') {
       e.preventDefault();
@@ -3245,7 +2950,6 @@ function createChannelItem(channel) {
     }
   });
 
-  // Store data attributes
   item.dataset.url = channel.url || '';
   item.dataset.name = channel.name || '';
   item.dataset.image = channel.image || '';
@@ -3254,7 +2958,6 @@ function createChannelItem(channel) {
   item.dataset.isLive = channel.isLive;
   item.dataset.category = channel.category || 'Unknown';
 
-  // Click handler
   const clickHandler = (e) => {
     e.stopPropagation();
     if (e.target.classList.contains('favorite-icon') ||
@@ -3270,49 +2973,39 @@ function createChannelItem(channel) {
 
   item.addEventListener('click', clickHandler);
 
-  // ✅ Store for cleanup
   item._cleanupHandlers = [
     () => item.removeEventListener('click', clickHandler)
   ];
 
-  // Thumbnail wrapper
   const thumb = document.createElement('div');
   thumb.className = 'thumb-wrapper';
 
-  // Lazy loaded image
   const img = document.createElement('img');
   const imageUrl = fixImageUrl(channel.image);
 
-  // Set data-src for lazy loading
   img.dataset.src = imageUrl;
 
-  // Use inline SVG placeholder (tiny, no network request)
   img.src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200"%3E%3Crect fill="%23333" width="200" height="200"/%3E%3Ctext x="50%25" y="50%25" fill="%23666" font-size="20" text-anchor="middle" dominant-baseline="middle"%3ELoading...%3C/text%3E%3C/svg%3E';
 
   img.alt = `${channel.name || 'Channel'} Logo`;
-  img.loading = 'lazy'; // Native lazy loading as fallback
+  img.loading = 'lazy';
   img.decoding = 'async';
 
-  // Error handler
   img.onerror = function () {
     this.src = 'placeholder.png';
     this.alt = 'Image not available';
   };
 
-  // Observe for lazy loading
   if (!window.lazyLoadObserver) {
     initializeLazyLoading();
   } else {
     window.lazyLoadObserver.observe(img);
   }
 
-
-  // Channel number badge
   const numBadge = document.createElement('span');
   numBadge.className = 'channel-number';
   numBadge.textContent = channel.number || '';
 
-  // Live indicator
   if (channel.isLive === true || channel.isLive === 'true') {
     const liveIndicator = document.createElement('img');
     liveIndicator.src = 'live.webp';
@@ -3324,7 +3017,6 @@ function createChannelItem(channel) {
   thumb.appendChild(img);
   thumb.appendChild(numBadge);
 
-  // Favorite icon
   const favoriteIcon = document.createElement('span');
   favoriteIcon.className = 'favorite-icon';
   favoriteIcon.innerHTML = '<i class="fas fa-star"></i>';
@@ -3348,7 +3040,6 @@ function createChannelItem(channel) {
     () => favoriteIcon.removeEventListener('click', favoriteHandler)
   );
 
-  // Update favorite state
   if (isFavorite(channel.url)) {
     favoriteIcon.classList.add('active');
   }
@@ -3372,12 +3063,9 @@ function observeNewImages() {
   });
 }
 
-
-// ✅ Enhanced cleanup
 function cleanupChannelItems() {
   const arr = appState.get('uiCollections.allChannelItems') || [];
   arr.forEach(item => {
-    // Run all cleanup handlers
     if (item._cleanupHandlers) {
       item._cleanupHandlers.forEach(cleanup => {
         try { cleanup(); } catch (e) { }
@@ -3399,7 +3087,6 @@ function cleanupChannelItem(item) {
     });
     delete item._cleanupHandlers;
   }
-  // Remove safely
   try { item.remove(); } catch (e) { }
 }
 
@@ -3411,7 +3098,6 @@ function createOrUpdateHeading(category, count) {
     heading.className = "text-xl font-bold mt-6 mb-4 col-span-full dynamic-heading";
     heading.textContent = `${category} (${count})`;
   } else {
-    // Update count if heading already exists
     heading.textContent = `${category} (${count})`;
   }
   return heading;
@@ -3424,14 +3110,12 @@ function createOrUpdateGrid(category) {
     grid.className = "content-grid";
     grid.dataset.category = category;
   } else {
-    // Clear only dynamic children, keep reused items
     grid.querySelectorAll(".channel-item").forEach(item => {
       if (!item._keep) cleanupChannelItem(item);
     });
   }
   return grid;
 }
-
 
 /**
  * Renders channels with intelligent DOM reuse for performance,
@@ -3446,15 +3130,11 @@ function renderChannels(channels) {
   const isSearching = appState.get('channels.searchQuery') !== '';
   const sortMethod = appState.get('ui.sortMethod') || 'none';
 
-  // ✅ FIX: Only reuse DOM elements when NOT searching.
-  // Recreating a small list of search results is fast and guarantees listeners work.
   const shouldReuseDOM = !isSearching && channels.length > 50;
 
-  // Map of existing items for reuse (only populated if we are reusing)
   const existingItems = new Map();
   if (shouldReuseDOM) {
     main.querySelectorAll('.channel-item').forEach(item => {
-      // Only store if it has a valid URL key
       if (item.dataset.url) {
         existingItems.set(item.dataset.url, item);
       }
@@ -3463,7 +3143,6 @@ function renderChannels(channels) {
 
   const fragment = document.createDocumentFragment();
 
-  // Categorize channels (Search results usually go into one category)
   const categorized = (sortMethod === 'none' && !isSearching)
     ? channels.reduce((acc, ch) => {
       const c = ch.category || 'Unknown';
@@ -3472,33 +3151,26 @@ function renderChannels(channels) {
     }, {})
     : { [isSearching ? 'Search Results' : 'All Channels']: channels };
 
-  // If we are forcing a rebuild (Search), clear the container immediately
   if (!shouldReuseDOM) {
     main.innerHTML = '';
   }
 
-
-
-  // Build the new Grid
   for (const [category, categoryChannels] of Object.entries(categorized)) {
     if (categoryChannels.length === 0) continue;
 
-    // Use helper functions to create structure
     const heading = createOrUpdateHeading(category, categoryChannels.length);
     const grid = createOrUpdateGrid(category);
 
     categoryChannels.forEach(channel => {
       let itemNode = null;
 
-      // 1. Try to reuse existing DOM node
       if (shouldReuseDOM && channel.url) {
         itemNode = existingItems.get(channel.url);
         if (itemNode) {
-          existingItems.delete(channel.url); // Mark as used so we don't delete it later
+          existingItems.delete(channel.url);
         }
       }
 
-      // 2. If no reusable node found (or searching), create NEW one
       if (!itemNode) {
         itemNode = createChannelItem(channel);
       }
@@ -3510,42 +3182,30 @@ function renderChannels(channels) {
     fragment.appendChild(grid);
   }
 
-  // Final DOM Updates
   if (shouldReuseDOM) {
-    // If reusing, we need to explicitly remove items that weren't in the new list
     existingItems.forEach(item => cleanupChannelItem(item));
 
-    // Remove old structural elements (grids/headings)
     main.querySelectorAll('.content-grid, .dynamic-heading').forEach(el => el.remove());
 
-    // Append the new structure
     main.appendChild(fragment);
   } else {
-    // If not reusing (Search mode), we already cleared innerHTML, so just append
     main.appendChild(fragment);
   }
 
-  // Post-render updates
   updateAllChannelItems();
 
   if (window.lazyLoadObserver) {
     observeNewImages();
   }
 
-  // Toggle visibility of other sections
   if (isSearching) {
     hideFavoritesAndRecent();
   } else {
     showFavoritesAndRecent();
   }
 
-  // console.log(`✅ Rendered ${channels.length} channels in ${sortMethod} view`);
 }
 
-
-
-// ✅ ENHANCED: Render favorites with new API
-// ✅ Use DocumentFragment consistently
 function renderFavorites() {
   const container = document.getElementById('favoritesGrid');
   if (!container) return;
@@ -3553,7 +3213,6 @@ function renderFavorites() {
   const favorites = getFavorites();
   const favSection = document.getElementById('favorites');
 
-  // ✅ Single DOM manipulation
   const frag = document.createDocumentFragment();
 
   if (!favorites || favorites.length === 0) {
@@ -3571,7 +3230,6 @@ function renderFavorites() {
   container.appendChild(frag);
 }
 
-// ✅ ENHANCED: Render recently watched with timestamps
 function renderRecentlyWatched() {
   const container = document.getElementById('recentlyWatchedGrid');
   if (!container) return;
@@ -3587,7 +3245,6 @@ function renderRecentlyWatched() {
   recent.forEach(ch => container.appendChild(createChannelItem(ch)));
 }
 
-// ✅ ENHANCED: Update favorite icons with new API
 function updateFavoriteIcons() {
   const favorites = getFavorites();
   const favSet = new Set(favorites.map(f => f.url));
@@ -3607,7 +3264,6 @@ function updateAllChannelItems() {
 }
 
 // ============================================
-// SEARCH FUNCTIONALITY
 // ============================================
 
 function searchChannels(query) {
@@ -3644,8 +3300,6 @@ function searchChannels(query) {
   }
 }
 
-
-
 function clearSearch() {
   appState.set('channels.searchQuery', '');
   appState.set('channels.filtered', []);
@@ -3672,7 +3326,6 @@ function showFavoritesAndRecent() {
   const recSection = document.getElementById('recentlyWatched');
   if (recSection && rec.length > 0) recSection.style.display = 'grid';
 }
-
 
 function setupSearchBar() {
   const inputs = [document.getElementById('channelSearch'), document.getElementById('channelSearchDesktop'), document.getElementById('channelSearchMobile')].filter(Boolean);
@@ -3712,9 +3365,7 @@ function setupSearchBar() {
   });
 }
 
-
 // ============================================
-// Sorting & keyboard navigation
 // ============================================
 
 function sortChannelsAndRender(sortMethod = 'none') {
@@ -3734,7 +3385,6 @@ function sortChannelsAndRender(sortMethod = 'none') {
       break;
     case 'none':
     default:
-      // Handle none case
       break;
   }
 
@@ -3745,7 +3395,6 @@ function sortChannelsAndRender(sortMethod = 'none') {
   renderRecentlyWatched();
   updateAllChannelItems();
 
-  // ✅ CRITICAL FIX: Always manage visibility after rendering
   if (isSearching) {
     hideFavoritesAndRecent();
   } else {
@@ -3758,7 +3407,6 @@ function handleSortChange(sortMethod) {
   sortChannelsAndRender(sortMethod);
   updateSortButtons(sortMethod);
 
-  // ✅ Ensure favorites and recent are visible if not searching
   if (!appState.get('channels.searchQuery')) {
     showFavoritesAndRecent();
   }
@@ -3770,13 +3418,11 @@ function updateSortButtons(method) {
   const buttons = Array.from(document.querySelectorAll('.sort-controls button'));
   if (!buttons.length) return;
 
-  // Clear previous state
   buttons.forEach(btn => {
     btn.classList.remove('active');
     btn.setAttribute('aria-pressed', 'false');
   });
 
-  // Prefer data-sort attribute; fallback to checking onclick string for legacy markup
   const active = buttons.find(btn => {
     const ds = btn.dataset && btn.dataset.sort;
     if (ds) return ds === method;
@@ -3790,9 +3436,7 @@ function updateSortButtons(method) {
   }
 }
 
-
 // ============================================
-// KEYBOARD NAVIGATION
 // ============================================
 
 function getGridColumns() {
@@ -3804,7 +3448,6 @@ function getGridColumns() {
 }
 
 // ================================
-// KEYBOARD NAVIGATION
 // ================================
 
 /**
@@ -3817,7 +3460,6 @@ function setupKeyboardNavigation() {
   document.addEventListener("keydown", numberKeyHandler);
   document.addEventListener("keydown", navigationKeyHandler);
 
-  // Register cleanup
   appState.addCleanup(() => {
     document.removeEventListener("keydown", numberKeyHandler);
     document.removeEventListener("keydown", navigationKeyHandler);
@@ -3828,7 +3470,6 @@ function setupKeyboardNavigation() {
  * Handle number key press for channel jumping
  */
 function handleNumberKeyPress(e) {
-  // Prevent when typing in search inputs
   const searchInputDesktop = document.getElementById('channelSearchDesktop');
   const searchInputMobile = document.getElementById('channelSearchMobile');
 
@@ -3837,11 +3478,9 @@ function handleNumberKeyPress(e) {
     return;
   }
 
-  // Prevent when typing in any input/textarea
   const focusedTag = (document.activeElement?.tagName || '').toLowerCase();
   if (focusedTag === 'input' || focusedTag === 'textarea') return;
 
-  // Only accept numeric keys
   if (e.key >= "0" && e.key <= "9") {
     const currentBuffer = appState.get('ui.numberBuffer') || '';
     appState.set('ui.numberBuffer', currentBuffer + e.key);
@@ -3852,10 +3491,8 @@ function handleNumberKeyPress(e) {
       overlay.style.display = "block";
     }
 
-    // Clear existing timeout
     appState.clearTimeoutRef('numberTimeout');
 
-    // Set new timeout
     const timeoutId = setTimeout(() => {
       if (overlay) overlay.style.display = "none";
 
@@ -3901,7 +3538,6 @@ function handleNumberKeyPress(e) {
  * Handle arrow keys and navigation keys
  */
 function handleNavigationKeys(event) {
-  // ✅ Clear previous timeout first
   const prevTimeout = appState.get('intervals.navigationDebounce');
   if (prevTimeout) clearTimeout(prevTimeout);
 
@@ -3915,7 +3551,6 @@ function handleNavigationKeys(event) {
     let currentFocusedIndex = allChannelItems.findIndex((item) => item === focusedElement);
 
     // ===========================
-    // MODAL OPEN NAVIGATION
     // ===========================
     if (isModalOpen) {
 
@@ -3926,20 +3561,18 @@ function handleNavigationKeys(event) {
         return;
       }
 
-
       if (
         event.key === "Escape" ||
         event.key === "ArrowLeft" ||
-        event.key === "Backspace" || // sometimes used as back
-        event.key === "BrowserBack" || // some remotes or browsers
-        event.key === "GoBack" // Android TV or custom remotes
+        event.key === "Backspace" ||
+        event.key === "BrowserBack" ||
+        event.key === "GoBack"
       ) {
         event.preventDefault();
         event.stopPropagation();
         closeModal();
         return;
       }
-
 
       if (event.key === "ArrowRight") {
         event.preventDefault();
@@ -3979,14 +3612,12 @@ function handleNavigationKeys(event) {
     }
 
     // ===========================
-    // NORMAL NAVIGATION (GRID)
     // ===========================
     if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)) {
       event.preventDefault();
 
       if (allChannelItems.length === 0) return;
 
-      // If nothing focused, focus first item
       if (currentFocusedIndex === -1) {
         allChannelItems[0].focus();
         allChannelItems[0].scrollIntoView({ behavior: "smooth", block: "center" });
@@ -4015,7 +3646,6 @@ function handleNavigationKeys(event) {
     }
 
     // ===========================
-    // PAGE/HOME/END NAVIGATION
     // ===========================
     else if (["PageUp", "PageDown", "Home", "End"].includes(event.key)) {
       event.preventDefault();
@@ -4050,7 +3680,6 @@ function handleNavigationKeys(event) {
     }
 
     // ===========================
-    // ENTER KEY - SELECT CHANNEL
     // ===========================
     else if (event.key === "Enter" && currentFocusedIndex !== -1) {
       event.preventDefault();
@@ -4065,32 +3694,27 @@ function handleNavigationKeys(event) {
       saveRecentlyWatched({ name, url, image, description, number, isLive, category });
     }
 
-    // ✅ Clear the timeout reference after execution
     appState.setTimeoutRef('navigationDebounce', null);
   }, 50);
-
 
   appState.setTimeoutRef('navigationDebounce', timeoutId);
 }
 
 // ============================================
-// YOUTUBE API & RSS FEEDS
 // ============================================
 
-// Constants for better maintainability
 const RETRY_CONFIG = {
   RSS: {
     maxRetries: 3,
-    baseDelay: 2 * 60 * 1000 // 2 minutes
+    baseDelay: 2 * 60 * 1000
   },
   LIVE: {
     maxRetries: 3,
-    baseDelay: 90_000 // 1.5 minutes
+    baseDelay: 90_000
   }
 };
 
 // ============================================
-// RETRY MANAGER
 // ============================================
 
 class RetryManager {
@@ -4176,6 +3800,65 @@ class RetryManager {
     };
   }
 
+getEnhancedStats() {
+  const data = this._load();
+  const now = Date.now();
+  const entries = Object.entries(data);
+  
+  return {
+    total: entries.length,
+    ready: entries.filter(([_, entry]) => 
+      entry.retries < this.maxRetries && now >= entry.nextRetry
+    ).length,
+    manual: entries.filter(([_, entry]) => 
+      entry.manuallyAdded
+    ).length,
+    blocked: entries.filter(([_, entry]) => 
+      entry.retries >= this.maxRetries
+    ).length,
+    pending: entries.filter(([_, entry]) => 
+      entry.retries < this.maxRetries && now < entry.nextRetry
+    ).length
+  };
+}
+
+getAllEntries() {
+  const data = this._load();
+  return Object.entries(data).map(([id, entry]) => ({
+    id,
+    ...entry
+  }));
+}
+
+existsInQueue(id) {
+  const data = this._load();
+  return data.hasOwnProperty(id);
+}
+
+addManually(id, name, options = {}) {
+  const data = this._load();
+  
+  if (data[id]) {
+    return false;
+  }
+  
+  data[id] = {
+    retries: 0,
+    nextRetry: Date.now(),
+    lastAttempt: Date.now(),
+    manuallyAdded: true,
+    name: name,
+    ...options
+  };
+  
+  this._save(data);
+  return true;
+}
+
+getExistingItems() {
+  console.warn("getExistingItems() not implemented - needs data source");
+  return [];
+}
   cleanup(maxAge = 24 * 60 * 60 * 1000) {
     const data = this._load();
     const now = Date.now();
@@ -4202,7 +3885,6 @@ class RetryManager {
 }
 
 // ============================================
-// HELPER FUNCTIONS
 // ============================================
 
 function extractChannelId(feedUrl) {
@@ -4266,12 +3948,10 @@ function processRSSData(data, feed) {
 }
 
 // ============================================
-// FEED LOADERS
 // ============================================
 
 /* const rssRetryManager = new RetryManager("rss_retry_queue", RETRY_CONFIG.RSS);
 const liveRetryManager = new RetryManager("live_retry_queue", RETRY_CONFIG.LIVE); */
-
 
 class FeedProcessor {
   constructor(type, cache, retryManager) {
@@ -4349,7 +4029,6 @@ class FeedProcessor {
 }
 
 // ============================================
-// RSS FEED LOADER
 // ============================================
 
 class RSSProcessor extends FeedProcessor {
@@ -4407,13 +4086,12 @@ class RSSProcessor extends FeedProcessor {
 
   _handleError(feed, error, results) {
     results.failed++;
-this.retryManager.recordFailure(feed.url, error?.message || "RSS fetch error", feed.name);
+    this.retryManager.recordFailure(feed.url, error?.message || "RSS fetch error", feed.name);
     console.log(`❌ Error loading RSS feed for ${feed.name}:`, error?.message || error);
   }
 }
 
 // ============================================
-// LIVE FEED LOADER
 // ============================================
 
 class LiveProcessor extends FeedProcessor {
@@ -4540,7 +4218,7 @@ class LiveProcessor extends FeedProcessor {
     }
 
     if (channelId) {
-this.retryManager.recordFailure(channelId, error?.message || "Live fetch error", feed.name);
+      this.retryManager.recordFailure(channelId, error?.message || "Live fetch error", feed.name);
     }
 
     console.log(`❌ Error loading live feed for ${feed.name}:`, error?.message || error);
@@ -4548,7 +4226,6 @@ this.retryManager.recordFailure(channelId, error?.message || "Live fetch error",
 }
 
 // ============================================
-// PUBLIC API FUNCTIONS
 // ============================================
 
 async function loadYouTubeLatestFeeds({ force = false } = {}) {
@@ -4628,7 +4305,6 @@ async function loadAllChannelFeeds() {
 }
 
 // ============================================
-// PRIVATE HELPER
 // ============================================
 
 function _updateUI(channels) {
@@ -4641,7 +4317,6 @@ function _updateUI(channels) {
 }
 
 // ============================================
-// RETRY CHECKER SERVICE
 // ============================================
 /**
  * Checks for pending retries and processes them when ready
@@ -4650,8 +4325,7 @@ function _updateUI(channels) {
 async function checkAndProcessRetries() {
   try {
     let hadRetries = false;
-    
-    // Check RSS retries
+
     if (rssRetryManager.hasReadyRetries()) {
       console.log('🔁 RSS retry check: Processing ready retries...');
       const processor = new RSSProcessor();
@@ -4662,7 +4336,6 @@ async function checkAndProcessRetries() {
       }
     }
 
-    // Check LIVE retries
     if (liveRetryManager.hasReadyRetries()) {
       console.log('🔁 LIVE retry check: Processing ready retries...');
       const processor = new LiveProcessor();
@@ -4673,14 +4346,12 @@ async function checkAndProcessRetries() {
       }
     }
 
-    // If we had successful retries, save channels and update UI
     if (hadRetries) {
       const channels = appState.get('channels.all') || [];
       const success = safeLocalStorageSet(LS_KEYS.CHANNELS, JSON.stringify(channels));
-      
+
       if (success) {
         console.log('✅ Updated channels saved after retry');
-        // Update UI
         _updateUI(channels);
         showNotification('🔁 Retried feeds updated successfully', 'success');
       } else {
@@ -4697,19 +4368,16 @@ async function checkAndProcessRetries() {
  * Checks every minute for pending retries that are ready
  */
 function startRetryChecker() {
-  // Clear any existing retry checker
   const existing = appState.get('intervals.retryChecker');
   if (existing) clearInterval(existing);
 
-  // Check every 1 minute (60000ms) for pending retries
   const RETRY_CHECK_INTERVAL = 60_000;
-  
+
   const id = setInterval(checkAndProcessRetries, RETRY_CHECK_INTERVAL);
   appState.set('intervals.retryChecker', id);
 
   console.log('🔁 Retry checker service started. Checking every 1 minute.');
-  
-  // Run initial check after a short delay
+
   setTimeout(checkAndProcessRetries, 5000);
 }
 
@@ -4722,13 +4390,11 @@ function stopRetryChecker() {
 }
 
 // ============================================
-// AUTO-UPDATE SERVICE
 // ============================================
 function startChannelAutoUpdate() {
   const savedAutoUpdate = localStorage.getItem(AUTO_UPDATE_KEY);
   const savedInterval = localStorage.getItem(UPDATE_INTERVAL_KEY);
 
-  // Save settings into appState
   appState.set(
     'settings.isAutoUpdateEnabled',
     savedAutoUpdate === null ? true : savedAutoUpdate === "true"
@@ -4739,7 +4405,6 @@ function startChannelAutoUpdate() {
     savedInterval ? parseInt(savedInterval) : 8
   );
 
-  // ✅ Read values back from appState instead of using undeclared variables
   const isAutoUpdateEnabled = appState.get('settings.isAutoUpdateEnabled');
   const updateIntervalHours = appState.get('settings.updateIntervalHours');
 
@@ -4786,11 +4451,11 @@ function startChannelAutoUpdate() {
       const minutesRemaining = Math.ceil(timeRemaining / (60 * 1000));
       const hoursRemaining = Math.floor(minutesRemaining / 60);
       const minsRemaining = minutesRemaining % 60;
-/*       if (hoursRemaining > 0) {
-        console.log(`Cache is valid. Expires in ${hoursRemaining}h ${minsRemaining}m`);
-      } else {
-        console.log(`Cache is valid. Expires in ${minutesRemaining} minutes.`);
-      } */
+      /*       if (hoursRemaining > 0) {
+              console.log(`Cache is valid. Expires in ${hoursRemaining}h ${minsRemaining}m`);
+            } else {
+              console.log(`Cache is valid. Expires in ${minutesRemaining} minutes.`);
+            } */
     }
   };
 
@@ -4818,7 +4483,6 @@ function startChannelAutoUpdate() {
     }
   }
 
-  // Clear any existing interval before starting a new one
   const existing = appState.get('intervals.autoUpdate');
   if (existing) clearInterval(existing);
 
@@ -4829,26 +4493,22 @@ function startChannelAutoUpdate() {
     checkAndUpdate();
   }
 
-/*   console.log(
-    `Auto-update service started (RSS feeds only). Checking every ${updateIntervalHours} hours. Status: ${isAutoUpdateEnabled ? "Enabled" : "Disabled"}`
-  );
-  console.log(
-    `ℹ️ Live feeds are NOT auto-updated but will be retried automatically on errors via retry checker.`
-  ); */
-  
-  // ✅ Start the retry checker service (handles LIVE feed retries for error 1150 etc.)
+  /*   console.log(
+      `Auto-update service started (RSS feeds only). Checking every ${updateIntervalHours} hours. Status: ${isAutoUpdateEnabled ? "Enabled" : "Disabled"}`
+    );
+    console.log(
+      `ℹ️ Live feeds are NOT auto-updated but will be retried automatically on errors via retry checker.`
+    ); */
+
   startRetryChecker();
 }
 
-
 function stopAutoUpdateService() {
-  // ✅ Clear interval using appState instead of global variable
   appState.clearIntervalRef('autoUpdate');
   stopRetryChecker();
   console.log("Auto-update service stopped");
 }
 // ============================================
-// SETTINGS MODAL
 // ============================================
 function showSettingsModal() {
   const settingsModal = document.getElementById("settingsModal");
@@ -4859,14 +4519,12 @@ function showSettingsModal() {
   const autoUpdateToggle = document.getElementById("autoUpdateToggle");
   const updateIntervalSelect = document.getElementById("updateInterval");
 
-  // ✅ NEW: Sync Sort Dropdown state
   const sortSelect = document.getElementById("sortSelect");
   if (sortSelect) {
     const currentSort = appState.get('ui.sortMethod') || localStorage.getItem("defaultSortMethod") || 'none';
     sortSelect.value = currentSort;
   }
 
-  // 🔄 Restore values from localStorage
   const savedAutoUpdate = localStorage.getItem(AUTO_UPDATE_KEY);
   const savedInterval = localStorage.getItem(UPDATE_INTERVAL_KEY);
 
@@ -4877,17 +4535,14 @@ function showSettingsModal() {
       ? parseInt(savedInterval)
       : 8;
 
-  // 🔄 Sync into appState
   appState.set("settings.isAutoUpdateEnabled", isAutoUpdateEnabled);
   appState.set("settings.updateIntervalHours", updateIntervalHours);
 
-  // 🔄 Update UI
   if (autoUpdateToggle) autoUpdateToggle.checked = isAutoUpdateEnabled;
   if (updateIntervalSelect) updateIntervalSelect.value = updateIntervalHours.toString();
 
   updateIntervalDescriptionText(updateIntervalHours);
 
-  // Update all dynamic displays
   updateUserAgentDisplay();
   updateStorageDisplay();
   updateTotalChannelsDisplay();
@@ -4905,7 +4560,7 @@ function updateNetworkInfoDisplay() {
   const latency = appState.get('settings.networkLatency') || 0;
   const connectionType = appState.get('settings.connectionType') || 'unknown';
 
-  let statusColor = '#4CAF50'; // Green
+  let statusColor = '#4CAF50';
   let statusText = 'Online';
 
   if (!isOnline) {
@@ -4916,7 +4571,6 @@ function updateNetworkInfoDisplay() {
     statusText = 'Poor';
   }
 
-  // prepare CSS classes based on runtime values
   const statusClass = !networkMonitor?.isOnline ? 'network-offline' : `network-quality-${quality}`;
   const connBadgeClass = `connection-badge connection-${(connectionType || 'unknown').toString().replace(/\s+/g, '-').toLowerCase()}`;
 
@@ -4961,11 +4615,9 @@ function updateNetworkInfoDisplay() {
  * Create network status indicator in UI
  */
 function setupNetworkStatusIndicator() {
-  // Remove existing indicator if any
   const existing = document.getElementById('network-status-indicator');
   if (existing) existing.remove();
 
-  // 1. Create the main container
   const indicator = document.createElement('div');
   indicator.id = 'network-status-indicator';
   indicator.className = 'network-status-indicator';
@@ -4983,12 +4635,10 @@ function setupNetworkStatusIndicator() {
     font-size: 18px;
   `;
 
-  // 2. Create Emoji Marker (default neutral)
   const emojiMarker = document.createElement('span');
-  emojiMarker.textContent = '⚪'; // neutral default
+  emojiMarker.textContent = '⚪';
   indicator.appendChild(emojiMarker);
 
-  // 3. Click handler for details
   indicator.addEventListener('click', () => {
     const isOnline = appState.get('settings.isOnline');
     const quality = appState.get('settings.networkQuality') || 'unknown';
@@ -5011,7 +4661,6 @@ function setupNetworkStatusIndicator() {
 
   document.body.appendChild(indicator);
 
-  // 4. Update logic: Change emoji only
   const updateIndicator = (isOnline, quality) => {
     if (!indicator.isConnected) return;
 
@@ -5019,32 +4668,31 @@ function setupNetworkStatusIndicator() {
     indicator.setAttribute('data-quality', quality);
 
     if (!isOnline) {
-      emojiMarker.textContent = '🔴'; // Red for offline
+      emojiMarker.textContent = '🔴';
       indicator.title = 'Offline';
       return;
     }
 
     switch (quality) {
       case 'excellent':
-        emojiMarker.textContent = '🟢'; // Green
+        emojiMarker.textContent = '🟢';
         break;
       case 'good':
-        emojiMarker.textContent = '🔵'; // Blue
+        emojiMarker.textContent = '🔵';
         break;
       case 'fair':
-        emojiMarker.textContent = '🟡'; // Yellow
+        emojiMarker.textContent = '🟡';
         break;
       case 'poor':
-        emojiMarker.textContent = '🟠'; // Orange
+        emojiMarker.textContent = '🟠';
         break;
       default:
-        emojiMarker.textContent = '⚪'; // Neutral
+        emojiMarker.textContent = '⚪';
     }
 
     indicator.title = `Quality: ${quality}`;
   };
 
-  // 5. Listeners
   networkMonitor.addStatusListener((isOnline) => {
     const quality = appState.get('settings.networkQuality') || 'unknown';
     updateIndicator(isOnline, quality);
@@ -5055,10 +4703,8 @@ function setupNetworkStatusIndicator() {
     updateIndicator(isOnline, quality);
   });
 
-  // Initial update
   updateIndicator(appState.get('settings.isOnline'), appState.get('settings.networkQuality') || 'unknown');
 
-  // 6. Modal hide logic
   const syncVisibility = (isOpen) => {
     if (!isOpen) {
       indicator.style.opacity = '0';
@@ -5076,8 +4722,6 @@ function setupNetworkStatusIndicator() {
 
   return indicator;
 }
-
-
 
 function hideSettingsModal() {
   const settingsModal = document.getElementById("settingsModal");
@@ -5101,13 +4745,10 @@ function toggleAutoUpdate(enabled) {
   }
 }
 
-
-
 function changeUpdateInterval(hours) {
   const parsed = parseInt(hours);
   localStorage.setItem(UPDATE_INTERVAL_KEY, parsed.toString());
   appState.set("settings.updateIntervalHours", parsed);
-
 
   console.log(`⏱️ Update interval changed to ${parsed} hours`);
   updateIntervalDescriptionText(parsed);
@@ -5182,11 +4823,9 @@ function setupSettingsModal() {
   const manageApiKeyBtn = document.getElementById("manageApiKeyBtn");
   const sortSelect = document.getElementById("sortSelect");
 
-  // --- SHOW/HIDE MODAL ---
   if (settingsBtn) {
     settingsBtn.addEventListener("click", () => {
       showSettingsModal();
-      // Update dynamic displays when modal opens
       updateUserAgentDisplay();
       updateStorageDisplay();
       updateTotalChannelsDisplay();
@@ -5208,33 +4847,28 @@ function setupSettingsModal() {
     });
   }
 
-  // --- SORT ---
   if (sortSelect) {
     sortSelect.addEventListener("change", (e) => {
       handleSortChange(e.target.value);
     });
   }
 
-  // --- AUTO UPDATE ---
   if (autoUpdateToggle) {
     autoUpdateToggle.addEventListener("change", (e) => {
       toggleAutoUpdate(e.target.checked);
     });
   }
 
-  // --- UPDATE INTERVAL ---
   if (updateIntervalSelect) {
     updateIntervalSelect.addEventListener("change", (e) => {
       changeUpdateInterval(e.target.value);
     });
   }
 
-  // --- MANUAL UPDATE ---
   if (manualUpdateBtn) {
     manualUpdateBtn.addEventListener("click", manualUpdate);
   }
 
-  // --- API KEY ---
   if (manageApiKeyBtn) {
     manageApiKeyBtn.addEventListener("click", () => {
       hideSettingsModal();
@@ -5242,21 +4876,16 @@ function setupSettingsModal() {
     });
   }
 
-  // --- USER AGENT CONTROLS ---
   setupUserAgentControls();
 
-  // --- STORAGE MANAGEMENT BUTTONS ---
   setupStorageControls();
 
-
-  // --- ESC KEY CLOSES MODAL ---
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape" && settingsModal.style.display === "flex") {
       hideSettingsModal();
     }
   });
 
-  // Initial updates
   updateUserAgentDisplay();
   updateStorageDisplay();
 }
@@ -5273,7 +4902,6 @@ function updateUserAgentDisplay() {
     display.style.color = isCustom ? '#4caf50' : '#888';
     display.title = `User Agent (${isCustom ? 'Custom' : 'Original'})`;
 
-    // Add a subtle indicator for custom UAs
     if (isCustom) {
       display.classList.add('custom-ua');
       display.classList.remove('original-ua');
@@ -5295,13 +4923,10 @@ function setupUserAgentControls() {
   const resetBtn = document.getElementById('resetUserAgent');
   const applyPresetBtn = document.getElementById('applyPresetUserAgent');
 
-  // Ensure UserAgentManager is available
   if (!window.UserAgentManager) {
     console.error('❌ UserAgentManager not available');
     return;
   }
-
-
 
   if (presetSelect && customInput) {
     presetSelect.addEventListener('change', (e) => {
@@ -5343,7 +4968,6 @@ function setupUserAgentControls() {
   }
 }
 // ============================================
-// API KEY MODAL
 // ============================================
 function showAPIKeyModal() {
   const apiModal = document.getElementById("apiKeyModal");
@@ -5374,7 +4998,6 @@ function hideAPIKeyModal() {
   }
 }
 
-
 function setupAPIKeyModalEvents() {
   const submitBtn = document.getElementById("submitApiKey");
   const skipBtn = document.getElementById("skipApiKey");
@@ -5383,7 +5006,6 @@ function setupAPIKeyModalEvents() {
   const toggleVisibilityBtn = document.getElementById("toggleApiKeyVisibility");
   const apiModal = document.getElementById("apiKeyModal");
 
-  // Handler functions defined to allow clean removal
   const handleSubmit = () => {
     const apiKey = apiKeyInput.value.trim();
     const remember = document.getElementById("rememberKey")?.checked;
@@ -5410,14 +5032,7 @@ function setupAPIKeyModalEvents() {
     console.log("ℹ️ User skipped API key configuration");
   };
 
-  // 1. Remove old listeners (if any exist from previous opens)
-  // Note: This requires storing these functions externally or simply assuming
-  // the modal DOM isn't destroyed/recreated constantly. 
-  // A better way for simple apps: use on-click attributes OR ensure this setup runs ONLY ONCE.
-
-  // SIMPLEST FIX: Ensure setupAPIKeyModalEvents is called only ONCE in initialize(), 
-  // not every time the modal opens.
-  if (submitBtn.dataset.bound) return; // Prevent double binding
+  if (submitBtn.dataset.bound) return;
 
   if (submitBtn) {
     submitBtn.addEventListener("click", handleSubmit);
@@ -5436,7 +5051,6 @@ function setupAPIKeyModalEvents() {
     });
   }
 
-  // Input Enter key
   if (apiKeyInput) {
     apiKeyInput.addEventListener("keypress", (e) => {
       if (e.key === "Enter") handleSubmit();
@@ -5445,29 +5059,24 @@ function setupAPIKeyModalEvents() {
 }
 
 // ============================================
-// CLEANUP & INITIALIZATION
 // ============================================
 function cleanup() {
   console.log("🧹 Performing cleanup...");
 
-  // Stop network monitoring
   try {
     networkMonitor.cleanup();
   } catch (error) {
     console.warn('Error during network monitor cleanup:', error);
   }
 
-  // Stop watchers and auto-update
   stopWatching();
   stopAutoUpdateService();
 
-  // ✅ Clear timeouts/intervals via appState helpers
   appState.clearTimeoutRef("overlayShow");
   appState.clearTimeoutRef("overlayHide");
   appState.clearTimeoutRef("numberTimeout");
-  appState.clearTimeoutRef("promptTimeout"); // if you use navigationDebounce, store it here
+  appState.clearTimeoutRef("promptTimeout");
 
-  // ✅ Player cleanup
   channelLoader.cleanupPlayer()
     .then(() => {
       console.log("✅ Player cleanup complete");
@@ -5476,7 +5085,6 @@ function cleanup() {
       console.warn("Error during player cleanup:", error);
     });
 
-  // ✅ Remove transient UI elements
   document.querySelectorAll(
     ".network-status, .error-notification, .play-fallback-overlay, .notification"
   ).forEach(el => {
@@ -5485,14 +5093,11 @@ function cleanup() {
     }
   });
 
-  // ✅ Restore focus
   restoreFocus();
 
   console.log("✅ Cleanup complete");
 }
 
-
-// Restore focus to the last focused element, or fallback to the first channel item
 function restoreFocus() {
   const lastFocusedElement = appState.get('ui.lastFocusedElement');
   const allChannelItems = appState.get('uiCollections.allChannelItems') || [];
@@ -5509,21 +5114,17 @@ async function initialize() {
   try {
     PerformanceMonitor.measureChannelLoad();
 
-    // UI setup
     const contentGrid = document.querySelector(".content-grid");
     const loadingElement = document.getElementById("loading-spinner");
     if (contentGrid) contentGrid.style.display = "none";
     if (loadingElement) loadingElement.style.display = "block";
 
-    // ✅ NEW: Initialize Network Monitor
     try {
       networkMonitor.initialize();
     } catch (error) {
       console.error('Failed to initialize network monitor:', error);
     }
 
-
-    // Modal setup
     const closeBtn = document.querySelector(".closeModal");
     if (closeBtn) closeBtn.addEventListener("click", closeModal);
 
@@ -5534,7 +5135,10 @@ async function initialize() {
       });
     }
 
-    // ✅ Feature setup with error boundaries
+    //addQuickRetryButtons();
+
+    //addRetryContextMenu();
+
     const features = [
       { name: 'Lazy Loading', fn: initializeLazyLoading },
       { name: 'Cache Maintenance', fn: startCacheMaintenance },
@@ -5554,10 +5158,8 @@ async function initialize() {
       }
     }
 
-    // Storage health checks
     setInterval(checkStorageHealth, 60_000);
 
-    // Load channels
     const stored = localStorage.getItem(LS_KEYS.CHANNELS);
     if (stored) {
       try {
@@ -5577,7 +5179,6 @@ async function initialize() {
 
     PerformanceMonitor.channelLoadComplete();
 
-    // API key
     const storedKey = getStoredAPIKey() || "";
     appState.set('settings.apiKey', storedKey);
 
@@ -5587,10 +5188,8 @@ async function initialize() {
       console.log("ℹ️ No valid API key stored");
     }
 
-    // Auto update
     startChannelAutoUpdate();
 
-    // Ensure numbering
     const channels = appState.get("channels.all") || [];
     const numbered = channels.map((ch, i) => ({
       ...ch,
@@ -5598,7 +5197,6 @@ async function initialize() {
     }));
     appState.set("channels.all", numbered);
 
-    // UI restoration
     loadWatchTime();
     const savedSort = localStorage.getItem("defaultSortMethod") || "none";
     handleSortChange(savedSort);
@@ -5618,12 +5216,10 @@ async function initialize() {
     if (window.__GLOBAL_ERROR_BOUNDARIES_INSTALLED__) return;
     window.__GLOBAL_ERROR_BOUNDARIES_INSTALLED__ = true;
 
-
   } catch (error) {
     console.error("❌ Critical initialization error:", error);
     showNotification('Failed to initialize app', 'error');
 
-    // Graceful degradation
     const main = document.getElementById('channels');
     if (main) {
       main.innerHTML = `
@@ -5643,9 +5239,7 @@ async function initialize() {
 }
 
 // ============================================
-// EVENT LISTENERS
 // ============================================
-// Initialize once DOM is ready
 window.addEventListener("DOMContentLoaded", async () => {
   try {
     await initialize();
@@ -5654,7 +5248,6 @@ window.addEventListener("DOMContentLoaded", async () => {
   }
 });
 
-// Clean up before leaving the page
 window.addEventListener("beforeunload", () => {
   try {
     cleanup();
@@ -5663,7 +5256,6 @@ window.addEventListener("beforeunload", () => {
   }
 });
 
-// Pause/resume video when tab visibility changes
 document.addEventListener("visibilitychange", () => {
   const player = channelLoader.getPlayer();
 
@@ -5692,7 +5284,6 @@ document.addEventListener("visibilitychange", () => {
   }
 });
 
-
 function fixImageUrl(imageUrl) {
   if (!imageUrl) return 'placeholder.png';
   if (imageUrl.startsWith('https://')) return imageUrl;
@@ -5700,14 +5291,13 @@ function fixImageUrl(imageUrl) {
   if (imageUrl.startsWith('http://')) {
     const cleanUrl = imageUrl.replace('http://', '');
 
-    // Try multiple proxies with fallback
     const proxies = [
       `https://images.weserv.nl/?url=${encodeURIComponent(cleanUrl)}`,
       `https://wsrv.nl/?url=${encodeURIComponent(cleanUrl)}`, // Backup
       `https://imageproxy.pimg.tw/resize?url=${encodeURIComponent(imageUrl)}` // Another backup
     ];
 
-    return proxies[0]; // You could rotate on failure
+    return proxies[0];
   }
 
   return imageUrl;
@@ -5717,7 +5307,6 @@ function optimizeImageUrl(imageUrl, width = 200) {
   if (imageUrl.startsWith('https://images.weserv.nl/')) {
     return imageUrl;
   }
-  // Use weserv.nl for automatic image optimization
   const cleanUrl = imageUrl.replace('http://', '').replace('https://', '');
   return `https://images.weserv.nl/?url=${encodeURIComponent(cleanUrl)}&w=${width}&fit=cover&a=attention`;
 }
@@ -5734,7 +5323,7 @@ function handleTouchStart(e) {
   const touch = e.changedTouches[0];
   appState.set('ui.touchStartX', touch.screenX);
   appState.set('ui.touchStartY', touch.screenY);
-  appState.set('ui.touchEndX', touch.screenX); // initialize
+  appState.set('ui.touchEndX', touch.screenX);
   appState.set('ui.touchEndY', touch.screenY);
 }
 
@@ -5757,13 +5346,11 @@ function handleTouchEnd(e) {
 
   const currentTime = Date.now();
   const lastTapTime = appState.get('ui.lastTapTime') || 0;
-  const DOUBLE_TAP_DELAY = 300; // ms, adjust as needed
+  const DOUBLE_TAP_DELAY = 300;
 
-  // If minimal movement, treat as tap
   if (totalDelta < 10) {
     if (currentTime - lastTapTime < DOUBLE_TAP_DELAY) {
       if (!isCurrentlyFullscreen) {
-        // toggle prompt: remove if visible, otherwise show
         if (window.fullscreenPrompt) removeFullscreenPrompt();
         else showFullscreenPrompt();
       } else {
@@ -5777,9 +5364,6 @@ function handleTouchEnd(e) {
     return;
   }
 
-
-
-  // Process swipe only if significant movement
   handleSwipe(deltaX, deltaY);
 }
 
@@ -5790,7 +5374,6 @@ function handleSwipe(deltaX, deltaY) {
   const minSwipeDistance = 50;
 
   if (Math.abs(deltaX) > Math.abs(deltaY)) {
-    // Horizontal swipe
     if (Math.abs(deltaX) > minSwipeDistance) {
       if (deltaX > 0) {
         console.log('👉 Swipe right detected');
@@ -5801,22 +5384,15 @@ function handleSwipe(deltaX, deltaY) {
       }
     }
   } else {
-    // Vertical swipe
     if (Math.abs(deltaY) > minSwipeDistance) {
       if (deltaY < 0) {
-        // console.log('👆 Swipe up detected');
-        // navigateToNextChannel();
       } else {
-        // console.log('👇 Swipe down detected');
-        // navigateToPreviousChannel();
       }
     }
   }
 }
 
-
 // ============================================
-// Previous/Next navigation helpers
 // ============================================
 
 function navigateChannel(direction = 1) {
@@ -5827,7 +5403,6 @@ function navigateChannel(direction = 1) {
   let currentIndex = items.indexOf(lastFocused);
   if (currentIndex === -1) currentIndex = 0;
 
-  // direction: +1 for next, -1 for previous
   const newIndex = (currentIndex + direction + items.length) % items.length;
   const target = items[newIndex];
 
@@ -5841,7 +5416,6 @@ function navigateChannel(direction = 1) {
   showNotification(`${icon} ${name}`, "info");
 }
 
-// Convenience wrappers
 function navigateToPreviousChannel() {
   navigateChannel(-1);
 }
@@ -5854,14 +5428,10 @@ function navigateToNextChannel() {
  * Clears old/non-critical data from localStorage
  */
 function clearOldStorageData() {
-  // Priority: Keep channels and feeds, clear watch time first
   const keysToTryClearing = [
-    LS_KEYS.WATCH_TIME,  // Least critical
-    CACHE_KEY,   // Can be regenerated
-    LS_KEYS.RECENT,     // User can rebuild this
-    // Only as last resort:
-    //LS_KEYS.FAVORITES,
-    //LS_KEYS.CHANNELS
+    LS_KEYS.WATCH_TIME,
+    CACHE_KEY,
+    LS_KEYS.RECENT,
   ];
 
   for (const key of keysToTryClearing) {
@@ -5869,13 +5439,12 @@ function clearOldStorageData() {
       console.log(`🗑️ Clearing ${key} to free space`);
       localStorage.removeItem(key);
 
-      // Check if we have enough space now
       try {
-        const testData = 'x'.repeat(100000); // 100KB test
+        const testData = 'x'.repeat(100000);
         localStorage.setItem('_test', testData);
         localStorage.removeItem('_test');
         console.log('✅ Space freed successfully');
-        return; // We have space now
+        return;
       } catch (e) {
         console.log('⚠️ Still need more space, continuing cleanup...');
         continue;
@@ -5896,7 +5465,7 @@ function getStorageUsage() {
 
   for (let key in localStorage) {
     if (localStorage.hasOwnProperty(key)) {
-      const size = (localStorage[key].length + key.length) * 2; // UTF-16 = 2 bytes per char
+      const size = (localStorage[key].length + key.length) * 2;
       items[key] = size;
       totalSize += size;
     }
@@ -5943,9 +5512,7 @@ function logStorageUsage() {
   console.groupEnd();
 }
 
-
 // ============================================
-// COMPLETE IMPORT/EXPORT BACKUP SYSTEM
 // ============================================
 
 /**
@@ -5953,7 +5520,6 @@ function logStorageUsage() {
  */
 function exportAllData() {
   try {
-    // Gather all data from localStorage and memory safely
     const data = {
       version: VERSION,
       exportDate: new Date().toISOString(),
@@ -5971,7 +5537,6 @@ function exportAllData() {
       }
     };
 
-    // Create blob and download
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
 
@@ -5982,7 +5547,6 @@ function exportAllData() {
 
     a.click();
 
-    // Cleanup
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
 
@@ -6006,31 +5570,26 @@ async function importBackupData(file) {
     return false;
   }
 
-  // Validate file type
   if (!file.name.endsWith('.json')) {
     showNotification('❌ Please select a valid JSON backup file', 'error');
     return false;
   }
 
   try {
-    // Read file
     const text = await file.text();
     const data = JSON.parse(text);
 
-    // Validate backup structure
     if (!validateBackupData(data)) {
       showNotification('❌ Invalid backup file format', 'error');
       return false;
     }
 
-    // Show confirmation dialog
     const confirmed = await showImportConfirmation(data);
     if (!confirmed) {
       showNotification('ℹ️ Import cancelled', 'info');
       return false;
     }
 
-    // Perform import
     await performImport(data);
 
     return true;
@@ -6048,25 +5607,20 @@ async function importBackupData(file) {
  * @returns {boolean} - Whether data is valid
  */
 function validateBackupData(data) {
-  // Check required fields
   if (!data || typeof data !== 'object') {
     console.error('Invalid data structure');
     return false;
   }
 
-  // Check version compatibility (optional)
   if (data.version && !isVersionCompatible(data.version)) {
     console.warn('⚠️ Backup version mismatch:', data.version);
-    // Still allow import, but warn user
   }
 
-  // Validate channels array
   if (data.channels && !Array.isArray(data.channels)) {
     console.error('Invalid channels data');
     return false;
   }
 
-  // Validate favorites array
   if (data.favorites && !Array.isArray(data.favorites)) {
     console.error('Invalid favorites data');
     return false;
@@ -6082,7 +5636,6 @@ function validateBackupData(data) {
  * @returns {boolean} - Whether version is compatible
  */
 function isVersionCompatible(version) {
-  // Simple version check - expand as needed
   const currentVersion = VERSION;
   return version === currentVersion;
 }
@@ -6102,12 +5655,10 @@ function showImportConfirmation(data) {
     const favoriteCount = Array.isArray(data?.favorites) ? data.favorites.length : 0;
     const recentCount = Array.isArray(data?.recentlyWatched) ? data.recentlyWatched.length : 0;
 
-    // Create modal container
     const modal = document.createElement("div");
     modal.className = "settings-modal";
     modal.style.display = "flex";
 
-    // Build modal content
     modal.innerHTML = `
       <div class="settings-content" style="max-width: 500px;">
         <h2>📥 Import Backup</h2>
@@ -6153,12 +5704,10 @@ function showImportConfirmation(data) {
 
     document.body.appendChild(modal);
 
-    // Scoped selectors inside modal
     const confirmBtn = modal.querySelector(".confirm-btn");
     const cancelBtn = modal.querySelector(".cancel-btn");
     const mergeCheckbox = modal.querySelector(".merge-checkbox");
 
-    // Event listeners
     confirmBtn.addEventListener("click", () => {
       const mergeData = mergeCheckbox.checked;
       modal.remove();
@@ -6177,7 +5726,6 @@ function showImportConfirmation(data) {
       }
     });
   }).then((result) => {
-    // Store merge preference for performImport
     if (result.confirmed) {
       window._importMergeMode = result.merge;
     }
@@ -6185,24 +5733,21 @@ function showImportConfirmation(data) {
   });
 }
 
-
 /**
  * Perform the actual import of backup data
  * @param {Object} data - Backup data
  */
 async function performImport(data) {
   const mergeMode = window._importMergeMode || false;
-  delete window._importMergeMode; // Clean up
+  delete window._importMergeMode;
 
   try {
-    // Step 1: Auto-backup
     console.log("📦 Creating automatic backup of current data...");
     const backupSuccess = await createAutoBackup();
     if (!backupSuccess) {
       console.warn("⚠️ Auto-backup failed, but continuing with import...");
     }
 
-    // Step 2: Import channels
     if (Array.isArray(data.channels) && data.channels.length > 0) {
       let channels = appState.get("channels.all") || [];
 
@@ -6225,7 +5770,6 @@ async function performImport(data) {
       safeLocalStorageSet(LS_KEYS.CHANNELS, JSON.stringify(channels));
     }
 
-    // Step 3: Import favorites
     if (Array.isArray(data.favorites)) {
       let favorites = mergeMode
         ? safeJSONParse(localStorage.getItem(LS_KEYS.FAVORITES) || "[]", [])
@@ -6244,7 +5788,6 @@ async function performImport(data) {
       safeLocalStorageSet(LS_KEYS.FAVORITES, JSON.stringify(favorites));
     }
 
-    // Step 4: Import recently watched
     if (Array.isArray(data.recentlyWatched)) {
       let recent = mergeMode
         ? safeJSONParse(localStorage.getItem(LS_KEYS.RECENT) || "[]", [])
@@ -6263,7 +5806,6 @@ async function performImport(data) {
       safeLocalStorageSet(LS_KEYS.RECENT, JSON.stringify(recent));
     }
 
-    // Step 5: Import watch time
     if (data.watchTime && typeof data.watchTime === "object") {
       if (mergeMode) {
         const currentWatchTime = loadWatchTime();
@@ -6277,17 +5819,14 @@ async function performImport(data) {
       }
     }
 
-    // Step 6: Import RSS feeds
     if (Array.isArray(data.rssFeeds) && !mergeMode) {
       safeLocalStorageSet(LS_KEYS.FEEDS, JSON.stringify(data.rssFeeds));
     }
 
-    // Step 7: Import live channels
     if (Array.isArray(data.liveChannels) && !mergeMode) {
       safeLocalStorageSet(LS_KEYS.LIVE, JSON.stringify(data.liveChannels));
     }
 
-    // Step 8: Import settings
     if (data.settings && !mergeMode) {
       if (data.settings.autoUpdateEnabled) {
         localStorage.setItem(AUTO_UPDATE_KEY, data.settings.autoUpdateEnabled);
@@ -6300,7 +5839,6 @@ async function performImport(data) {
       }
     }
 
-    // Step 9: Refresh UI
     console.log("🔄 Refreshing UI...");
     renderChannels(appState.get("channels.all"));
     renderFavorites();
@@ -6308,7 +5846,6 @@ async function performImport(data) {
     updateFavoriteIcons();
     updateAllChannelItems();
 
-    // Step 10: Restart auto-update if needed
     if (!mergeMode && data.settings) {
       stopAutoUpdateService();
       startChannelAutoUpdate();
@@ -6327,7 +5864,6 @@ async function performImport(data) {
     throw error;
   }
 }
-
 
 /**
  * Create automatic backup before import
@@ -6379,7 +5915,6 @@ async function handleImportFile(event) {
   if (file) {
     await importBackupData(file);
   }
-  // Reset file input so same file can be selected again
   event.target.value = '';
 }
 
@@ -6393,13 +5928,9 @@ function triggerImportDialog() {
   }
 }
 
-
-
 // ============================================
-// ADD TO SETTINGS MODAL
 // ============================================
 function setupStorageControls() {
-  // View Storage Details
   const viewStorageDetailsBtn = document.getElementById('viewStorageDetails');
   if (viewStorageDetailsBtn) {
     viewStorageDetailsBtn.addEventListener('click', () => {
@@ -6408,41 +5939,33 @@ function setupStorageControls() {
     });
   }
 
-  // Export Data
   const exportDataBtn = document.getElementById('exportDataBtn');
   if (exportDataBtn) {
     exportDataBtn.addEventListener('click', exportAllData);
   }
 
-  // Import Data
   const importDataBtn = document.getElementById('importDataBtn');
   if (importDataBtn) {
     importDataBtn.addEventListener('click', triggerImportDialog);
   }
 
-  // Clear Recently Watched
   const clearRecentBtn = document.getElementById('clearRecentBtn');
   if (clearRecentBtn) {
     clearRecentBtn.addEventListener('click', clearRecentlyWatched);
   }
 
-  // Clear All Favorites
   const clearFavoritesBtn = document.getElementById('clearFavoritesBtn');
   if (clearFavoritesBtn) {
     clearFavoritesBtn.addEventListener('click', clearAllFavorites);
   }
 
-  // File Input for Import
   const fileInput = document.getElementById('importFileInput');
   if (fileInput) {
     fileInput.addEventListener('change', handleImportFile);
   }
 }
 
-
 // ============================================
-// UPDATE TOTAL CHANNELS DISPLAY
-// Add this new function
 // ============================================
 
 function updateTotalChannelsDisplay() {
@@ -6494,17 +6017,14 @@ function updateStorageStatsDisplay() {
   `;
 }
 
-
 async function updateStorageDisplay() {
   const display = document.getElementById('storageUsageDisplay');
   if (!display) return;
 
-  // Clear previous content and set an accessible live region
   display.textContent = '';
   display.setAttribute('aria-live', 'polite');
 
   try {
-    // Support both sync and async getStorageUsage implementations
     const maybePromise = getStorageUsage();
     const usage = (maybePromise && typeof maybePromise.then === 'function')
       ? await maybePromise
@@ -6515,16 +6035,13 @@ async function updateStorageDisplay() {
       return;
     }
 
-    // Defensive defaults
     const MAX_MB_VALUE = (typeof MAX_MB === 'number' && MAX_MB > 0) ? MAX_MB : 6;
     const totalBytes = Number(usage.totalBytes) || 0;
     const totalMB = (typeof usage.totalMB === 'number') ? usage.totalMB : (totalBytes / (1024 * 1024));
 
-    // Percent used (clamped 0..100)
     const usedPercentRaw = (totalBytes / (MAX_MB_VALUE * 1024 * 1024)) * 100;
     const usedPercent = Math.max(0, Math.min(100, Number(usedPercentRaw.toFixed(1))));
 
-    // Determine status
     let colorClass = 'storage-good';
     let statusIcon = '✅';
     let statusText = 'Healthy';
@@ -6540,7 +6057,6 @@ async function updateStorageDisplay() {
       statusText = 'Critical';
     }
 
-    // Build DOM structure (safer than large innerHTML)
     const wrapper = document.createElement('div');
     wrapper.className = 'storage-grid';
 
@@ -6553,7 +6069,7 @@ async function updateStorageDisplay() {
     title.textContent = 'Storage Status';
     const statusSpan = document.createElement('span');
     statusSpan.className = 'storage-status-text';
-    statusSpan.style.color = ''; // color handled by CSS class
+    statusSpan.style.color = '';
     statusSpan.textContent = `${statusIcon} ${statusText}`;
     header.appendChild(title);
     header.appendChild(statusSpan);
@@ -6568,7 +6084,6 @@ async function updateStorageDisplay() {
     usageLine.appendChild(usedText);
     usageLine.appendChild(percentText);
 
-    // Progress bar
     const progressWrap = document.createElement('div');
     progressWrap.className = 'storage-progress-wrap';
     const progressBar = document.createElement('div');
@@ -6584,10 +6099,8 @@ async function updateStorageDisplay() {
     statusCard.appendChild(usageLine);
     statusCard.appendChild(progressWrap);
 
-
     wrapper.appendChild(statusCard);
 
-    // Replace display content
     display.appendChild(wrapper);
   } catch (error) {
     console.error('Error updating storage display:', error);
@@ -6595,70 +6108,52 @@ async function updateStorageDisplay() {
   }
 }
 
-
-
 function cleanupAllEventListeners() {
   eventCleanupCallbacks.forEach(cleanup => cleanup());
   eventCleanupCallbacks.length = 0;
 }
 
-
-// ADD SANITIZATION:
 function escapeHtml(text) {
   const div = document.createElement('div');
   div.textContent = text;
   return div.innerHTML;
 }
 
-// Add proactive monitoring
 function checkStorageHealth() {
   const usage = getStorageUsage();
   const percentUsed = (usage.totalBytes / (MAX_MB * 1024 * 1024)) * 100;
 
   if (percentUsed > 80) {
     showNotification('⚠️ Storage 80% full - consider exporting data', 'warning');
-    // Auto-cleanup non-critical data
-    // Try predictive cleanup first (less aggressive than full clear)
     const res = predictiveCleanup();
     if (res.freedBytes > 0) {
       showNotification(`🧹 Auto-cleaned ${Math.round(res.freedBytes / 1024)} KB`, 'info');
     } else {
-      // fallback to legacy cleanup
       clearOldStorageData();
     }
   }
 
   if (percentUsed > 95) {
-    // Emergency cleanup
     showNotification('🚨 Storage critical - forcing cleanup', 'error');
-    // attempt predictive cleanup first
     const res = predictiveCleanup();
     if (res.freedBytes <= 0) {
-      // remove the least-critical known keys explicitly
       localStorage.removeItem(LS_KEYS.WATCH_TIME);
       clearOldStorageData();
     }
   }
 }
 
-
-
-
 // ============================================
-// 9. LAZY LOADING IMAGES
-// Intersection Observer for performance
 // ============================================
 
 /**
  * Initialize global lazy load observer
  */
 function initializeLazyLoading() {
-  // Check if already initialized
   if (window.lazyLoadObserver) {
     return window.lazyLoadObserver;
   }
 
-  // Create Intersection Observer
   const observer = new IntersectionObserver((entries) => {
     entries.forEach(entry => {
       if (entry.isIntersecting) {
@@ -6670,15 +6165,13 @@ function initializeLazyLoading() {
       }
     });
   }, {
-    root: null, // viewport
-    rootMargin: '100px', // Start loading 100px before visible
-    threshold: [0, 0.1, 0.5, 1] // Multiple thresholds for smoother loading
+    root: null,
+    rootMargin: '100px',
+    threshold: [0, 0.1, 0.5, 1]
   });
 
-  // Store globally
   window.lazyLoadObserver = observer;
 
-  // Cleanup on page unload
   appState.addCleanup(() => {
     observer.disconnect();
     window.lazyLoadObserver = null;
@@ -6687,7 +6180,6 @@ function initializeLazyLoading() {
   return observer;
 }
 
-
 /**
  * Load image from data-src to src
  */
@@ -6695,10 +6187,8 @@ function loadImage(img) {
   const src = img.dataset.src;
   if (!src) return;
 
-  // Show loading state
   img.classList.add('loading');
 
-  // Create a new image to preload
   const tempImg = new Image();
 
   tempImg.onload = () => {
@@ -6717,10 +6207,6 @@ function loadImage(img) {
   tempImg.src = src;
 }
 
-
-// ✅ Add periodic cache maintenance
-// ✅ Periodic cache maintenance with flexible options
-// ✅ Hybrid cache maintenance: simple defaults + optional advanced features
 function startCacheMaintenance({
   verbose = false,
   intervalMinutes = 15,
@@ -6728,8 +6214,6 @@ function startCacheMaintenance({
 } = {}) {
   const MAINTENANCE_INTERVAL_MS = intervalMinutes * 60 * 1000;
   const LOG_PREFIX = '[Cache]';
-
-  //console.log(`${LOG_PREFIX} Starting maintenance every ${intervalMinutes} minutes`);
 
   const runMaintenance = () => {
     try {
@@ -6755,48 +6239,37 @@ function startCacheMaintenance({
     }
   };
 
-  // Schedule periodic maintenance
   const maintenanceInterval = setInterval(runMaintenance, MAINTENANCE_INTERVAL_MS);
 
-  // Register interval in appState for centralized control
   appState?.setIntervalRef?.('cacheMaintenance', maintenanceInterval);
 
-  // Ensure cleanup is idempotent
   appState?.addCleanup?.(() => clearInterval(maintenanceInterval));
 
-  // Run once immediately
   runMaintenance();
 
-  // Return a stop function for manual control
   return () => {
     clearInterval(maintenanceInterval);
     console.log(`${LOG_PREFIX} Maintenance stopped`);
   };
 }
 
-
 // ======================================================================
-// GLOBAL ERROR BOUNDARY (SAFE IMPLEMENTATION FOR final.js)
 // ======================================================================
 
 (function setupGlobalErrorHandlers() {
   if (window.__GLOBAL_ERROR_BOUNDARIES_INSTALLED__) return;
   window.__GLOBAL_ERROR_BOUNDARIES_INSTALLED__ = true;
 
-  // ---- Normal runtime errors ----
   window.addEventListener("error", (event) => {
     try {
       const error = event.error || event.message || "Unknown error";
 
       console.error("GLOBAL ERROR:", error);
 
-      // Log to your remote logging system
       try { logErrorToService?.(error); } catch { }
 
-      // Friendly notification
       try { showNotification?.("Unexpected error occurred", "error"); } catch { }
 
-      // Optional: Try smart recovery
       try {
         if (typeof canRecover === "function" && canRecover(error)) {
           attemptRecovery?.();
@@ -6808,7 +6281,6 @@ function startCacheMaintenance({
     }
   });
 
-  // ---- Unhandled Promise Rejections ----
   window.addEventListener("unhandledrejection", (event) => {
     try {
       const reason = event.reason || "Unknown async error";
@@ -6825,9 +6297,7 @@ function startCacheMaintenance({
     }
   });
 
-  //console.log("✅ Global Error Boundaries Installed");
 })();
-
 
 /**
  * Predictive cleanup - attempts to free storage by removing
@@ -6844,26 +6314,22 @@ function predictiveCleanup() {
     const usage = getStorageUsage();
     if (!usage) return { freedBytes: 0, removedKeys: [] };
 
-    // threshold in bytes (4MB default, adjust if you want)
     const threshold = 8 * 1024 * 1024;
 
-    // If under threshold, nothing to do
     if (usage.totalBytes <= threshold) {
       return { freedBytes: 0, removedKeys: [] };
     }
 
-    // Importance map: higher = more important, less likely to be removed
     const importance = {
-      [LS_KEYS.CHANNELS]: 10,    // critical: channel DB
-      [LS_KEYS.FAVORITES]: 9,    // very important
-      [LS_KEYS.FEEDS]: 8,        // important
-      [LS_KEYS.LIVE]: 7,         // live channels metadata
-      [LS_KEYS.RECENT]: 5,       // moderate
-      [LS_KEYS.WATCH_TIME]: 2,   // low
-      [CACHE_KEY]: 1             // lowest/ephemeral
+      [LS_KEYS.CHANNELS]: 10,
+      [LS_KEYS.FAVORITES]: 9,
+      [LS_KEYS.FEEDS]: 8,
+      [LS_KEYS.LIVE]: 7,
+      [LS_KEYS.RECENT]: 5,
+      [LS_KEYS.WATCH_TIME]: 2,
+      [CACHE_KEY]: 1
     };
 
-    // Build sortable list of items
     const items = Object.entries(usage.items || {}).map(([key, size]) => {
       const imp = importance.hasOwnProperty(key) ? importance[key] : 5;
       return {
@@ -6874,7 +6340,6 @@ function predictiveCleanup() {
       };
     });
 
-    // Sort descending by ratio (largest size per importance first)
     items.sort((a, b) => b.ratio - a.ratio);
 
     const removedKeys = [];
@@ -6882,16 +6347,11 @@ function predictiveCleanup() {
     let totalBytes = usage.totalBytes;
 
     for (const item of items) {
-      // stop if we're under threshold
       if (totalBytes <= threshold) break;
 
-      // Never remove the app namespace by accident (defensive)
       if (!item.key || item.key === '__iptv' || item.key.startsWith('__')) continue;
 
-      // Prefer not to remove channels/favorites unless absolutely required.
-      // importance map already biases against them, but add safety:
       if (item.key === LS_KEYS.CHANNELS || item.key === LS_KEYS.FAVORITES) {
-        // only remove if we are still dramatically over threshold (> 150%)
         if (totalBytes <= threshold * 1.5) continue;
       }
 
@@ -6902,10 +6362,8 @@ function predictiveCleanup() {
         freedBytes += item.size;
         totalBytes -= item.size;
 
-        // notify UI of changes for keys we know about
         if (item.key === LS_KEYS.RECENT) dispatchStorageUpdate('recent');
         if (item.key === LS_KEYS.FAVORITES) dispatchStorageUpdate('favorites');
-        // caches: clear associated runtime caches too
         if (item.key === CACHE_KEY) {
           try { rssCache.clear(); liveCache.clear(); } catch (e) { /* ignore */ }
         }
@@ -6923,7 +6381,6 @@ function predictiveCleanup() {
   }
 }
 
-// Accessibility: Skip navigation link
 function addSkipLinks() {
   const skipNav = document.createElement('a');
   skipNav.href = '#channels';
@@ -6955,38 +6412,30 @@ function addSkipLinks() {
 function deduplicateRequest(key, requestFn, options = {}) {
   const { ttl = 0, timeout = 15000, force = false } = options;
 
-  // If already have an in-flight or cached entry and not forcing
   if (pendingRequests.has(key) && !force) {
     const entry = pendingRequests.get(key);
-    // if cached resolved value still fresh, return Promise.resolve(value)
     if (entry && entry.resolved && (ttl <= 0 || (Date.now() - entry.resolvedAt) < ttl)) {
       return Promise.resolve(entry.value);
     }
-    // return the in-flight promise
     if (entry && entry.promise) return entry.promise;
   }
 
-  // Use AbortController for timeout
   const controller = new AbortController();
   const signal = controller.signal;
   let timedOut = false;
 
   const p = (async () => {
     try {
-      // requestFn may optionally accept signal
       const result = await Promise.race([
         (typeof requestFn === 'function') ? requestFn({ signal }) : Promise.reject(new Error('requestFn not a function')),
         new Promise((_, rej) => setTimeout(() => { timedOut = true; controller.abort(); rej(new Error('timeout')); }, timeout))
       ]);
-      // store resolved snapshot (for ttl)
       pendingRequests.set(key, { resolved: true, resolvedAt: Date.now(), value: result, promise: Promise.resolve(result) });
       return result;
     } catch (err) {
-      // Always remove pending entry on error to allow retry
       pendingRequests.delete(key);
       throw err;
     } finally {
-      // if there is a non-cached pending entry and not storing for ttl, ensure removal
       const cur = pendingRequests.get(key);
       if (cur && !cur.resolved) {
         pendingRequests.delete(key);
@@ -6994,14 +6443,11 @@ function deduplicateRequest(key, requestFn, options = {}) {
     }
   })();
 
-  // store as in-flight
   pendingRequests.set(key, { resolved: false, promise: p });
-  // If caller wants to access controller (for manual abort), attach it
   p.abortController = controller;
   return p;
 }
 
-// Add this after your error handling utilities
 const errorLog = [];
 
 function logErrorToService(error) {
@@ -7015,15 +6461,11 @@ function logErrorToService(error) {
 
   errorLog.push(entry);
 
-  // Keep only last 50 errors
   if (errorLog.length > 50) {
     errorLog.shift();
   }
 
-  // Optional: Send to analytics service
   try {
-    // Example: Google Analytics, Sentry, etc.
-    // gtag('event', 'exception', { description: entry.message });
   } catch (e) { }
 }
 
@@ -7041,8 +6483,6 @@ function fetchWithTimeout(url, options = {}) {
     .finally(() => clearTimeout(id));
 }
 
-
-// Global error hooks - call your log send utility (non-blocking)
 window.addEventListener('error', (ev) => {
   try { logErrorToService(ev.error || { message: ev.message, stack: ev.error?.stack }); } catch (e) { /* ignore */ }
 });
@@ -7051,9 +6491,7 @@ window.addEventListener('unhandledrejection', (ev) => {
   try { logErrorToService(ev.reason || { message: String(ev) }); } catch (e) { /* ignore */ }
 });
 
-
 // ============================================
-// UPDATE MANAGER MODAL CLASS
 // ============================================
 
 class UpdateManagerModal {
@@ -7062,25 +6500,22 @@ class UpdateManagerModal {
     this.isOpen = false;
     this.updateCheckInterval = null;
     
-    // Create modal element
     this.createModal();
     
-    // Setup event listeners
     this.setupEventListeners();
   }
-  
+
   /**
-   * Create the modal DOM structure
+   * Create the modal DOM structure with manual add forms
    */
   createModal() {
-    // Check if modal already exists
     if (document.getElementById(this.modalId)) return;
-    
+
     const modal = document.createElement('div');
     modal.id = this.modalId;
-    modal.className = 'settings-modal';
+    modal.className = 'update-manager-modal';
     modal.style.display = 'none';
-    
+
     modal.innerHTML = `
       <div class="settings-content update-manager-content">
         <div class="settings-header">
@@ -7090,41 +6525,51 @@ class UpdateManagerModal {
           </button>
         </div>
         
+        <!-- Quick Actions Bar -->
+        <div class="quick-actions-bar">
+          <button id="addManualRetryBtn" class="btn-primary" title="Add Manual Retry">
+            <i class="fas fa-plus-circle"></i> Add Manual Retry
+          </button>
+          <button id="forceCheckBtn" class="btn-secondary">
+            <i class="fas fa-sync"></i> Force Check
+          </button>
+        </div>
+        
         <!-- Summary Stats -->
         <div class="update-summary">
           <div class="summary-card">
-            <div class="summary-icon success">
-              <i class="fas fa-check-circle"></i>
+            <div class="summary-icon total">
+              <i class="fas fa-layer-group"></i>
             </div>
             <div class="summary-details">
-              <span class="summary-label">Successful</span>
-              <span class="summary-value" id="successfulCount">0</span>
+              <span class="summary-label">Total</span>
+              <span class="summary-value" id="totalCount">0</span>
             </div>
           </div>
           
           <div class="summary-card">
-            <div class="summary-icon pending">
-              <i class="fas fa-clock"></i>
+            <div class="summary-icon ready">
+              <i class="fas fa-play-circle"></i>
             </div>
             <div class="summary-details">
-              <span class="summary-label">Pending</span>
-              <span class="summary-value" id="pendingCount">0</span>
+              <span class="summary-label">Ready</span>
+              <span class="summary-value" id="readyCount">0</span>
+            </div>
+          </div>
+          
+          <div class="summary-card">
+            <div class="summary-icon manual">
+              <i class="fas fa-hand-paper"></i>
+            </div>
+            <div class="summary-details">
+              <span class="summary-label">Manual</span>
+              <span class="summary-value" id="manualCount">0</span>
             </div>
           </div>
           
           <div class="summary-card">
             <div class="summary-icon failed">
-              <i class="fas fa-exclamation-circle"></i>
-            </div>
-            <div class="summary-details">
-              <span class="summary-label">Failed</span>
-              <span class="summary-value" id="failedCount">0</span>
-            </div>
-          </div>
-          
-          <div class="summary-card">
-            <div class="summary-icon blocked">
-              <i class="fas fa-ban"></i>
+              <i class="fas fa-exclamation-triangle"></i>
             </div>
             <div class="summary-details">
               <span class="summary-label">Blocked</span>
@@ -7132,24 +6577,187 @@ class UpdateManagerModal {
             </div>
           </div>
         </div>
+
+                <!-- Manual Add Modal (Enhanced) -->
+        <div id="manualAddModal" class="manual-add-modal" style="display: none;">
+          <div class="manual-add-content">
+            <div class="manual-add-header">
+              <h3><i class="fas fa-plus-circle"></i> Add Manual Retry</h3>
+              <button class="close-btn" id="closeManualAdd">
+                <i class="fas fa-times"></i>
+              </button>
+            </div>
+            
+            <!-- Selection Tabs -->
+            <div class="source-tabs">
+              <button class="source-tab-btn active" data-source="existing">
+                <i class="fas fa-list"></i> Select from Existing
+              </button>
+              <button class="source-tab-btn" data-source="manual">
+                <i class="fas fa-keyboard"></i> Enter Manually
+              </button>
+            </div>
+
+                        <!-- Existing Data Selection -->
+            <div id="existingSource" class="source-content active">
+              <div class="form-group">
+                <label for="retryTypeSelectExisting">Retry Type</label>
+                <select id="retryTypeSelectExisting" class="setting-select">
+                  <option value="rss">RSS Feed</option>
+                  <option value="live">Live Channel</option>
+                </select>
+              </div>
+
+              <div class="form-group">
+                <label for="existingItemsSelect">Select Feed/Channel</label>
+                <div class="select-with-search">
+                  <div class="search-wrapper">
+                    <input type="text" id="existingSearch" class="search-input" 
+                           placeholder="Search existing items..." autocomplete="off">
+                    <i class="fas fa-search"></i>
+                  </div>
+                  <select id="existingItemsSelect" class="setting-select" size="6">
+                    <!-- Dynamically populated -->
+                  </select>
+                </div>
+                <div class="existing-stats">
+                  <span id="existingCount">0 items found</span>
+                  <span id="selectedInfo" class="selected-info"></span>
+                </div>
+              </div>
+              
+              <div class="selected-item-preview" id="selectedPreview" style="display: none;">
+                <div class="preview-header">
+                  <strong>Selected Item:</strong>
+                </div>
+                <div class="preview-details">
+                  <div class="preview-row">
+                    <span class="preview-label">Name:</span>
+                    <span class="preview-value" id="previewName"></span>
+                  </div>
+                  <div class="preview-row">
+                    <span class="preview-label">ID:</span>
+                    <span class="preview-value" id="previewId"></span>
+                  </div>
+                  <div class="preview-row">
+                    <span class="preview-label">URL:</span>
+                    <span class="preview-value preview-url" id="previewUrl"></span>
+                  </div>
+                  <div class="preview-row">
+                    <span class="preview-label">Category:</span>
+                    <span class="preview-value" id="previewCategory"></span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+                       <!-- Manual Input -->
+            <div id="manualSource" class="source-content">
+              <div class="form-group">
+                <label for="retryTypeSelectManual">Retry Type</label>
+                <select id="retryTypeSelectManual" class="setting-select">
+                  <option value="rss">RSS Feed</option>
+                  <option value="live">Live Channel</option>
+                </select>
+              </div>
+              
+              <div class="form-group">
+                <label for="manualItemId">ID / URL</label>
+                <input type="text" id="manualItemId" class="setting-input" 
+                       placeholder="Enter RSS URL or YouTube Channel ID">
+                <div class="input-hint">
+                  <small>
+                    RSS: Full feed URL<br>
+                    Live: YouTube Channel ID (UC...)
+                  </small>
+                </div>
+              </div>
+              
+              <div class="form-group">
+                <label for="manualItemName">Display Name</label>
+                <input type="text" id="manualItemName" class="setting-input" 
+                       placeholder="Enter display name">
+              </div>
+            </div>
+
+                        <!-- Common Fields -->
+            <div class="form-group">
+              <label for="manualRetryReason">Reason (Optional)</label>
+              <input type="text" id="manualRetryReason" class="setting-input" 
+                     placeholder="e.g., 'Manual update requested'">
+            </div>
+            
+            <div class="button-group">
+              <button id="submitManualRetry" class="btn-primary">
+                <i class="fas fa-check"></i> Add to Queue
+              </button>
+              <button id="cancelManualRetry" class="btn-secondary">
+                <i class="fas fa-times"></i> Cancel
+              </button>
+            </div>
+          </div>
+        </div>
         
-        <!-- Controls -->
-        <div class="update-controls">
-          <button id="retryAllBtn" class="btn-primary">
-            <i class="fas fa-redo"></i> Retry All Ready
-          </button>
-          <button id="clearFailedBtn" class="btn-warning">
-            <i class="fas fa-trash"></i> Clear Failed
-          </button>
-          <button id="forceCheckBtn" class="btn-secondary">
-            <i class="fas fa-sync"></i> Force Check
-          </button>
+        <!-- Manual Add Modal (Hidden by default) -->
+        <div id="manualAddModal" class="manual-add-modal" style="display: none;">
+          <div class="manual-add-content">
+            <h3><i class="fas fa-plus-circle"></i> Add Manual Retry</h3>
+            
+            <div class="form-group">
+              <label for="retryTypeSelect">Retry Type</label>
+              <select id="retryTypeSelect" class="setting-select">
+                <option value="rss">RSS Feed</option>
+                <option value="live">Live Channel</option>
+              </select>
+            </div>
+            
+            <div class="form-group">
+              <label for="manualItemId">ID / URL</label>
+              <input type="text" id="manualItemId" class="setting-input" 
+                     placeholder="Enter RSS URL or YouTube Channel ID">
+              <div class="input-hint">
+                <small>
+                  RSS: Full feed URL<br>
+                  Live: YouTube Channel ID (UC...)
+                </small>
+              </div>
+            </div>
+            
+            <div class="form-group">
+              <label for="manualItemName">Display Name</label>
+              <input type="text" id="manualItemName" class="setting-input" 
+                     placeholder="Enter display name">
+            </div>
+            
+            <!-- Common Fields -->
+            <div class="form-group">
+              <label for="manualRetryReason">Reason (Optional)</label>
+              <input type="text" id="manualRetryReason" class="setting-input" 
+                     placeholder="e.g., 'Manual update requested'">
+            </div>
+            
+            <div class="button-group">
+              <button id="submitManualRetry" class="btn-primary">
+                <i class="fas fa-check"></i> Add to Queue
+              </button>
+              <button id="cancelManualRetry" class="btn-secondary">
+                <i class="fas fa-times"></i> Cancel
+              </button>
+            </div>
+          </div>
         </div>
         
         <!-- Tabs -->
         <div class="update-tabs">
-          <button class="tab-btn active" data-tab="rss">RSS Feeds</button>
-          <button class="tab-btn" data-tab="live">Live Feeds</button>
+          <button class="tab-btn active" data-tab="rss">
+            <i class="fas fa-rss"></i> RSS Feeds
+          </button>
+          <button class="tab-btn" data-tab="live">
+            <i class="fas fa-broadcast-tower"></i> Live Feeds
+          </button>
+          <button class="tab-btn" data-tab="manual">
+            <i class="fas fa-hand-paper"></i> Manual Entries
+          </button>
         </div>
         
         <!-- Content Areas -->
@@ -7158,6 +6766,7 @@ class UpdateManagerModal {
           <div id="rssTab" class="tab-content active">
             <div class="update-list-header">
               <span>Feed Name</span>
+              <span>Type</span>
               <span>Status</span>
               <span>Retries</span>
               <span>Next Retry</span>
@@ -7172,6 +6781,7 @@ class UpdateManagerModal {
           <div id="liveTab" class="tab-content">
             <div class="update-list-header">
               <span>Channel Name</span>
+              <span>Type</span>
               <span>Status</span>
               <span>Retries</span>
               <span>Next Retry</span>
@@ -7181,6 +6791,34 @@ class UpdateManagerModal {
               <!-- Dynamic content -->
             </div>
           </div>
+          
+          <!-- Manual Entries Tab -->
+          <div id="manualTab" class="tab-content">
+            <div class="update-list-header">
+              <span>Name</span>
+              <span>Type</span>
+              <span>Added By</span>
+              <span>Status</span>
+              <span>Added</span>
+              <span>Actions</span>
+            </div>
+            <div id="manualList" class="update-list">
+              <!-- Dynamic content -->
+            </div>
+          </div>
+        </div>
+        
+        <!-- Search & Filter -->
+        <div class="search-filter">
+          <input type="text" id="retrySearch" class="search-input" 
+                 placeholder="Search entries...">
+          <select id="retryFilter" class="filter-select">
+            <option value="all">All Status</option>
+            <option value="ready">Ready</option>
+            <option value="pending">Pending</option>
+            <option value="blocked">Blocked</option>
+            <option value="manual">Manual</option>
+          </select>
         </div>
         
         <!-- Last Update Info -->
@@ -7201,6 +6839,9 @@ class UpdateManagerModal {
         
         <!-- Footer -->
         <div class="update-footer">
+          <button id="clearFailedBtn" class="btn-warning">
+            <i class="fas fa-trash"></i> Clear Failed
+          </button>
           <button id="refreshUpdateManager" class="btn-secondary">
             <i class="fas fa-redo"></i> Refresh
           </button>
@@ -7210,73 +6851,256 @@ class UpdateManagerModal {
         </div>
       </div>
     `;
-    
+
     document.body.appendChild(modal);
   }
-  
+
   /**
-   * Setup event listeners
+   * Setup event listeners including manual add
    */
   setupEventListeners() {
-    // Close buttons
+    
     document.addEventListener('click', (e) => {
-      if (e.target.id === 'closeUpdateManager' || 
-          e.target.closest('#closeUpdateManager') ||
-          e.target.id === 'closeUpdateManagerFooter') {
+      const tabBtn = e.target.closest('.tab-btn');
+      if (tabBtn && tabBtn.dataset.tab) {
+        this.switchTab(tabBtn.dataset.tab);
+      }
+    });
+    document.addEventListener('click', (e) => {
+      if (e.target.id === 'closeUpdateManager' ||
+        e.target.closest('#closeUpdateManager') ||
+        e.target.id === 'closeUpdateManagerFooter') {
         this.close();
       }
     });
-    
-    // Tab switching
+
     document.addEventListener('click', (e) => {
-      if (e.target.classList.contains('tab-btn')) {
-        const tab = e.target.dataset.tab;
-        this.switchTab(tab);
+      if (e.target.classList.contains('source-tab-btn') || 
+          e.target.closest('.source-tab-btn')) {
+        const btn = e.target.classList.contains('source-tab-btn') ? 
+                   e.target : e.target.closest('.source-tab-btn');
+        const source = btn.dataset.source;
+        this.switchSourceTab(source);
+      }
+    });
+
+    document.addEventListener('click', (e) => {
+      if (e.target.id === 'closeManualAdd' || e.target.closest('#closeManualAdd')) {
+        this.hideManualAddModal();
       }
     });
     
-    // Control buttons
+    document.addEventListener('change', (e) => {
+      if (e.target.id === 'retryTypeSelectExisting') {
+        this.populateExistingItems(e.target.value);
+      } else if (e.target.id === 'retryTypeSelectManual') {
+        const placeholder = e.target.value === 'rss' ? 
+          'Enter RSS feed URL' : 'Enter YouTube Channel ID';
+        document.getElementById('manualItemId').placeholder = placeholder;
+      }
+    });
+    
+    document.addEventListener('change', (e) => {
+      if (e.target.id === 'existingItemsSelect') {
+        this.handleExistingItemSelection(e.target.value);
+      }
+    });
+
     document.addEventListener('click', async (e) => {
       if (e.target.id === 'retryAllBtn' || e.target.closest('#retryAllBtn')) {
         await this.retryAllReady();
-      } else if (e.target.id === 'clearFailedBtn' || e.target.closest('#clearFailedBtn')) {
-        this.clearFailedItems();
       } else if (e.target.id === 'forceCheckBtn' || e.target.closest('#forceCheckBtn')) {
         this.forceRetryCheck();
       } else if (e.target.id === 'refreshUpdateManager' || e.target.closest('#refreshUpdateManager')) {
         this.refresh();
+      } else if (e.target.id === 'addManualRetryBtn' || e.target.closest('#addManualRetryBtn')) {
+        this.showManualAddModal();
+      } else if (e.target.id === 'clearFailedBtn' || e.target.closest('#clearFailedBtn')) {
+        this.clearFailedItems();
       }
     });
-    
-    // Close modal on escape
+
+    document.addEventListener('click', (e) => {
+      if (e.target.id === 'submitManualRetry' || e.target.closest('#submitManualRetry')) {
+        this.addManualRetry();
+      } else if (e.target.id === 'cancelManualRetry' || e.target.closest('#cancelManualRetry')) {
+        this.hideManualAddModal();
+      }
+    });
+
+    const searchInput = document.getElementById('existingSearch');
+
+    if (searchInput) {
+      searchInput.addEventListener('input', () => {
+        this.filterExistingItems();
+      });
+    }
+
+    const filterSelect = document.getElementById('retryFilter');
+
+    if (searchInput) {
+      searchInput.addEventListener('input', () => {
+        this.filterEntries();
+      });
+    }
+
+    if (filterSelect) {
+      filterSelect.addEventListener('change', () => {
+        this.filterEntries();
+      });
+    }
+
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape' && this.isOpen) {
-        this.close();
+        if (document.getElementById('manualAddModal').style.display === 'block') {
+          this.hideManualAddModal();
+        } else {
+          this.close();
+        }
       }
     });
-    
-    // Click outside to close
+
     document.addEventListener('click', (e) => {
       const modal = document.getElementById(this.modalId);
       if (e.target === modal && this.isOpen) {
         this.close();
       }
+
+      const manualModal = document.getElementById('manualAddModal');
+      if (e.target === manualModal && manualModal.style.display === 'block') {
+        this.hideManualAddModal();
+      }
     });
   }
+
+updateSummaryStats() {
+  if (!this.isOpen) return;
   
+  const rssStats = rssRetryManager.getEnhancedStats();
+  const liveStats = liveRetryManager.getEnhancedStats();
+  
+  document.getElementById('totalCount').textContent = 
+    rssStats.total + liveStats.total;
+  document.getElementById('readyCount').textContent = 
+    rssStats.ready + liveStats.ready;
+  document.getElementById('manualCount').textContent = 
+    rssStats.manual + liveStats.manual;
+  document.getElementById('blockedCount').textContent = 
+    rssStats.blocked + liveStats.blocked;
+}
+
+updateRSSList() {
+  const container = document.getElementById('rssList');
+  if (!container) return;
+  
+  const entries = rssRetryManager.getAllEntries();
+  
+  if (entries.length === 0) {
+    container.innerHTML = '<div class="empty-state">No RSS retries</div>';
+    return;
+  }
+  
+  container.innerHTML = entries.map(entry => `
+    <div class="retry-item" data-id="${entry.id}">
+      <span>${entry.name || entry.id}</span>
+      <span>Retries: ${entry.retries}</span>
+      <span>Status: ${this.getStatusLabel(entry)}</span>
+      <button onclick="retrySingle('rss', '${entry.id}')">Retry</button>
+    </div>
+  `).join('');
+}
+
+updateLastUpdateInfo() {
+  const lastUpdate = localStorage.getItem(CACHE_KEY) || 0;
+  const element = document.getElementById('lastUpdateTime');
+  if (element && lastUpdate > 0) {
+    element.textContent = new Date(parseInt(lastUpdate)).toLocaleString();
+  }
+}
+
+async retryAllReady() {
+  showNotification('Retrying all ready items...', 'info');
+}
+
+  /**
+   * Show manual add modal
+   */
+  showManualAddModal() {
+    const modal = document.getElementById('manualAddModal');
+    modal.style.display = 'block';
+
+    setTimeout(() => {
+      document.getElementById('manualItemId').focus();
+    }, 100);
+  }
+
+  /**
+   * Hide manual add modal
+   */
+  hideManualAddModal() {
+    const modal = document.getElementById('manualAddModal');
+    modal.style.display = 'none';
+
+    document.getElementById('manualItemId').value = '';
+    document.getElementById('manualItemName').value = '';
+    document.getElementById('manualRetryReason').value = '';
+  }
+
+  /**
+   * Add manual retry to queue
+   */
+  addManualRetry() {
+    const type = document.getElementById('retryTypeSelect').value;
+    const id = document.getElementById('manualItemId').value.trim();
+    const name = document.getElementById('manualItemName').value.trim();
+    const reason = document.getElementById('manualRetryReason').value.trim() || "Manually added";
+
+    if (!id) {
+      showNotification('❌ Please enter an ID or URL', 'error');
+      return;
+    }
+
+    if (!name) {
+      showNotification('❌ Please enter a display name', 'error');
+      return;
+    }
+
+    let success = false;
+
+    if (type === 'rss') {
+      success = rssRetryManager.addManually(id, name, {
+        reason: reason,
+        user: "manual"
+      });
+    } else if (type === 'live') {
+      success = liveRetryManager.addManually(id, name, {
+        reason: reason,
+        user: "manual"
+      });
+    }
+
+    if (success) {
+      showNotification(`✅ Added ${name} to ${type} retry queue`, 'success');
+      this.hideManualAddModal();
+      this.refresh();
+
+      this.switchTab('manual');
+    } else {
+      showNotification('❌ Failed to add to retry queue', 'error');
+    }
+  }
+
   /**
    * Switch between tabs
    */
   switchTab(tab) {
-    // Update tab buttons
     document.querySelectorAll('.tab-btn').forEach(btn => {
       btn.classList.remove('active');
       if (btn.dataset.tab === tab) {
         btn.classList.add('active');
       }
     });
-    
-    // Update tab content
+
     document.querySelectorAll('.tab-content').forEach(content => {
       content.classList.remove('active');
       if (content.id === `${tab}Tab`) {
@@ -7284,7 +7108,329 @@ class UpdateManagerModal {
       }
     });
   }
+
+    /**
+   * Switch between existing selection and manual input tabs
+   */
+  switchSourceTab(source) {
+    document.querySelectorAll('.source-tab-btn').forEach(btn => {
+      btn.classList.remove('active');
+      if (btn.dataset.source === source) {
+        btn.classList.add('active');
+      }
+    });
+    
+    document.querySelectorAll('.source-content').forEach(content => {
+      content.classList.remove('active');
+      if (content.id === `${source}Source`) {
+        content.classList.add('active');
+      }
+    });
+    
+    if (source === 'existing') {
+      const type = document.getElementById('retryTypeSelectExisting').value;
+      this.populateExistingItems(type);
+    }
+  }
   
+  /**
+   * Populate existing items in the dropdown
+   */
+  populateExistingItems(type) {
+    const select = document.getElementById('existingItemsSelect');
+    const searchInput = document.getElementById('existingSearch');
+    const countSpan = document.getElementById('existingCount');
+    
+    if (!select) return;
+    
+    select.innerHTML = '';
+    
+    let items = [];
+    if (type === 'rss') {
+      items = rssRetryManager.getExistingItems();
+    } else if (type === 'live') {
+      items = liveRetryManager.getExistingItems();
+    }
+    
+    const retryManager = type === 'rss' ? rssRetryManager : liveRetryManager;
+    
+    items.sort((a, b) => a.name.localeCompare(b.name));
+    
+    items.forEach(item => {
+      const isInQueue = retryManager.existsInQueue(item.id);
+      const option = document.createElement('option');
+      option.value = JSON.stringify(item);
+      option.textContent = item.name + (item.category ? ` (${item.category})` : '');
+      
+      if (isInQueue) {
+        option.textContent += ' ⏳ Already in queue';
+        option.disabled = true;
+        option.style.color = '#888';
+        option.style.fontStyle = 'italic';
+      }
+      
+      select.appendChild(option);
+    });
+    
+    countSpan.textContent = `${items.length} ${type === 'rss' ? 'RSS feeds' : 'live channels'} found`;
+    
+    if (searchInput) searchInput.value = '';
+    
+    this.clearSelectedPreview();
+  }
+  
+  /**
+   * Filter existing items based on search input
+   */
+  filterExistingItems() {
+    const searchTerm = document.getElementById('existingSearch').value.toLowerCase();
+    const select = document.getElementById('existingItemsSelect');
+    const options = select.querySelectorAll('option');
+    
+    let visibleCount = 0;
+    
+    options.forEach(option => {
+      const itemText = option.textContent.toLowerCase();
+      const isVisible = !searchTerm || itemText.includes(searchTerm);
+      
+      option.style.display = isVisible ? '' : 'none';
+      if (isVisible && !option.disabled) visibleCount++;
+    });
+    
+    document.getElementById('existingCount').textContent = 
+      `${visibleCount} items match your search`;
+  }
+  
+  /**
+   * Handle selection of existing item
+   */
+  handleExistingItemSelection(selectedValue) {
+    if (!selectedValue) {
+      this.clearSelectedPreview();
+      return;
+    }
+    
+    try {
+      const item = JSON.parse(selectedValue);
+      this.showSelectedPreview(item);
+    } catch (error) {
+      console.error('Error parsing selected item:', error);
+      this.clearSelectedPreview();
+    }
+  }
+  
+  /**
+   * Show preview of selected item
+   */
+  showSelectedPreview(item) {
+    const preview = document.getElementById('selectedPreview');
+    if (!preview) return;
+    
+    document.getElementById('previewName').textContent = item.name || 'Unnamed';
+    document.getElementById('previewId').textContent = item.id || item.channelId || 'N/A';
+    document.getElementById('previewUrl').textContent = item.url || 'N/A';
+    document.getElementById('previewCategory').textContent = item.category || 'Unknown';
+    
+    preview.style.display = 'block';
+    
+    const selectedInfo = document.getElementById('selectedInfo');
+    if (selectedInfo) {
+      selectedInfo.textContent = `Selected: ${item.name}`;
+      selectedInfo.className = 'selected-info visible';
+    }
+  }
+  
+  /**
+   * Clear selected preview
+   */
+  clearSelectedPreview() {
+    const preview = document.getElementById('selectedPreview');
+    if (preview) preview.style.display = 'none';
+    
+    const selectedInfo = document.getElementById('selectedInfo');
+    if (selectedInfo) {
+      selectedInfo.textContent = '';
+      selectedInfo.className = 'selected-info';
+    }
+  }
+  
+  /**
+   * Show manual add modal
+   */
+  showManualAddModal() {
+    const modal = document.getElementById('manualAddModal');
+    modal.style.display = 'block';
+    
+    this.switchSourceTab('existing');
+    
+    const initialType = document.getElementById('retryTypeSelectExisting').value;
+    this.populateExistingItems(initialType);
+    
+    setTimeout(() => {
+      document.getElementById('existingSearch').focus();
+    }, 100);
+  }
+  
+  /**
+   * Hide manual add modal
+   */
+  hideManualAddModal() {
+    const modal = document.getElementById('manualAddModal');
+    modal.style.display = 'none';
+    
+    document.getElementById('existingSearch').value = '';
+    document.getElementById('existingItemsSelect').innerHTML = '';
+    document.getElementById('manualItemId').value = '';
+    document.getElementById('manualItemName').value = '';
+    document.getElementById('manualRetryReason').value = '';
+    this.clearSelectedPreview();
+  }
+  
+  /**
+   * Add manual retry to queue (updated for both sources)
+   */
+  addManualRetry() {
+    const source = document.querySelector('.source-tab-btn.active').dataset.source;
+    
+    if (source === 'existing') {
+      this.addExistingItemRetry();
+    } else {
+      this.addManualInputRetry();
+    }
+  }
+  
+  /**
+   * Add existing item to retry queue
+   */
+  addExistingItemRetry() {
+    const select = document.getElementById('existingItemsSelect');
+    const selectedValue = select.value;
+    
+    if (!selectedValue) {
+      showNotification('❌ Please select an item from the list', 'error');
+      return;
+    }
+    
+    try {
+      const item = JSON.parse(selectedValue);
+      const type = document.getElementById('retryTypeSelectExisting').value;
+      const reason = document.getElementById('manualRetryReason').value.trim() || 
+                    'Manual update from existing list';
+      
+      let success = false;
+      
+      if (type === 'rss') {
+        success = rssRetryManager.addManually(item.id, item.name, {
+          reason: reason,
+          user: 'manual'
+        });
+      } else if (type === 'live') {
+        const channelId = item.channelId || item.id;
+        success = liveRetryManager.addManually(channelId, item.name, {
+          reason: reason,
+          user: 'manual'
+        });
+      }
+      
+      if (success) {
+        showNotification(`✅ Added "${item.name}" to ${type} retry queue`, 'success');
+        this.hideManualAddModal();
+        this.refresh();
+        
+        this.switchTab('manual');
+      } else {
+        showNotification('❌ Failed to add to retry queue', 'error');
+      }
+      
+    } catch (error) {
+      console.error('Error adding existing item:', error);
+      showNotification('❌ Error processing selected item', 'error');
+    }
+  }
+  
+  /**
+   * Add manual input to retry queue
+   */
+  addManualInputRetry() {
+    const type = document.getElementById('retryTypeSelectManual').value;
+    const id = document.getElementById('manualItemId').value.trim();
+    const name = document.getElementById('manualItemName').value.trim();
+    const reason = document.getElementById('manualRetryReason').value.trim() || 
+                  "Manually added via input";
+    
+    if (!id) {
+      showNotification('❌ Please enter an ID or URL', 'error');
+      return;
+    }
+    
+    if (!name) {
+      showNotification('❌ Please enter a display name', 'error');
+      return;
+    }
+    
+    let success = false;
+    
+    if (type === 'rss') {
+      success = rssRetryManager.addManually(id, name, { 
+        reason: reason,
+        user: 'manual'
+      });
+    } else if (type === 'live') {
+      success = liveRetryManager.addManually(id, name, { 
+        reason: reason,
+        user: 'manual'
+      });
+    }
+    
+    if (success) {
+      showNotification(`✅ Added "${name}" to ${type} retry queue`, 'success');
+      this.hideManualAddModal();
+      this.refresh();
+      
+      this.switchTab('manual');
+    } else {
+      showNotification('❌ Failed to add to retry queue', 'error');
+    }
+  }
+  
+  /**
+   * Quick-add function from channel context menu
+   */
+  quickAddFromChannel(channelData) {
+    const isLive = channelData.url.includes('youtube.com') || 
+                   channelData.url.includes('youtu.be');
+    const type = isLive ? 'live' : 'rss';
+    
+    let identifier;
+    if (isLive) {
+      identifier = extractChannelId(channelData.url) || channelData.url;
+    } else {
+      identifier = channelData.url;
+    }
+    
+    const retryManager = type === 'rss' ? rssRetryManager : liveRetryManager;
+    const existingItem = retryManager.getExistingItem(identifier);
+    
+    if (existingItem) {
+      retryManager.addManually(existingItem.id, existingItem.name, {
+        reason: 'Quick add from channel',
+        user: 'context_menu'
+      });
+      showNotification(`✅ Added "${existingItem.name}" to retry queue`, 'success');
+    } else {
+      retryManager.addManually(identifier, channelData.name || 'Unknown Channel', {
+        reason: 'Quick add from channel',
+        user: 'context_menu'
+      });
+      showNotification(`✅ Added channel to ${type} retry queue`, 'success');
+    }
+    
+    if (this.isOpen) {
+      this.refresh();
+      this.switchTab('manual');
+    }
+  }
+
   /**
    * Open the modal
    */
@@ -7293,23 +7439,20 @@ class UpdateManagerModal {
     if (!modal) {
       this.createModal();
     }
-    
+
     modal.style.display = 'flex';
     this.isOpen = true;
-    
-    // Update content
+
     this.refresh();
-    
-    // Start auto-refresh (every 10 seconds)
+
     this.startAutoRefresh();
-    
-    // Focus first button for accessibility
+
     setTimeout(() => {
       const firstBtn = modal.querySelector('button');
       if (firstBtn) firstBtn.focus();
     }, 100);
   }
-  
+
   /**
    * Close the modal
    */
@@ -7319,73 +7462,71 @@ class UpdateManagerModal {
       modal.style.display = 'none';
       this.isOpen = false;
     }
-    
-    // Stop auto-refresh
+
     this.stopAutoRefresh();
   }
-  
+
   /**
    * Refresh all data in the modal
    */
   refresh() {
+    if (!this.isOpen) return;
+
     this.updateSummaryStats();
     this.updateRSSList();
     this.updateLiveList();
+    this.updateManualList();
     this.updateLastUpdateInfo();
   }
-  
+
   /**
-   * Update summary statistics
+   * Update summary statistics with manual entries
    */
   updateSummaryStats() {
     if (!this.isOpen) return;
-    
-    const rssStats = rssRetryManager.getStats();
-    const liveStats = liveRetryManager.getStats();
-    
-    // Combine stats
-    const totalSuccessful = (rssRetryManager._load() ? Object.keys(rssRetryManager._load()).length : 0) - rssStats.total;
-    const totalPending = rssStats.pending + liveStats.pending;
-    const totalFailed = rssStats.blocked + liveStats.blocked;
-    const totalBlocked = rssStats.ready + liveStats.ready;
-    
-    // Update UI
-    document.getElementById('successfulCount').textContent = totalSuccessful;
-    document.getElementById('pendingCount').textContent = totalPending;
-    document.getElementById('failedCount').textContent = totalFailed;
-    document.getElementById('blockedCount').textContent = totalBlocked;
+
+    const rssStats = rssRetryManager.getEnhancedStats();
+    const liveStats = liveRetryManager.getEnhancedStats();
+
+    const totalEntries = rssStats.total + liveStats.total;
+    const readyEntries = rssStats.ready + liveStats.ready;
+    const manualEntries = rssStats.manual + liveStats.manual;
+    const blockedEntries = rssStats.blocked + liveStats.blocked;
+
+    document.getElementById('totalCount').textContent = totalEntries;
+    document.getElementById('readyCount').textContent = readyEntries;
+    document.getElementById('manualCount').textContent = manualEntries;
+    document.getElementById('blockedCount').textContent = blockedEntries;
   }
-  
+
   /**
-   * Update RSS feed list
+   * Update RSS feed list with manual entries highlighted
    */
   updateRSSList() {
     if (!this.isOpen) return;
-    
+
     const rssList = document.getElementById('rssList');
     if (!rssList) return;
-    
-    const data = rssRetryManager._load();
+
+    const data = rssRetryManager.getAllEntries();
     const feeds = safeJSONParse(localStorage.getItem(LS_KEYS.FEEDS) || '[]', []);
-    
-    if (!data || Object.keys(data).length === 0) {
+
+    if (!data || data.length === 0) {
       rssList.innerHTML = '<div class="empty-state">No RSS feed retries pending</div>';
       return;
     }
-    
+
     let html = '';
-    
-    for (const [url, entry] of Object.entries(data)) {
-      // Find feed name
-      const feed = feeds.find(f => f.url === url);
-      const feedName = feed?.name || url.substring(0, 30) + '...';
-      
-      // Determine status
+
+    data.forEach(entry => {
+      const feed = feeds.find(f => f.url === entry.id);
+      const feedName = entry.name || feed?.name || entry.id.substring(0, 30) + '...';
+
       const now = Date.now();
       let status = 'pending';
       let statusText = 'Pending';
       let statusClass = 'status-pending';
-      
+
       if (entry.retries >= rssRetryManager.maxRetries) {
         status = 'blocked';
         statusText = 'Blocked';
@@ -7395,14 +7536,18 @@ class UpdateManagerModal {
         statusText = 'Ready';
         statusClass = 'status-ready';
       }
-      
-      // Format next retry time
+
       const nextRetryTime = entry.nextRetry ? new Date(entry.nextRetry).toLocaleTimeString() : '-';
       const timeUntil = entry.nextRetry ? Math.max(0, Math.round((entry.nextRetry - now) / 1000 / 60)) : 0;
-      
+
+      const isManual = entry.manuallyAdded;
+      const typeClass = isManual ? 'type-manual' : 'type-auto';
+      const typeIcon = isManual ? '<i class="fas fa-hand-paper" title="Manually added"></i>' : '<i class="fas fa-robot" title="Auto-added"></i>';
+
       html += `
-        <div class="update-item ${statusClass}" data-id="${url}" data-type="rss">
+        <div class="update-item ${statusClass} ${typeClass}" data-id="${entry.id}" data-type="rss" data-status="${status}" data-manual="${isManual}">
           <span class="item-name">${escapeHtml(feedName)}</span>
+          <span class="item-type">${typeIcon}</span>
           <span class="item-status">
             <span class="status-badge ${statusClass}">${statusText}</span>
           </span>
@@ -7412,54 +7557,56 @@ class UpdateManagerModal {
           </span>
           <span class="item-actions">
             ${status === 'ready' ? `
-              <button class="action-btn retry-btn" title="Retry now" data-id="${url}" data-type="rss">
+              <button class="action-btn retry-btn" title="Retry now" data-id="${entry.id}" data-type="rss">
                 <i class="fas fa-redo"></i>
               </button>
             ` : ''}
-            <button class="action-btn remove-btn" title="Remove from retry queue" data-id="${url}" data-type="rss">
+            ${isManual ? `
+              <button class="action-btn edit-btn" title="Edit entry" data-id="${entry.id}" data-type="rss">
+                <i class="fas fa-edit"></i>
+              </button>
+            ` : ''}
+            <button class="action-btn remove-btn" title="Remove from retry queue" data-id="${entry.id}" data-type="rss">
               <i class="fas fa-times"></i>
             </button>
           </span>
         </div>
       `;
-    }
-    
+    });
+
     rssList.innerHTML = html;
-    
-    // Add event listeners for action buttons
+
     this.setupItemActionListeners();
   }
-  
+
   /**
    * Update Live feed list
    */
   updateLiveList() {
     if (!this.isOpen) return;
-    
+
     const liveList = document.getElementById('liveList');
     if (!liveList) return;
-    
-    const data = liveRetryManager._load();
+
+    const data = liveRetryManager.getAllEntries();
     const liveFeeds = safeJSONParse(localStorage.getItem(LS_KEYS.LIVE) || '[]', []);
-    
-    if (!data || Object.keys(data).length === 0) {
+
+    if (!data || data.length === 0) {
       liveList.innerHTML = '<div class="empty-state">No live feed retries pending</div>';
       return;
     }
-    
+
     let html = '';
-    
-    for (const [channelId, entry] of Object.entries(data)) {
-      // Find channel name
-      const feed = liveFeeds.find(f => extractChannelId(f.url) === channelId);
-      const channelName = feed?.name || entry.name || `Channel ${channelId.substring(0, 8)}...`;
-      
-      // Determine status
+
+    data.forEach(entry => {
+      const feed = liveFeeds.find(f => extractChannelId(f.url) === entry.id);
+      const channelName = entry.name || feed?.name || `Channel ${entry.id.substring(0, 8)}...`;
+
       const now = Date.now();
       let status = 'pending';
       let statusText = 'Pending';
       let statusClass = 'status-pending';
-      
+
       if (entry.retries >= liveRetryManager.maxRetries) {
         status = 'blocked';
         statusText = 'Blocked';
@@ -7469,14 +7616,18 @@ class UpdateManagerModal {
         statusText = 'Ready';
         statusClass = 'status-ready';
       }
-      
-      // Format next retry time
+
       const nextRetryTime = entry.nextRetry ? new Date(entry.nextRetry).toLocaleTimeString() : '-';
       const timeUntil = entry.nextRetry ? Math.max(0, Math.round((entry.nextRetry - now) / 1000 / 60)) : 0;
-      
+
+      const isManual = entry.manuallyAdded;
+      const typeClass = isManual ? 'type-manual' : 'type-auto';
+      const typeIcon = isManual ? '<i class="fas fa-hand-paper" title="Manually added"></i>' : '<i class="fas fa-robot" title="Auto-added"></i>';
+
       html += `
-        <div class="update-item ${statusClass}" data-id="${channelId}" data-type="live">
+        <div class="update-item ${statusClass} ${typeClass}" data-id="${entry.id}" data-type="live" data-status="${status}" data-manual="${isManual}">
           <span class="item-name">${escapeHtml(channelName)}</span>
+          <span class="item-type">${typeIcon}</span>
           <span class="item-status">
             <span class="status-badge ${statusClass}">${statusText}</span>
           </span>
@@ -7486,56 +7637,170 @@ class UpdateManagerModal {
           </span>
           <span class="item-actions">
             ${status === 'ready' ? `
-              <button class="action-btn retry-btn" title="Retry now" data-id="${channelId}" data-type="live">
+              <button class="action-btn retry-btn" title="Retry now" data-id="${entry.id}" data-type="live">
                 <i class="fas fa-redo"></i>
               </button>
             ` : ''}
-            <button class="action-btn remove-btn" title="Remove from retry queue" data-id="${channelId}" data-type="live">
+            ${isManual ? `
+              <button class="action-btn edit-btn" title="Edit entry" data-id="${entry.id}" data-type="live">
+                <i class="fas fa-edit"></i>
+              </button>
+            ` : ''}
+            <button class="action-btn remove-btn" title="Remove from retry queue" data-id="${entry.id}" data-type="live">
               <i class="fas fa-times"></i>
             </button>
           </span>
         </div>
       `;
-    }
-    
+    });
+
     liveList.innerHTML = html;
-    
-    // Add event listeners for action buttons
+
     this.setupItemActionListeners();
   }
-  
+
+  /**
+   * Update Manual entries list
+   */
+  updateManualList() {
+    if (!this.isOpen) return;
+
+    const manualList = document.getElementById('manualList');
+    if (!manualList) return;
+
+    const rssManual = rssRetryManager.getManualEntries();
+    const liveManual = liveRetryManager.getManualEntries();
+    const allManual = [...rssManual, ...liveManual];
+
+    if (allManual.length === 0) {
+      manualList.innerHTML = '<div class="empty-state">No manual entries</div>';
+      return;
+    }
+
+    let html = '';
+
+    allManual.forEach(entry => {
+      const type = entry.id.includes('youtube') || entry.id.startsWith('UC') ? 'live' : 'rss';
+      const typeText = type === 'rss' ? 'RSS Feed' : 'Live Channel';
+      const typeIcon = type === 'rss' ? '<i class="fas fa-rss"></i>' : '<i class="fas fa-broadcast-tower"></i>';
+
+      const now = Date.now();
+      let status = 'pending';
+      let statusText = 'Pending';
+      let statusClass = 'status-pending';
+
+      const maxRetries = type === 'rss' ? rssRetryManager.maxRetries : liveRetryManager.maxRetries;
+
+      if (entry.retries >= maxRetries) {
+        status = 'blocked';
+        statusText = 'Blocked';
+        statusClass = 'status-blocked';
+      } else if (now >= entry.nextRetry) {
+        status = 'ready';
+        statusText = 'Ready';
+        statusClass = 'status-ready';
+      }
+
+      const addedTime = entry.addedAt ? new Date(entry.addedAt).toLocaleString() : '-';
+
+      html += `
+        <div class="update-item ${statusClass} type-manual" data-id="${entry.id}" data-type="${type}" data-status="${status}">
+          <span class="item-name">${escapeHtml(entry.name || 'Unnamed')}</span>
+          <span class="item-type">${typeIcon} ${typeText}</span>
+          <span class="item-added-by">${entry.addedBy || 'user'}</span>
+          <span class="item-status">
+            <span class="status-badge ${statusClass}">${statusText}</span>
+          </span>
+          <span class="item-added">${getTimeAgo(entry.addedAt)}</span>
+          <span class="item-actions">
+            ${status === 'ready' ? `
+              <button class="action-btn retry-btn" title="Retry now" data-id="${entry.id}" data-type="${type}">
+                <i class="fas fa-redo"></i>
+              </button>
+            ` : ''}
+            <button class="action-btn edit-btn" title="Edit entry" data-id="${entry.id}" data-type="${type}">
+              <i class="fas fa-edit"></i>
+            </button>
+            <button class="action-btn remove-btn" title="Remove from retry queue" data-id="${entry.id}" data-type="${type}">
+              <i class="fas fa-times"></i>
+            </button>
+          </span>
+        </div>
+      `;
+    });
+
+    manualList.innerHTML = html;
+
+    this.setupItemActionListeners();
+  }
+
+  /**
+   * Filter entries based on search and filter
+   */
+  filterEntries() {
+    const searchTerm = document.getElementById('retrySearch').value.toLowerCase();
+    const filterValue = document.getElementById('retryFilter').value;
+    const currentTab = document.querySelector('.tab-btn.active').dataset.tab;
+
+    let selector = '';
+    if (currentTab === 'rss') selector = '#rssList .update-item';
+    else if (currentTab === 'live') selector = '#liveList .update-item';
+    else if (currentTab === 'manual') selector = '#manualList .update-item';
+    else return;
+
+    const items = document.querySelectorAll(selector);
+
+    items.forEach(item => {
+      const name = item.querySelector('.item-name').textContent.toLowerCase();
+      const status = item.dataset.status;
+      const isManual = item.dataset.manual === 'true';
+
+      let show = true;
+
+      if (searchTerm && !name.includes(searchTerm)) {
+        show = false;
+      }
+
+      if (filterValue !== 'all') {
+        if (filterValue === 'manual') {
+          if (!isManual) show = false;
+        } else if (status !== filterValue) {
+          show = false;
+        }
+      }
+
+      item.style.display = show ? '' : 'none';
+    });
+  }
   /**
    * Setup action button listeners for list items
    */
   setupItemActionListeners() {
     document.addEventListener('click', async (e) => {
-      // Retry button
       if (e.target.classList.contains('retry-btn') || e.target.closest('.retry-btn')) {
         const btn = e.target.classList.contains('retry-btn') ? e.target : e.target.closest('.retry-btn');
         const id = btn.dataset.id;
         const type = btn.dataset.type;
-        
+
         await this.retrySingleItem(id, type);
       }
-      
-      // Remove button
+
       if (e.target.classList.contains('remove-btn') || e.target.closest('.remove-btn')) {
         const btn = e.target.classList.contains('remove-btn') ? e.target : e.target.closest('.remove-btn');
         const id = btn.dataset.id;
         const type = btn.dataset.type;
-        
+
         this.removeSingleItem(id, type);
       }
     });
   }
-  
+
   /**
    * Update last update information
    */
   updateLastUpdateInfo() {
     if (!this.isOpen) return;
-    
-    // Last update time
+
     const lastUpdate = parseInt(localStorage.getItem(CACHE_KEY) || "0");
     const lastUpdateEl = document.getElementById('lastUpdateTime');
     if (lastUpdateEl) {
@@ -7548,15 +7813,14 @@ class UpdateManagerModal {
         lastUpdateEl.className = 'info-value status-on';
       }
     }
-    
-    // Next check time
+
     const nextCheckEl = document.getElementById('nextCheckTime');
     if (nextCheckEl) {
       const updateIntervalHours = appState.get('settings.updateIntervalHours') || 8;
       const cacheExpiryMs = updateIntervalHours * 60 * 60 * 1000;
       const nextCheck = lastUpdate + cacheExpiryMs;
       const now = Date.now();
-      
+
       if (nextCheck > now) {
         const minsRemaining = Math.ceil((nextCheck - now) / 1000 / 60);
         nextCheckEl.textContent = `in ${minsRemaining} min`;
@@ -7564,8 +7828,7 @@ class UpdateManagerModal {
         nextCheckEl.textContent = 'Now';
       }
     }
-    
-    // Auto update status
+
     const autoUpdateStatusEl = document.getElementById('autoUpdateStatus');
     if (autoUpdateStatusEl) {
       const isAutoUpdateEnabled = appState.get('settings.isAutoUpdateEnabled');
@@ -7578,71 +7841,65 @@ class UpdateManagerModal {
       }
     }
   }
-  
+
   /**
    * Retry all ready items
    */
   async retryAllReady() {
     try {
       showNotification('🔄 Retrying all ready items...', 'info');
-      
-      // Retry RSS feeds
+
       if (rssRetryManager.hasReadyRetries()) {
         const processor = new RSSProcessor();
         await processor.loadFeeds({ force: false });
       }
-      
-      // Retry Live feeds
+
       if (liveRetryManager.hasReadyRetries()) {
         const processor = new LiveProcessor();
         await processor.loadFeeds({ force: false });
       }
-      
-      // Update UI
+
       this.refresh();
       showNotification('✅ All ready items retried successfully', 'success');
-      
+
     } catch (error) {
       console.error('Failed to retry all items:', error);
       showNotification('❌ Failed to retry some items', 'error');
     }
   }
-  
+
   /**
    * Retry a single item
    */
   async retrySingleItem(id, type) {
     try {
       if (type === 'rss') {
-        // Find the feed
         const feeds = safeJSONParse(localStorage.getItem(LS_KEYS.FEEDS) || '[]', []);
         const feed = feeds.find(f => f.url === id);
-        
+
         if (feed) {
           const processor = new RSSProcessor();
           await processor._processFeed(feed, new AbortController().signal, { successful: 0, failed: 0, cacheHits: 0 });
         }
       } else if (type === 'live') {
-        // Find the feed
         const feeds = safeJSONParse(localStorage.getItem(LS_KEYS.LIVE) || '[]', []);
         const feed = feeds.find(f => extractChannelId(f.url) === id);
-        
+
         if (feed) {
           const processor = new LiveProcessor();
           await processor._processFeed(feed, new AbortController().signal, { successful: 0, failed: 0, cacheHits: 0 }, { apiQuotaExceeded: false });
         }
       }
-      
-      // Update UI
+
       this.refresh();
       showNotification('✅ Item retried successfully', 'success');
-      
+
     } catch (error) {
       console.error('Failed to retry item:', error);
       showNotification('❌ Failed to retry item', 'error');
     }
   }
-  
+
   /**
    * Remove a single item from retry queue
    */
@@ -7652,12 +7909,11 @@ class UpdateManagerModal {
     } else if (type === 'live') {
       liveRetryManager.recordSuccess(id);
     }
-    
-    // Update UI
+
     this.refresh();
     showNotification('✅ Item removed from retry queue', 'success');
   }
-  
+
   /**
    * Clear all failed items
    */
@@ -7665,16 +7921,14 @@ class UpdateManagerModal {
     if (!confirm('Are you sure you want to clear all failed items? This cannot be undone.')) {
       return;
     }
-    
-    // Cleanup old entries (older than 1 hour)
+
     const rssCleared = rssRetryManager.cleanup(60 * 60 * 1000);
     const liveCleared = liveRetryManager.cleanup(60 * 60 * 1000);
-    
-    // Update UI
+
     this.refresh();
     showNotification(`✅ Cleared ${rssCleared + liveCleared} failed items`, 'success');
   }
-  
+
   /**
    * Force a retry check
    */
@@ -7683,20 +7937,20 @@ class UpdateManagerModal {
     this.refresh();
     showNotification('🔁 Force checking retries...', 'info');
   }
-  
+
   /**
    * Start auto-refresh interval
    */
   startAutoRefresh() {
-    this.stopAutoRefresh(); // Clear any existing interval
-    
+    this.stopAutoRefresh();
+
     this.updateCheckInterval = setInterval(() => {
       if (this.isOpen) {
         this.refresh();
       }
-    }, 10000); // Refresh every 10 seconds
+    }, 10000);
   }
-  
+
   /**
    * Stop auto-refresh interval
    */
@@ -7708,16 +7962,80 @@ class UpdateManagerModal {
   }
 }
 
-// Create global instance
 const updateManager = new UpdateManagerModal();
 
 // ============================================
-// ENHANCED RETRY MANAGER WITH CHANNEL NAME SUPPORT
 // ============================================
 
 class EnhancedRetryManager extends RetryManager {
   constructor(storageKey, options = {}) {
     super(storageKey, options);
+    this.type = storageKey.includes('rss') ? 'rss' : 'live';
+  }
+
+    /**
+   * Get all existing feeds/channels from localStorage
+   * @returns {Array} List of existing items
+   */
+  getExistingItems() {
+    const storageKey = this.type === 'rss' ? LS_KEYS.FEEDS : LS_KEYS.LIVE;
+    const existing = safeJSONParse(localStorage.getItem(storageKey) || '[]', []);
+    
+    return existing.map(item => {
+      if (this.type === 'rss') {
+        return {
+          id: item.url,
+          name: item.name || 'Unnamed RSS Feed',
+          url: item.url,
+          category: item.category || 'Unknown',
+          type: 'rss',
+          ...item
+        };
+      } else {
+        const channelId = extractChannelId(item.url);
+        return {
+          id: channelId || item.url,
+          name: item.name || 'Unnamed Live Channel',
+          url: item.url,
+          channelId: channelId,
+          category: item.category || 'Unknown',
+          type: 'live',
+          ...item
+        };
+      }
+    });
+  }
+
+  /**
+   * Check if item already exists in the retry queue
+   * @param {string} id - Item ID
+   * @returns {boolean}
+   */
+  existsInQueue(id) {
+    const data = this._load();
+    return !!data[id];
+  }
+
+  /**
+   * Get item by URL or channel ID
+   * @param {string} identifier - URL or channel ID
+   * @returns {Object|null} Item data
+   */
+  getExistingItem(identifier) {
+    const items = this.getExistingItems();
+    
+    if (this.type === 'rss') {
+      return items.find(item => 
+        item.url === identifier || 
+        item.id === identifier
+      );
+    } else {
+      return items.find(item => 
+        item.url === identifier || 
+        item.channelId === identifier ||
+        item.id === identifier
+      );
+    }
   }
 
   /**
@@ -7727,17 +8045,74 @@ class EnhancedRetryManager extends RetryManager {
     const data = this._load();
     const entry = this._createRetryEntry(data[id]);
     entry.lastError = error;
-    
-    // Store channel name if provided
+
     if (name) {
       entry.name = name;
     } else if (data[id] && data[id].name) {
-      // Preserve existing name
       entry.name = data[id].name;
     }
-    
+
     data[id] = entry;
     this._save(data);
+  }
+
+  /**
+   * Manually add item to retry queue
+   * @param {string} id - Item ID (URL for RSS, Channel ID for Live)
+   * @param {string} name - Display name
+   * @param {Object} options - Additional options
+   * @returns {boolean} Success status
+   */
+  addManually(id, name, options = {}) {
+    if (!id || !name) {
+      console.error('❌ Manual retry addition requires both ID and name');
+      return false;
+    }
+
+    const data = this._load();
+
+    if (data[id]) {
+      console.log(`⚠️ Item ${id} already in retry queue`);
+      return false;
+    }
+
+    const entry = {
+      retries: 0,
+      nextRetry: Date.now() + (options.initialDelay || this.baseDelay),
+      lastAttempt: Date.now(),
+      lastError: options.reason || "Manually added",
+      name: name,
+      manuallyAdded: true,
+      addedAt: Date.now(),
+      addedBy: options.user || "user"
+    };
+
+    data[id] = entry;
+    this._save(data);
+
+    console.log(`✅ Manually added ${name} (${id}) to retry queue`);
+    return true;
+  }
+
+  /**
+   * Get all manually added items
+   * @returns {Array} List of manually added items
+   */
+  getManualEntries() {
+    const data = this._load();
+    return Object.entries(data)
+      .filter(([_, entry]) => entry.manuallyAdded)
+      .map(([id, entry]) => ({ id, ...entry }));
+  }
+
+  /**
+   * Check if item is manually added
+   * @param {string} id - Item ID
+   * @returns {boolean}
+   */
+  isManuallyAdded(id) {
+    const entry = this.getEntry(id);
+    return !!(entry && entry.manuallyAdded);
   }
 
   /**
@@ -7765,42 +8140,42 @@ class EnhancedRetryManager extends RetryManager {
   findEntriesByName(searchTerm) {
     const entries = this.getAllEntries();
     const term = searchTerm.toLowerCase();
-    
-    return entries.filter(entry => 
+
+    return entries.filter(entry =>
       entry.name && entry.name.toLowerCase().includes(term)
     );
   }
+
+  /**
+   * Get statistics with manual entries breakdown
+   */
+  getEnhancedStats() {
+    const stats = this.getStats();
+    const manualEntries = this.getManualEntries();
+
+    return {
+      ...stats,
+      manual: manualEntries.length,
+      manualEntries: manualEntries
+    };
+  }
 }
 
-
-// Replace existing retry managers with enhanced versions
 const rssRetryManager = new EnhancedRetryManager("rss_retry_queue", RETRY_CONFIG.RSS);
 const liveRetryManager = new EnhancedRetryManager("live_retry_queue", RETRY_CONFIG.LIVE);
 
 // ============================================
-// UPDATE RSS & LIVE PROCESSORS TO USE ENHANCED RETRY MANAGER
 // ============================================
 
-// In RSSProcessor._handleError method, update the recordFailure call:
-// Change: this.retryManager.recordFailure(feed.url, error?.message || "RSS fetch error");
-// To: this.retryManager.recordFailure(feed.url, error?.message || "RSS fetch error", feed.name);
-
-// In LiveProcessor._handleError method, update the recordFailure call:
-// Change: this.retryManager.recordFailure(channelId, error?.message || "Live fetch error");
-// To: this.retryManager.recordFailure(channelId, error?.message || "Live fetch error", feed.name);
-
 // ============================================
-// ADD UPDATE MANAGER BUTTON TO SETTINGS MODAL
 // ============================================
 
 function addUpdateManagerButton() {
-  // Wait for settings modal to be available
   const checkModal = setInterval(() => {
     const settingsModal = document.getElementById('settingsModal');
     if (settingsModal) {
       clearInterval(checkModal);
-      
-      // Add Update Manager button after API Key button
+
       const apiKeySection = document.querySelector('#manageApiKeyBtn')?.closest('.setting-item');
       if (apiKeySection) {
         const updateManagerHtml = `
@@ -7814,10 +8189,9 @@ function addUpdateManagerButton() {
             </button>
           </div>
         `;
-        
+
         apiKeySection.insertAdjacentHTML('afterend', updateManagerHtml);
-        
-        // Add event listener
+
         document.getElementById('openUpdateManager').addEventListener('click', () => {
           hideSettingsModal();
           setTimeout(() => updateManager.open(), 300);
@@ -7827,12 +8201,314 @@ function addUpdateManagerButton() {
   }, 100);
 }
 
-// Call this in your initialize function
-// Add to your initialize() function:
-// addUpdateManagerButton();
+/**
+ * Quick function to manually add channel to retry queue from anywhere
+ * @param {string} channelId - YouTube channel ID or RSS URL
+ * @param {string} name - Channel name
+ * @param {string} type - 'rss' or 'live'
+ * @param {string} reason - Reason for manual retry
+ */
+function addChannelToRetryQueue(channelId, name, type = 'live', reason = 'Manual update requested') {
+  let success = false;
+
+  if (type === 'rss') {
+    success = rssRetryManager.addManually(channelId, name, {
+      reason: reason,
+      user: 'manual'
+    });
+  } else if (type === 'live') {
+    success = liveRetryManager.addManually(channelId, name, {
+      reason: reason,
+      user: 'manual'
+    });
+  }
+
+  if (success) {
+    showNotification(`✅ Added ${name} to retry queue`, 'success');
+
+    if (updateManager.isOpen) {
+      updateManager.refresh();
+    }
+
+    return true;
+  } else {
+    showNotification('❌ Failed to add to retry queue', 'error');
+    return false;
+  }
+}
+
+/**
+ * Add context menu option to channel items for manual retry
+ */
+function addRetryContextMenu() {
+  document.addEventListener('contextmenu', (e) => {
+    const channelItem = e.target.closest('.channel-item');
+    if (!channelItem) return;
+
+    e.preventDefault();
+
+    const channelData = {
+      url: channelItem.dataset.url,
+      name: channelItem.dataset.name,
+      isLive: channelItem.dataset.isLive === 'true'
+    };
+
+    const isYouTube = channelData.url.includes('youtube.com') || channelData.url.includes('youtu.be');
+
+    if (isYouTube) {
+      const videoId = extractYouTubeID(channelData.url);
+      if (videoId) {
+        showContextMenu(e, channelData, videoId);
+      }
+    }
+  }, true);
+}
+
+/**
+ * Show context menu for channel retry options
+ */
+function showContextMenu(e, channelData, videoId) {
+  const existing = document.getElementById('retryContextMenu');
+  if (existing) existing.remove();
+
+  const menu = document.createElement('div');
+  menu.id = 'retryContextMenu';
+  menu.className = 'context-menu';
+  menu.style.cssText = `
+    position: fixed;
+    top: ${e.clientY}px;
+    left: ${e.clientX}px;
+    background: #2d2d2d;
+    border-radius: 8px;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+    z-index: 10000;
+    min-width: 200px;
+    border: 1px solid #444;
+  `;
+
+  menu.innerHTML = `
+    <div class="context-menu-header">
+      <strong>${channelData.name}</strong>
+    </div>
+    <div class="context-menu-item" data-action="retry-live">
+      <i class="fas fa-broadcast-tower"></i> Add to Live Retry Queue
+    </div>
+    <div class="context-menu-item" data-action="open-manager">
+      <i class="fas fa-external-link-alt"></i> Open Update Manager
+    </div>
+    <div class="context-menu-divider"></div>
+    <div class="context-menu-item" data-action="copy-id">
+      <i class="fas fa-copy"></i> Copy Channel ID
+    </div>
+  `;
+
+  document.body.appendChild(menu);
+
+  menu.addEventListener('click', (menuEvent) => {
+    const action = menuEvent.target.closest('[data-action]')?.dataset.action;
+
+    if (action === 'retry-live') {
+      const channelId = extractChannelId(channelData.url);
+      if (channelId) {
+        addChannelToRetryQueue(channelId, channelData.name, 'live', 'Manual retry from context menu');
+      } else {
+        showNotification('❌ Could not extract channel ID', 'error');
+      }
+    } else if (action === 'open-manager') {
+      updateManager.open();
+      updateManager.switchTab('manual');
+    } else if (action === 'copy-id') {
+      const channelId = extractChannelId(channelData.url);
+      if (channelId) {
+        navigator.clipboard.writeText(channelId);
+        showNotification('✅ Channel ID copied to clipboard', 'success');
+      }
+    }
+
+    menu.remove();
+  });
+
+  setTimeout(() => {
+    const closeHandler = (clickEvent) => {
+      if (!menu.contains(clickEvent.target)) {
+        menu.remove();
+        document.removeEventListener('click', closeHandler);
+      }
+    };
+    document.addEventListener('click', closeHandler);
+  }, 100);
+}
+
+/**
+ * Add quick retry buttons to channel items
+ */
+function addQuickRetryButtons() {
+  const observer = new MutationObserver((mutations) => {
+    mutations.forEach((mutation) => {
+      mutation.addedNodes.forEach((node) => {
+        if (node.nodeType === 1 && node.classList && node.classList.contains('channel-item')) {
+          addQuickRetryButton(node);
+        }
+      });
+    });
+  });
+
+  observer.observe(document.body, {
+    childList: true,
+    subtree: true
+  });
+
+  document.querySelectorAll('.channel-item').forEach(addQuickRetryButton);
+}
+
+/**
+ * Add quick retry button to a channel item
+ */
+function addQuickRetryButton(item) {
+  if (item.querySelector('.quick-retry-btn')) return;
+
+  const channelData = {
+    url: item.dataset.url || '',
+    name: item.dataset.name || 'Unknown',
+    isLive: item.dataset.isLive === 'true',
+    category: item.dataset.category || 'Unknown'
+  };
+
+  const isYouTube = channelData.url.includes('youtube.com') || 
+                    channelData.url.includes('youtu.be');
+  const type = isYouTube ? 'live' : 'rss';
+
+  if ((type === 'live' && extractChannelId(channelData.url)) || type === 'rss') {
+    const button = document.createElement('button');
+    button.className = 'quick-retry-btn';
+    button.title = `Add ${channelData.name} to retry queue`;
+    button.innerHTML = '<i class="fas fa-redo"></i>';
+    
+    button.addEventListener('click', (e) => {
+      e.stopPropagation();
+      e.preventDefault();
+      
+      const identifier = type === 'live' ? 
+        extractChannelId(channelData.url) : channelData.url;
+      
+      const retryManager = type === 'rss' ? rssRetryManager : liveRetryManager;
+      
+      if (retryManager.existsInQueue(identifier)) {
+        showNotification('⚠️ This item is already in the retry queue', 'warning');
+        return;
+      }
+      
+      const success = retryManager.addManually(identifier, channelData.name, {
+        reason: 'Quick add from channel item',
+        user: 'quick_button'
+      });
+      
+      if (success) {
+        showNotification(`✅ Added "${channelData.name}" to retry queue`, 'success');
+        
+        button.innerHTML = '<i class="fas fa-check"></i>';
+        button.style.background = '#4CAF50';
+        
+        setTimeout(() => {
+          button.innerHTML = '<i class="fas fa-redo"></i>';
+          button.style.background = '';
+        }, 2000);
+        
+        if (!updateManager.isOpen) {
+          updateManager.open();
+          updateManager.switchTab('manual');
+        }
+      }
+    });
+    
+    item.appendChild(button);
+  }
+}
+
+/**
+ * Show context menu for channel retry options
+ */
+function showContextMenu(e, channelData, videoId) {
+  const existing = document.getElementById('retryContextMenu');
+  if (existing) existing.remove();
+
+  const menu = document.createElement('div');
+  menu.id = 'retryContextMenu';
+  menu.className = 'context-menu';
+  menu.style.cssText = `
+    position: fixed;
+    top: ${e.clientY}px;
+    left: ${e.clientX}px;
+    background: #2d2d2d;
+    border-radius: 8px;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+    z-index: 10000;
+    min-width: 220px;
+    border: 1px solid #444;
+  `;
+
+  const isYouTube = channelData.url.includes('youtube.com') || 
+                    channelData.url.includes('youtu.be');
+  const type = isYouTube ? 'live' : 'rss';
+
+  menu.innerHTML = `
+    <div class="context-menu-header">
+      <strong>${channelData.name}</strong>
+      <small>(${type.toUpperCase()})</small>
+    </div>
+    <div class="context-menu-item" data-action="quick-retry">
+      <i class="fas fa-redo"></i> Quick Add to Retry Queue
+    </div>
+    <div class="context-menu-item" data-action="open-manager">
+      <i class="fas fa-external-link-alt"></i> Open Update Manager
+    </div>
+    <div class="context-menu-divider"></div>
+    <div class="context-menu-item" data-action="copy-url">
+      <i class="fas fa-copy"></i> Copy URL
+    </div>
+    ${isYouTube ? `
+      <div class="context-menu-item" data-action="copy-id">
+        <i class="fas fa-id-card"></i> Copy Channel ID
+      </div>
+    ` : ''}
+  `;
+
+  document.body.appendChild(menu);
+
+  menu.addEventListener('click', (menuEvent) => {
+    const action = menuEvent.target.closest('[data-action]')?.dataset.action;
+
+    if (action === 'quick-retry') {
+      updateManager.quickAddFromChannel(channelData);
+    } else if (action === 'open-manager') {
+      updateManager.open();
+      updateManager.switchTab('manual');
+    } else if (action === 'copy-url') {
+      navigator.clipboard.writeText(channelData.url);
+      showNotification('✅ URL copied to clipboard', 'success');
+    } else if (action === 'copy-id' && isYouTube) {
+      const channelId = extractChannelId(channelData.url);
+      if (channelId) {
+        navigator.clipboard.writeText(channelId);
+        showNotification('✅ Channel ID copied to clipboard', 'success');
+      }
+    }
+
+    menu.remove();
+  });
+
+  setTimeout(() => {
+    const closeHandler = (clickEvent) => {
+      if (!menu.contains(clickEvent.target)) {
+        menu.remove();
+        document.removeEventListener('click', closeHandler);
+      }
+    };
+    document.addEventListener('click', closeHandler);
+  }, 100);
+}
 
 // ============================================
-// ADD CSS STYLES FOR UPDATE MANAGER
 // ============================================
 
 function addUpdateManagerStyles() {
@@ -8090,11 +8766,10 @@ function addUpdateManagerStyles() {
       font-style: italic;
     }
   `;
-  
+
   document.head.appendChild(style);
 }
 
-// Add styles when DOM is ready
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', addUpdateManagerStyles);
 } else {
@@ -8102,26 +8777,24 @@ if (document.readyState === 'loading') {
 }
 
 // ============================================
-// EXPORT UPDATE MANAGER TO GLOBAL SCOPE
 // ============================================
 
 if (typeof window.__iptv !== 'undefined') {
+
   window.__iptv.updateManager = updateManager;
+  window.__iptv.addChannelToRetryQueue = addChannelToRetryQueue;
   window.__iptv.rssRetryManager = rssRetryManager;
   window.__iptv.liveRetryManager = liveRetryManager;
+  window.__iptv.addQuickRetryButtons = addQuickRetryButtons;
 }
 
 // ============================================
-// EXPORT GLOBAL FUNCTIONS
 // ============================================
 
-// Build the namespace object
 const __iptv = {
-  // state / modules
   appState,
   channelLoader,
 
-  // UI / actions
   selectChannel,
   handleSortChange,
   showSettingsModal,
@@ -8142,16 +8815,13 @@ const __iptv = {
   showFullscreenPrompt,
   toggleFullscreen,
 
-  // rendering / helpers
   renderChannels,
   getFavorites,
   getRecentlyWatched,
 
-  // debugging / utilities
   getErrorLog: () => Array.isArray(errorLog) ? [...errorLog] : [],
   updateUserAgentDisplay,
   fullscreenPrompt
 };
 
-// Attach to global scope
 window.__iptv = Object.freeze(__iptv);
