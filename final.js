@@ -2476,7 +2476,7 @@ function createStreamConfig(url, opts = {}) {
   if (isYouTube) {
     return {
       type: "youtube",
-      techOrder: ["youtube"],
+      techOrder: ["youtube", "html5"],
       source: { src: url, type: "video/youtube" },
     };
   }
@@ -2565,13 +2565,11 @@ function buildPlayerOptions(streamConfig, metadata) {
       playerVars: {
         autoplay: 1,
         playsinline: 1,
-        controls: 0,
-        mute: 0,
+        controls: 1,
+        mute: 1,
         rel: 0,
+        enablejsapi: 1,
         modestbranding: 1
-        /*         iv_load_policy: 3,
-                enablejsapi: 1,
-                origin: (window && window.location && window.location.origin) ? window.location.origin : undefined */
       }
     };
   }
@@ -6418,10 +6416,10 @@ window.addEventListener('unhandledrejection', (ev) => {
 const __iptv = {
   appState,
   get channelLoader() { return channelLoader; }, // Getter to ensure it's available
-  
+
   // Channel functions
   selectChannel,
-  
+
   // UI functions
   handleSortChange,
   showSettingsModal,
@@ -6435,21 +6433,21 @@ const __iptv = {
   getFavorites,
   getRecentlyWatched,
   updateUserAgentDisplay,
-  
+
   // Settings functions
   toggleAutoUpdate,
   changeUpdateInterval,
   manualUpdate,
   showAPIKeyModal,
   hideAPIKeyModal,
-  
+
   // Storage functions
   exportAllData,
   importBackupData,
   triggerImportDialog,
   clearOldStorageData,
   updateStorageDisplay,
-  
+
   // Debug functions
   getErrorLog: () => Array.isArray(errorLog) ? [...errorLog] : [],
 
