@@ -166,14 +166,6 @@
             </button>
           </div>
 
-          <!-- Add this in your settings modal where you want network info to appear -->
-          <div class="setting-item">
-            <h3><i class="fas fa-globe"></i> Network Status</h3>
-            <div id="networkInfoDisplay" class="network-info">
-              <!-- Dynamic content will be inserted here -->
-            </div>
-          </div>
-
           <!-- User Agent Settings -->
           <div class="setting-item" id="userAgentSection">
             <h3><i class="fas fa-user-secret"></i> User Agent Override</h3>
@@ -289,14 +281,17 @@
 
 
     <!-- API Key Modal -->
-    <!-- Replace your API Key Modal with this -->
-    <div id="apiKeyModal" class="settings-modal" style="display: none;">
+    <div id="apiKeyModal" class="settings-modal">
       <div class="settings-content">
-        <h2>🔑 YouTube API Configuration</h2>
+        <!-- Header -->
+        <div class="settings-header">
+          <h2>🔑 YouTube API Configuration</h2>
+          <button id="closeApiKeyModal" class="close-btn">✕</button>
+        </div>
 
+        <!-- API Key Input -->
         <div class="setting-item">
           <label for="apiKeyInput">API Key</label>
-
           <div class="input-button-wrapper">
             <input type="password" id="apiKeyInput" class="api-key-input" placeholder="Enter your YouTube API key"
               autocomplete="off">
@@ -312,40 +307,37 @@
             </a>
           </p>
 
-          <p class="setting-description text-yellow-300">
+          <div class="setting-warning">
             ⚠️ Warning: This key is stored in your browser.
             For security, create a YouTube API key restricted to your domain or app in Google Cloud Console.
-          </p>
+          </div>
         </div>
 
+        <!-- Remember Key -->
         <div class="setting-item">
           <label class="checkbox-label">
             <input type="checkbox" id="rememberKey" checked>
             <span>Remember API key (stored locally)</span>
           </label>
           <p class="setting-description">
-            Your API key will be stored securely in your browser's local storage
+            Your API key will be stored securely in your browser's local storage.
           </p>
         </div>
 
-        <div class="api-key-actions">
-          <button id="submitApiKey" class="btn-primary">
-            ✓ Save & Continue
-          </button>
-          <button id="skipApiKey" class="btn-secondary">
-            Skip for now
-          </button>
+        <!-- Actions -->
+        <div class="api-key-actions button-group">
+          <button id="submitApiKey" class="btn-primary">✓ Save & Continue</button>
+          <button id="skipApiKey" class="btn-secondary">Skip for now</button>
         </div>
 
-        <div class="api-key-info">
-          <p><strong>Why do we need this?</strong></p>
+        <!-- Info Box -->
+        <div class="api-key-info setting-info-box">
+          <strong>Why do we need this?</strong>
           <p>The YouTube API key allows us to detect which channels are currently live streaming.</p>
         </div>
-
-        <!-- Close Button -->
-        <button id="closeApiKeyModal" class="btn-secondary">Close</button>
       </div>
     </div>
+
 
 
 
@@ -383,10 +375,18 @@
   <script src="https://cdn.jsdelivr.net/npm/videojs-youtube@3.0.1/dist/Youtube.min.js"></script>
   <script src="https://unpkg.com/@videojs/http-streaming@3.17.2/dist/videojs-http-streaming.min.js"></script>
 
+
+  <script type="module" src="./app-state-manager.js"></script>
+  <script type="module" src="./network-monitor.js"></script>
+  <script type="module" src="./lru-cache.js"></script>
+
+  <script src="./utils/user-agent-manager.js"></script>
+
   <script src="final.js"></script>
 
   <script src="update-manager.js"></script>
-  
+
+
 </body>
 
 </html>

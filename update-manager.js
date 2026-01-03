@@ -1,4 +1,37 @@
-// update-manager.js - Update Manager System
+// update-manager.js - Update Manager System - Optimized
+
+// ============================================
+// Utility Functions
+// ============================================
+
+/**
+ * Debounce function for performance optimization
+ */
+function debounce(func, wait) {
+  let timeout;
+  return function executedFunction(...args) {
+    const later = () => {
+      clearTimeout(timeout);
+      func(...args);
+    };
+    clearTimeout(timeout);
+    timeout = setTimeout(later, wait);
+  };
+}
+
+/**
+ * Throttle function for performance optimization
+ */
+function throttle(func, limit) {
+  let inThrottle;
+  return function(...args) {
+    if (!inThrottle) {
+      func.apply(this, args);
+      inThrottle = true;
+      setTimeout(() => inThrottle = false, limit);
+    }
+  };
+}
 
 // ============================================
 // Update Manager Components
@@ -23,17 +56,41 @@ class EnhancedRetryManager extends RetryManager {
   constructor(storageKey, options = {}) {
     super(storageKey, options);
     this.type = storageKey.includes('rss') ? 'rss' : 'live';
+    this._cache = null;
+    this._cacheTimestamp = 0;
+    this._cacheDuration = 5000; // Cache for 5 seconds
   }
 
   /**
-   * Get all existing feeds/channels from localStorage
+   * Clear cache when data changes
+   */
+  _clearCache() {
+    this._cache = null;
+    this._cacheTimestamp = 0;
+  }
+
+  /**
+   * Override _save to clear cache
+   */
+  _save(data) {
+    super._save(data);
+    this._clearCache();
+  }
+
+  /**
+   * Get all existing feeds/channels from localStorage with caching
    * @returns {Array} List of existing items
    */
   getExistingItems() {
+    const now = Date.now();
+    if (this._cache && (now - this._cacheTimestamp) < this._cacheDuration) {
+      return this._cache;
+    }
+
     const storageKey = this.type === 'rss' ? LS_KEYS.FEEDS : LS_KEYS.LIVE;
     const existing = safeJSONParse(localStorage.getItem(storageKey) || '[]', []);
     
-    return existing.map(item => {
+    const items = existing.map(item => {
       if (this.type === 'rss') {
         return {
           id: item.url,
@@ -56,6 +113,10 @@ class EnhancedRetryManager extends RetryManager {
         };
       }
     });
+
+    this._cache = items;
+    this._cacheTimestamp = now;
+    return items;
   }
 
   /**
@@ -147,6 +208,47 @@ class EnhancedRetryManager extends RetryManager {
   }
 
   /**
+   * Update existing entry
+   * @param {string} id - Item ID
+   * @param {Object} updates - Fields to update
+   * @returns {boolean} Success status
+   */
+  updateEntry(id, updates) {
+    const data = this._load();
+    
+    if (!data[id]) {
+      console.error(`❌ Entry ${id} not found`);
+      return false;
+    }
+
+    data[id] = { ...data[id], ...updates };
+    this._save(data);
+    
+    console.log(`✅ Updated entry ${id}`);
+    return true;
+  }
+
+  /**
+   * Remove entry from retry queue
+   * @param {string} id - Item ID
+   * @returns {boolean} Success status
+   */
+  remove(id) {
+    const data = this._load();
+    
+    if (!data[id]) {
+      console.error(`❌ Entry ${id} not found`);
+      return false;
+    }
+
+    delete data[id];
+    this._save(data);
+    
+    console.log(`✅ Removed entry ${id}`);
+    return true;
+  }
+
+  /**
    * Get all manually added items
    * @returns {Array} List of manually added items
    */
@@ -222,6 +324,12 @@ class UpdateManagerModal {
     this.modalId = 'updateManagerModal';
     this.isOpen = false;
     this.updateCheckInterval = null;
+    this.currentTab = 'all';
+    this.currentSource = 'existing';
+    
+    // Debounced methods for performance
+    this.debouncedSearch = debounce(this.handleSearch.bind(this), 300);
+    this.debouncedRefresh = debounce(this.refresh.bind(this), 500);
     
     this.createModal();
     this.setupEventListeners();
@@ -252,8 +360,8 @@ class UpdateManagerModal {
           <button id="addManualRetryBtn" class="btn-primary" title="Add Manual Retry">
             <i class="fas fa-plus-circle"></i> Add Manual Retry
           </button>
-          <button id="forceCheckBtn" class="btn-secondary">
-            <i class="fas fa-sync"></i> Force Check
+          <button id="clearAllBlockedBtn" class="btn-danger">
+            <i class="fas fa-trash"></i> Clear Blocked
           </button>
         </div>
         
@@ -299,177 +407,124 @@ class UpdateManagerModal {
             </div>
           </div>
         </div>
-
-        <!-- Manual Add Modal (Enhanced) -->
-        <div id="manualAddModal" class="manual-add-modal" style="display: none;">
-          <div class="manual-add-content">
-            <div class="manual-add-header">
-              <h3><i class="fas fa-plus-circle"></i> Add Manual Retry</h3>
-              <button class="close-btn" id="closeManualAdd">
-                <i class="fas fa-times"></i>
-              </button>
-            </div>
-        
-
-            <!-- Existing Data Selection -->
-            <div id="existingSource" class="source-content active">
-              <div class="form-group">
-                <label for="retryTypeSelectExisting">Retry Type</label>
-                <select id="retryTypeSelectExisting" class="setting-select">
-                  <option value="rss">RSS Feed</option>
-                  <option value="live">Live Channel</option>
-                </select>
-              </div>
-
-              <div class="form-group">
-                <label for="existingItemsSelect">Select Feed/Channel</label>
-                <div class="select-with-search">
-                  <div class="search-wrapper">
-                    <input type="text" id="existingSearch" class="search-input" 
-                           placeholder="Search existing items..." autocomplete="off">
-                    <i class="fas fa-search"></i>
-                  </div>
-                  <select id="existingItemsSelect" class="setting-select" size="6">
-                    <!-- Dynamically populated -->
-                  </select>
-                </div>
-                <div class="existing-stats">
-                  <span id="existingCount">0 items found</span>
-                  <span id="selectedInfo" class="selected-info"></span>
-                </div>
-              </div>
-              
-              <div class="selected-item-preview" id="selectedPreview" style="display: none;">
-                <div class="preview-header">
-                  <strong>Selected Item:</strong>
-                </div>
-                <div class="preview-details">
-                  <div class="preview-row">
-                    <span class="preview-label">Name:</span>
-                    <span class="preview-value" id="previewName"></span>
-                  </div>
-                  <div class="preview-row">
-                    <span class="preview-label">ID:</span>
-                    <span class="preview-value" id="previewId"></span>
-                  </div>
-                  <div class="preview-row">
-                    <span class="preview-label">URL:</span>
-                    <span class="preview-value preview-url" id="previewUrl"></span>
-                  </div>
-                  <div class="preview-row">
-                    <span class="preview-label">Category:</span>
-                    <span class="preview-value" id="previewCategory"></span>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <!-- Common Fields -->
-            <div class="form-group">
-              <label for="manualRetryReason">Reason (Optional)</label>
-              <input type="text" id="manualRetryReason" class="setting-input" 
-                     placeholder="e.g., 'Manual update requested'">
-            </div>
-            
-            <div class="button-group">
-              <button id="submitManualRetry" class="btn-primary">
-                <i class="fas fa-check"></i> Add to Queue
-              </button>
-              <button id="cancelManualRetry" class="btn-secondary">
-                <i class="fas fa-times"></i> Cancel
-              </button>
-            </div>
-          </div>
-        </div>
         
         <!-- Tabs -->
         <div class="update-tabs">
-          <button class="tab-btn active" data-tab="rss">
-            <i class="fas fa-rss"></i> RSS Feeds
+          <button class="tab-btn active" data-tab="all">
+            <i class="fas fa-th-list"></i> All Updates
           </button>
-          <button class="tab-btn" data-tab="live">
-            <i class="fas fa-broadcast-tower"></i> Live Feeds
+          <button class="tab-btn" data-tab="ready">
+            <i class="fas fa-play-circle"></i> Ready
           </button>
           <button class="tab-btn" data-tab="manual">
-            <i class="fas fa-hand-paper"></i> Manual Entries
+            <i class="fas fa-hand-paper"></i> Manual
+          </button>
+          <button class="tab-btn" data-tab="blocked">
+            <i class="fas fa-ban"></i> Blocked
           </button>
         </div>
         
-        <!-- Content Areas -->
+        <!-- Content Area -->
         <div class="update-content">
-          <!-- RSS Tab Content -->
-          <div id="rssTab" class="tab-content active">
-            <div class="update-list-header">
-              <span>Feed Name</span>
-              <span>Type</span>
-              <span>Status</span>
-              <span>Retries</span>
-              <span>Next Retry</span>
-              <span>Actions</span>
-            </div>
-            <div id="rssList" class="update-list">
-              <!-- Dynamic content -->
-            </div>
-          </div>
-          
-          <!-- Live Tab Content -->
-          <div id="liveTab" class="tab-content">
-            <div class="update-list-header">
-              <span>Channel Name</span>
-              <span>Type</span>
-              <span>Status</span>
-              <span>Retries</span>
-              <span>Next Retry</span>
-              <span>Actions</span>
-            </div>
-            <div id="liveList" class="update-list">
-              <!-- Dynamic content -->
-            </div>
-          </div>
-          
-          <!-- Manual Entries Tab -->
-          <div id="manualTab" class="tab-content">
-            <div class="update-list-header">
-              <span>Name</span>
-              <span>Type</span>
-              <span>Added By</span>
-              <span>Status</span>
-              <span>Added</span>
-              <span>Actions</span>
-            </div>
-            <div id="manualList" class="update-list">
-              <!-- Dynamic content -->
-            </div>
-          </div>
+          <div id="allTab" class="tab-content active"></div>
+          <div id="readyTab" class="tab-content"></div>
+          <div id="manualTab" class="tab-content"></div>
+          <div id="blockedTab" class="tab-content"></div>
         </div>
         
         <!-- Last Update Info -->
         <div class="last-update-info">
           <div class="info-item">
-            <span class="info-label">Last Update:</span>
-            <span id="lastUpdateTime" class="info-value">Never</span>
+            <span class="info-label">Last Check</span>
+            <span class="info-value" id="lastCheckTime">Never</span>
           </div>
           <div class="info-item">
-            <span class="info-label">Next Check:</span>
-            <span id="nextCheckTime" class="info-value">-</span>
+            <span class="info-label">Auto-Check</span>
+            <span class="info-value" id="autoCheckStatus">-</span>
           </div>
           <div class="info-item">
-            <span class="info-label">Auto Update:</span>
-            <span id="autoUpdateStatus" class="info-value status-on">ON</span>
+            <span class="info-label">Next Check</span>
+            <span class="info-value" id="nextCheckTime">-</span>
           </div>
         </div>
-        
-        <!-- Footer -->
-        <div class="update-footer">
-          <button id="clearFailedBtn" class="btn-warning">
-            <i class="fas fa-trash"></i> Clear Failed
-          </button>
-          <button id="refreshUpdateManager" class="btn-secondary">
-            <i class="fas fa-redo"></i> Refresh
-          </button>
-          <button id="closeUpdateManagerFooter" class="btn-primary">
-            Close
-          </button>
+      </div>
+      
+      <!-- Manual Add Modal (Hidden by default) -->
+      <div id="manualAddModal" class="manual-add-modal" style="display: none;">
+        <div class="manual-add-content">
+          <div class="manual-add-header">
+            <h3><i class="fas fa-plus-circle"></i> Add Manual Retry</h3>
+            <button class="close-btn" id="closeManualAdd">
+              <i class="fas fa-times"></i>
+            </button>
+          </div>
+          
+          <!-- Existing Items Selection -->
+          <div id="existingSource" class="source-content active">
+            <div class="form-group">
+              <label>Type</label>
+              <select id="existingType" class="setting-select">
+                <option value="live">Live Channels</option>
+                <option value="rss">RSS Feeds</option>
+              </select>
+            </div>
+            
+            <div class="select-with-search">
+              <div class="search-wrapper">
+                <input 
+                  type="text" 
+                  id="existingSearch" 
+                  class="search-input" 
+                  placeholder="Search by name..."
+                >
+                <i class="fas fa-search"></i>
+              </div>
+              
+              <div class="form-group">
+                <label>Select Item</label>
+                <select id="existingSelect" class="setting-select" size="8">
+                  <option value="">Loading...</option>
+                </select>
+              </div>
+              
+              <div class="existing-stats">
+                <span id="existingItemCount">0 items available</span>
+                <span id="selectedInfo" class="selected-info"></span>
+              </div>
+            </div>
+            
+            <div id="selectedPreview" class="selected-item-preview" style="display: none;">
+              <div class="preview-header"><strong>Selected Item:</strong></div>
+              <div class="preview-details">
+                <div class="preview-row">
+                  <span class="preview-label">Name:</span>
+                  <span id="previewName" class="preview-value">-</span>
+                </div>
+                <div class="preview-row">
+                  <span class="preview-label">Type:</span>
+                  <span id="previewType" class="preview-value">-</span>
+                </div>
+                <div class="preview-row">
+                  <span class="preview-label">ID:</span>
+                  <span id="previewId" class="preview-value">-</span>
+                </div>
+                <div class="preview-row">
+                  <span class="preview-label">URL:</span>
+                  <span id="previewUrl" class="preview-url">-</span>
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          <!-- Action Buttons -->
+          <div class="button-group">
+            <button id="confirmAddBtn" class="btn-primary">
+              <i class="fas fa-check"></i> Add to Queue
+            </button>
+            <button id="cancelAddBtn" class="btn-secondary">
+              <i class="fas fa-times"></i> Cancel
+            </button>
+          </div>
         </div>
       </div>
     `;
@@ -478,299 +533,106 @@ class UpdateManagerModal {
   }
 
   /**
-   * Setup event listeners including manual add
+   * Setup all event listeners using event delegation where possible
    */
   setupEventListeners() {
-    document.addEventListener('click', (e) => {
-      const tabBtn = e.target.closest('.tab-btn');
-      if (tabBtn && tabBtn.dataset.tab) {
-        this.switchTab(tabBtn.dataset.tab);
+    const modal = document.getElementById(this.modalId);
+    if (!modal) return;
+
+    // Use event delegation for better performance
+    modal.addEventListener('click', (e) => {
+      const target = e.target;
+      const button = target.closest('button');
+      
+      if (!button) return;
+
+      // Close buttons
+      if (button.id === 'closeUpdateManager') {
+        this.close();
+      }
+      // Add manual retry button
+      else if (button.id === 'addManualRetryBtn') {
+        this.showManualAddModal();
+      }
+      // Clear all blocked button
+      else if (button.id === 'clearAllBlockedBtn') {
+        this.clearAllBlocked();
+      }
+      // Tab buttons
+      else if (button.classList.contains('tab-btn')) {
+        this.switchTab(button.dataset.tab);
+      }
+      // Retry button
+      else if (button.classList.contains('retry-btn')) {
+        this.handleRetry(button);
+      }
+      // Edit button - FIXED
+      else if (button.classList.contains('edit-btn')) {
+        this.handleEdit(button);
+      }
+      // Remove button
+      else if (button.classList.contains('remove-btn')) {
+        this.handleRemove(button);
       }
     });
-    
-    document.addEventListener('click', (e) => {
-      if (e.target.id === 'closeUpdateManager' ||
-        e.target.closest('#closeUpdateManager') ||
-        e.target.id === 'closeUpdateManagerFooter') {
+
+    // Manual add modal event listeners
+    this.setupManualAddListeners();
+
+    // Close modal on outside click
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) {
         this.close();
       }
     });
 
-    // Only one source tab remains, so we can simplify this
-    document.addEventListener('click', (e) => {
-      if (e.target.id === 'closeManualAdd' || e.target.closest('#closeManualAdd')) {
-        this.hideManualAddModal();
-      }
-    });
-    
-    document.addEventListener('change', (e) => {
-      if (e.target.id === 'retryTypeSelectExisting') {
-        this.populateExistingItems(e.target.value);
-      }
-    });
-    
-    document.addEventListener('change', (e) => {
-      if (e.target.id === 'existingItemsSelect') {
-        this.handleExistingItemSelection(e.target.value);
-      }
-    });
-
-    document.addEventListener('click', async (e) => {
-      if (e.target.id === 'retryAllBtn' || e.target.closest('#retryAllBtn')) {
-        await this.retryAllReady();
-      } else if (e.target.id === 'forceCheckBtn' || e.target.closest('#forceCheckBtn')) {
-        this.forceRetryCheck();
-      } else if (e.target.id === 'refreshUpdateManager' || e.target.closest('#refreshUpdateManager')) {
-        this.refresh();
-      } else if (e.target.id === 'addManualRetryBtn' || e.target.closest('#addManualRetryBtn')) {
-        this.showManualAddModal();
-      } else if (e.target.id === 'clearFailedBtn' || e.target.closest('#clearFailedBtn')) {
-        this.clearFailedItems();
-      }
-    });
-
-    document.addEventListener('click', (e) => {
-      if (e.target.id === 'submitManualRetry' || e.target.closest('#submitManualRetry')) {
-        this.addManualRetry();
-      } else if (e.target.id === 'cancelManualRetry' || e.target.closest('#cancelManualRetry')) {
-        this.hideManualAddModal();
-      }
-    });
-
-    const searchInput = document.getElementById('existingSearch');
-    if (searchInput) {
-      searchInput.addEventListener('input', () => {
-        this.filterExistingItems();
-      });
-    }
-
+    // Keyboard shortcuts
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape' && this.isOpen) {
-        if (document.getElementById('manualAddModal').style.display === 'block') {
-          this.hideManualAddModal();
-        } else {
-          this.close();
-        }
-      }
-    });
-
-    document.addEventListener('click', (e) => {
-      const modal = document.getElementById(this.modalId);
-      if (e.target === modal && this.isOpen) {
         this.close();
       }
+    });
+  }
 
-      const manualModal = document.getElementById('manualAddModal');
-      if (e.target === manualModal && manualModal.style.display === 'block') {
+  /**
+   * Setup manual add modal event listeners
+   */
+  setupManualAddListeners() {
+    const manualModal = document.getElementById('manualAddModal');
+    if (!manualModal) return;
+
+    // Use event delegation
+    manualModal.addEventListener('click', (e) => {
+      const target = e.target;
+      const button = target.closest('button');
+      
+      if (!button) return;
+
+      if (button.id === 'closeManualAdd' || button.id === 'cancelAddBtn') {
         this.hideManualAddModal();
       }
-    });
-  }
-
-  /**
-   * Populate existing items in the dropdown
-   */
-  populateExistingItems(type) {
-    const select = document.getElementById('existingItemsSelect');
-    const searchInput = document.getElementById('existingSearch');
-    const countSpan = document.getElementById('existingCount');
-    
-    if (!select) return;
-    
-    select.innerHTML = '';
-    
-    let items = [];
-    if (type === 'rss') {
-      items = rssRetryManager.getExistingItems();
-    } else if (type === 'live') {
-      items = liveRetryManager.getExistingItems();
-    }
-    
-    const retryManager = type === 'rss' ? rssRetryManager : liveRetryManager;
-    
-    items.sort((a, b) => a.name.localeCompare(b.name));
-    
-    items.forEach(item => {
-      const isInQueue = retryManager.existsInQueue(item.id);
-      const option = document.createElement('option');
-      option.value = JSON.stringify(item);
-      option.textContent = item.name + (item.category ? ` (${item.category})` : '');
-      
-      if (isInQueue) {
-        option.textContent += ' ⏳ Already in queue';
-        option.disabled = true;
-        option.style.color = '#888';
-        option.style.fontStyle = 'italic';
+      else if (button.id === 'confirmAddBtn') {
+        this.confirmManualAdd();
       }
-      
-      select.appendChild(option);
     });
-    
-    countSpan.textContent = `${items.length} ${type === 'rss' ? 'RSS feeds' : 'live channels'} found`;
-    
-    if (searchInput) searchInput.value = '';
-    
-    this.clearSelectedPreview();
-  }
-  
-  /**
-   * Filter existing items based on search input
-   */
-  filterExistingItems() {
-    const searchTerm = document.getElementById('existingSearch').value.toLowerCase();
-    const select = document.getElementById('existingItemsSelect');
-    const options = select.querySelectorAll('option');
-    
-    let visibleCount = 0;
-    
-    options.forEach(option => {
-      const itemText = option.textContent.toLowerCase();
-      const isVisible = !searchTerm || itemText.includes(searchTerm);
-      
-      option.style.display = isVisible ? '' : 'none';
-      if (isVisible && !option.disabled) visibleCount++;
-    });
-    
-    document.getElementById('existingCount').textContent = 
-      `${visibleCount} items match your search`;
-  }
-  
-  /**
-   * Handle selection of existing item
-   */
-  handleExistingItemSelection(selectedValue) {
-    if (!selectedValue) {
-      this.clearSelectedPreview();
-      return;
-    }
-    
-    try {
-      const item = JSON.parse(selectedValue);
-      this.showSelectedPreview(item);
-    } catch (error) {
-      console.error('Error parsing selected item:', error);
-      this.clearSelectedPreview();
-    }
-  }
-  
-  /**
-   * Show preview of selected item
-   */
-  showSelectedPreview(item) {
-    const preview = document.getElementById('selectedPreview');
-    if (!preview) return;
-    
-    document.getElementById('previewName').textContent = item.name || 'Unnamed';
-    document.getElementById('previewId').textContent = item.id || item.channelId || 'N/A';
-    document.getElementById('previewUrl').textContent = item.url || 'N/A';
-    document.getElementById('previewCategory').textContent = item.category || 'Unknown';
-    
-    preview.style.display = 'block';
-    
-    const selectedInfo = document.getElementById('selectedInfo');
-    if (selectedInfo) {
-      selectedInfo.textContent = `Selected: ${item.name}`;
-      selectedInfo.className = 'selected-info visible';
-    }
-  }
-  
-  /**
-   * Clear selected preview
-   */
-  clearSelectedPreview() {
-    const preview = document.getElementById('selectedPreview');
-    if (preview) preview.style.display = 'none';
-    
-    const selectedInfo = document.getElementById('selectedInfo');
-    if (selectedInfo) {
-      selectedInfo.textContent = '';
-      selectedInfo.className = 'selected-info';
-    }
-  }
 
-  /**
-   * Add manual retry to queue
-   */
-  addManualRetry() {
-    const select = document.getElementById('existingItemsSelect');
-    const selectedValue = select.value;
+    // Type change listeners
+    const existingType = document.getElementById('existingType');
     
-    if (!selectedValue) {
-      showNotification('❌ Please select an item from the list', 'error');
-      return;
+    if (existingType) {
+      existingType.addEventListener('change', () => this.loadExistingItems());
     }
-    
-    try {
-      const item = JSON.parse(selectedValue);
-      const type = document.getElementById('retryTypeSelectExisting').value;
-      const reason = document.getElementById('manualRetryReason').value.trim() || 
-                    'Manual update from existing list';
-      
-      let success = false;
-      
-      if (type === 'rss') {
-        success = rssRetryManager.addManually(item.id, item.name, {
-          reason: reason,
-          user: 'manual'
-        });
-      } else if (type === 'live') {
-        const channelId = item.channelId || item.id;
-        success = liveRetryManager.addManually(channelId, item.name, {
-          reason: reason,
-          user: 'manual'
-        });
-      }
-      
-      if (success) {
-        showNotification(`✅ Added "${item.name}" to ${type} retry queue`, 'success');
-        this.hideManualAddModal();
-        this.refresh();
-        this.switchTab('manual');
-      } else {
-        showNotification('❌ Failed to add to retry queue', 'error');
-      }
-      
-    } catch (error) {
-      console.error('Error adding existing item:', error);
-      showNotification('❌ Error processing selected item', 'error');
-    }
-  }
 
-  /**
-   * Quick-add function from channel context menu
-   */
-  quickAddFromChannel(channelData) {
-    const isLive = channelData.url.includes('youtube.com') || 
-                   channelData.url.includes('youtu.be');
-    const type = isLive ? 'live' : 'rss';
-    
-    let identifier;
-    if (isLive) {
-      identifier = extractChannelId(channelData.url) || channelData.url;
-    } else {
-      identifier = channelData.url;
+    // Search input with debouncing
+    const existingSearch = document.getElementById('existingSearch');
+    if (existingSearch) {
+      existingSearch.addEventListener('input', () => this.debouncedSearch());
     }
-    
-    const retryManager = type === 'rss' ? rssRetryManager : liveRetryManager;
-    const existingItem = retryManager.getExistingItem(identifier);
-    
-    if (existingItem) {
-      retryManager.addManually(existingItem.id, existingItem.name, {
-        reason: 'Quick add from channel',
-        user: 'context_menu'
-      });
-      showNotification(`✅ Added "${existingItem.name}" to retry queue`, 'success');
-    } else {
-      retryManager.addManually(identifier, channelData.name || 'Unknown Channel', {
-        reason: 'Quick add from channel',
-        user: 'context_menu'
-      });
-      showNotification(`✅ Added channel to ${type} retry queue`, 'success');
-    }
-    
-    if (this.isOpen) {
-      this.refresh();
-      this.switchTab('manual');
+
+    // Selection change
+    const existingSelect = document.getElementById('existingSelect');
+    if (existingSelect) {
+      existingSelect.addEventListener('change', () => this.updateSelectedPreview());
     }
   }
 
@@ -779,20 +641,16 @@ class UpdateManagerModal {
    */
   open() {
     const modal = document.getElementById(this.modalId);
-    if (!modal) {
-      this.createModal();
-    }
+    if (!modal) return;
 
     modal.style.display = 'flex';
     this.isOpen = true;
-
     this.refresh();
-    this.startAutoRefresh();
 
-    setTimeout(() => {
-      const firstBtn = modal.querySelector('button');
-      if (firstBtn) firstBtn.focus();
-    }, 100);
+    // Start auto-refresh
+    if (!this.updateCheckInterval) {
+      this.updateCheckInterval = setInterval(() => this.debouncedRefresh(), 30000); // Every 30 seconds
+    }
   }
 
   /**
@@ -800,521 +658,566 @@ class UpdateManagerModal {
    */
   close() {
     const modal = document.getElementById(this.modalId);
-    if (modal) {
-      modal.style.display = 'none';
-      this.isOpen = false;
-    }
+    if (!modal) return;
 
-    this.stopAutoRefresh();
-  }
+    modal.style.display = 'none';
+    this.isOpen = false;
 
-  /**
-   * Refresh all data in the modal
-   */
-  refresh() {
-    if (!this.isOpen) return;
-
-    this.updateSummaryStats();
-    this.updateRSSList();
-    this.updateLiveList();
-    this.updateManualList();
-    this.updateLastUpdateInfo();
-  }
-
-  /**
-   * Update summary statistics with manual entries
-   */
-  updateSummaryStats() {
-    if (!this.isOpen) return;
-
-    const rssStats = rssRetryManager.getEnhancedStats();
-    const liveStats = liveRetryManager.getEnhancedStats();
-
-    const totalEntries = rssStats.total + liveStats.total;
-    const readyEntries = rssStats.ready + liveStats.ready;
-    const manualEntries = rssStats.manual + liveStats.manual;
-    const blockedEntries = rssStats.blocked + liveStats.blocked;
-
-    document.getElementById('totalCount').textContent = totalEntries;
-    document.getElementById('readyCount').textContent = readyEntries;
-    document.getElementById('manualCount').textContent = manualEntries;
-    document.getElementById('blockedCount').textContent = blockedEntries;
-  }
-
-  /**
-   * Update RSS feed list with manual entries highlighted
-   */
-  updateRSSList() {
-    if (!this.isOpen) return;
-
-    const rssList = document.getElementById('rssList');
-    if (!rssList) return;
-
-    const data = rssRetryManager.getAllEntries();
-    const feeds = safeJSONParse(localStorage.getItem(LS_KEYS.FEEDS) || '[]', []);
-
-    if (!data || data.length === 0) {
-      rssList.innerHTML = '<div class="empty-state">No RSS feed retries pending</div>';
-      return;
-    }
-
-    let html = '';
-
-    data.forEach(entry => {
-      const feed = feeds.find(f => f.url === entry.id);
-      const feedName = entry.name || feed?.name || entry.id.substring(0, 30) + '...';
-
-      const now = Date.now();
-      let status = 'pending';
-      let statusText = 'Pending';
-      let statusClass = 'status-pending';
-
-      if (entry.retries >= rssRetryManager.maxRetries) {
-        status = 'blocked';
-        statusText = 'Blocked';
-        statusClass = 'status-blocked';
-      } else if (now >= entry.nextRetry) {
-        status = 'ready';
-        statusText = 'Ready';
-        statusClass = 'status-ready';
-      }
-
-      const nextRetryTime = entry.nextRetry ? new Date(entry.nextRetry).toLocaleTimeString() : '-';
-      const timeUntil = entry.nextRetry ? Math.max(0, Math.round((entry.nextRetry - now) / 1000 / 60)) : 0;
-
-      const isManual = entry.manuallyAdded;
-      const typeClass = isManual ? 'type-manual' : 'type-auto';
-      const typeIcon = isManual ? '<i class="fas fa-hand-paper" title="Manually added"></i>' : '<i class="fas fa-robot" title="Auto-added"></i>';
-
-      html += `
-        <div class="update-item ${statusClass} ${typeClass}" data-id="${entry.id}" data-type="rss" data-status="${status}" data-manual="${isManual}">
-          <span class="item-name">${escapeHtml(feedName)}</span>
-          <span class="item-type">${typeIcon}</span>
-          <span class="item-status">
-            <span class="status-badge ${statusClass}">${statusText}</span>
-          </span>
-          <span class="item-retries">${entry.retries}/${rssRetryManager.maxRetries}</span>
-          <span class="item-next">
-            ${timeUntil > 0 ? `in ${timeUntil} min` : nextRetryTime}
-          </span>
-          <span class="item-actions">
-            ${status === 'ready' ? `
-              <button class="action-btn retry-btn" title="Retry now" data-id="${entry.id}" data-type="rss">
-                <i class="fas fa-redo"></i>
-              </button>
-            ` : ''}
-            ${isManual ? `
-              <button class="action-btn edit-btn" title="Edit entry" data-id="${entry.id}" data-type="rss">
-                <i class="fas fa-edit"></i>
-              </button>
-            ` : ''}
-            <button class="action-btn remove-btn" title="Remove from retry queue" data-id="${entry.id}" data-type="rss">
-              <i class="fas fa-times"></i>
-            </button>
-          </span>
-        </div>
-      `;
-    });
-
-    rssList.innerHTML = html;
-    this.setupItemActionListeners();
-  }
-
-  /**
-   * Update Live feed list
-   */
-  updateLiveList() {
-    if (!this.isOpen) return;
-
-    const liveList = document.getElementById('liveList');
-    if (!liveList) return;
-
-    const data = liveRetryManager.getAllEntries();
-    const liveFeeds = safeJSONParse(localStorage.getItem(LS_KEYS.LIVE) || '[]', []);
-
-    if (!data || data.length === 0) {
-      liveList.innerHTML = '<div class="empty-state">No live feed retries pending</div>';
-      return;
-    }
-
-    let html = '';
-
-    data.forEach(entry => {
-      const feed = liveFeeds.find(f => extractChannelId(f.url) === entry.id);
-      const channelName = entry.name || feed?.name || `Channel ${entry.id.substring(0, 8)}...`;
-
-      const now = Date.now();
-      let status = 'pending';
-      let statusText = 'Pending';
-      let statusClass = 'status-pending';
-
-      if (entry.retries >= liveRetryManager.maxRetries) {
-        status = 'blocked';
-        statusText = 'Blocked';
-        statusClass = 'status-blocked';
-      } else if (now >= entry.nextRetry) {
-        status = 'ready';
-        statusText = 'Ready';
-        statusClass = 'status-ready';
-      }
-
-      const nextRetryTime = entry.nextRetry ? new Date(entry.nextRetry).toLocaleTimeString() : '-';
-      const timeUntil = entry.nextRetry ? Math.max(0, Math.round((entry.nextRetry - now) / 1000 / 60)) : 0;
-
-      const isManual = entry.manuallyAdded;
-      const typeClass = isManual ? 'type-manual' : 'type-auto';
-      const typeIcon = isManual ? '<i class="fas fa-hand-paper" title="Manually added"></i>' : '<i class="fas fa-robot" title="Auto-added"></i>';
-
-      html += `
-        <div class="update-item ${statusClass} ${typeClass}" data-id="${entry.id}" data-type="live" data-status="${status}" data-manual="${isManual}">
-          <span class="item-name">${escapeHtml(channelName)}</span>
-          <span class="item-type">${typeIcon}</span>
-          <span class="item-status">
-            <span class="status-badge ${statusClass}">${statusText}</span>
-          </span>
-          <span class="item-retries">${entry.retries}/${liveRetryManager.maxRetries}</span>
-          <span class="item-next">
-            ${timeUntil > 0 ? `in ${timeUntil} min` : nextRetryTime}
-          </span>
-          <span class="item-actions">
-            ${status === 'ready' ? `
-              <button class="action-btn retry-btn" title="Retry now" data-id="${entry.id}" data-type="live">
-                <i class="fas fa-redo"></i>
-              </button>
-            ` : ''}
-            ${isManual ? `
-              <button class="action-btn edit-btn" title="Edit entry" data-id="${entry.id}" data-type="live">
-                <i class="fas fa-edit"></i>
-              </button>
-            ` : ''}
-            <button class="action-btn remove-btn" title="Remove from retry queue" data-id="${entry.id}" data-type="live">
-              <i class="fas fa-times"></i>
-            </button>
-          </span>
-        </div>
-      `;
-    });
-
-    liveList.innerHTML = html;
-    this.setupItemActionListeners();
-  }
-
-  /**
-   * Update Manual entries list
-   */
-  updateManualList() {
-    if (!this.isOpen) return;
-
-    const manualList = document.getElementById('manualList');
-    if (!manualList) return;
-
-    const rssManual = rssRetryManager.getManualEntries();
-    const liveManual = liveRetryManager.getManualEntries();
-    const allManual = [...rssManual, ...liveManual];
-
-    if (allManual.length === 0) {
-      manualList.innerHTML = '<div class="empty-state">No manual entries</div>';
-      return;
-    }
-
-    let html = '';
-
-    allManual.forEach(entry => {
-      const type = entry.id.includes('youtube') || entry.id.startsWith('UC') ? 'live' : 'rss';
-      const typeText = type === 'rss' ? 'RSS Feed' : 'Live Channel';
-      const typeIcon = type === 'rss' ? '<i class="fas fa-rss"></i>' : '<i class="fas fa-broadcast-tower"></i>';
-
-      const now = Date.now();
-      let status = 'pending';
-      let statusText = 'Pending';
-      let statusClass = 'status-pending';
-
-      const maxRetries = type === 'rss' ? rssRetryManager.maxRetries : liveRetryManager.maxRetries;
-
-      if (entry.retries >= maxRetries) {
-        status = 'blocked';
-        statusText = 'Blocked';
-        statusClass = 'status-blocked';
-      } else if (now >= entry.nextRetry) {
-        status = 'ready';
-        statusText = 'Ready';
-        statusClass = 'status-ready';
-      }
-
-      const addedTime = entry.addedAt ? new Date(entry.addedAt).toLocaleString() : '-';
-
-      html += `
-        <div class="update-item ${statusClass} type-manual" data-id="${entry.id}" data-type="${type}" data-status="${status}">
-          <span class="item-name">${escapeHtml(entry.name || 'Unnamed')}</span>
-          <span class="item-type">${typeIcon} ${typeText}</span>
-          <span class="item-added-by">${entry.addedBy || 'user'}</span>
-          <span class="item-status">
-            <span class="status-badge ${statusClass}">${statusText}</span>
-          </span>
-          <span class="item-added">${getTimeAgo(entry.addedAt)}</span>
-          <span class="item-actions">
-            ${status === 'ready' ? `
-              <button class="action-btn retry-btn" title="Retry now" data-id="${entry.id}" data-type="${type}">
-                <i class="fas fa-redo"></i>
-              </button>
-            ` : ''}
-            <button class="action-btn edit-btn" title="Edit entry" data-id="${entry.id}" data-type="${type}">
-              <i class="fas fa-edit"></i>
-            </button>
-            <button class="action-btn remove-btn" title="Remove from retry queue" data-id="${entry.id}" data-type="${type}">
-              <i class="fas fa-times"></i>
-            </button>
-          </span>
-        </div>
-      `;
-    });
-
-    manualList.innerHTML = html;
-    this.setupItemActionListeners();
-  }
-
-  /**
-   * Setup action button listeners for list items
-   */
-  setupItemActionListeners() {
-    document.addEventListener('click', async (e) => {
-      if (e.target.classList.contains('retry-btn') || e.target.closest('.retry-btn')) {
-        const btn = e.target.classList.contains('retry-btn') ? e.target : e.target.closest('.retry-btn');
-        const id = btn.dataset.id;
-        const type = btn.dataset.type;
-
-        await this.retrySingleItem(id, type);
-      }
-
-      if (e.target.classList.contains('remove-btn') || e.target.closest('.remove-btn')) {
-        const btn = e.target.classList.contains('remove-btn') ? e.target : e.target.closest('.remove-btn');
-        const id = btn.dataset.id;
-        const type = btn.dataset.type;
-
-        this.removeSingleItem(id, type);
-      }
-    });
-  }
-
-  /**
-   * Update last update information
-   */
-  updateLastUpdateInfo() {
-    if (!this.isOpen) return;
-
-    const lastUpdate = parseInt(localStorage.getItem(CACHE_KEY) || "0");
-    const lastUpdateEl = document.getElementById('lastUpdateTime');
-    if (lastUpdateEl) {
-      if (lastUpdate === 0) {
-        lastUpdateEl.textContent = "Never";
-        lastUpdateEl.className = 'info-value status-off';
-      } else {
-        const timeAgo = getTimeAgo(lastUpdate);
-        lastUpdateEl.textContent = timeAgo;
-        lastUpdateEl.className = 'info-value status-on';
-      }
-    }
-
-    const nextCheckEl = document.getElementById('nextCheckTime');
-    if (nextCheckEl) {
-      const updateIntervalHours = appState.get('settings.updateIntervalHours') || 8;
-      const cacheExpiryMs = updateIntervalHours * 60 * 60 * 1000;
-      const nextCheck = lastUpdate + cacheExpiryMs;
-      const now = Date.now();
-
-      if (nextCheck > now) {
-        const minsRemaining = Math.ceil((nextCheck - now) / 1000 / 60);
-        nextCheckEl.textContent = `in ${minsRemaining} min`;
-      } else {
-        nextCheckEl.textContent = 'Now';
-      }
-    }
-
-    const autoUpdateStatusEl = document.getElementById('autoUpdateStatus');
-    if (autoUpdateStatusEl) {
-      const isAutoUpdateEnabled = appState.get('settings.isAutoUpdateEnabled');
-      if (isAutoUpdateEnabled) {
-        autoUpdateStatusEl.textContent = 'ON';
-        autoUpdateStatusEl.className = 'info-value status-on';
-      } else {
-        autoUpdateStatusEl.textContent = 'OFF';
-        autoUpdateStatusEl.className = 'info-value status-off';
-      }
-    }
-  }
-
-  /**
-   * Retry all ready items
-   */
-  async retryAllReady() {
-    try {
-      showNotification('🔄 Retrying all ready items...', 'info');
-
-      if (rssRetryManager.hasReadyRetries()) {
-        const processor = new RSSProcessor();
-        await processor.loadFeeds({ force: false });
-      }
-
-      if (liveRetryManager.hasReadyRetries()) {
-        const processor = new LiveProcessor();
-        await processor.loadFeeds({ force: false });
-      }
-
-      this.refresh();
-      showNotification('✅ All ready items retried successfully', 'success');
-
-    } catch (error) {
-      console.error('Failed to retry all items:', error);
-      showNotification('❌ Failed to retry some items', 'error');
-    }
-  }
-
-  /**
-   * Retry a single item
-   */
-  async retrySingleItem(id, type) {
-    try {
-      if (type === 'rss') {
-        const feeds = safeJSONParse(localStorage.getItem(LS_KEYS.FEEDS) || '[]', []);
-        const feed = feeds.find(f => f.url === id);
-
-        if (feed) {
-          const processor = new RSSProcessor();
-          await processor._processFeed(feed, new AbortController().signal, { successful: 0, failed: 0, cacheHits: 0 });
-        }
-      } else if (type === 'live') {
-        const feeds = safeJSONParse(localStorage.getItem(LS_KEYS.LIVE) || '[]', []);
-        const feed = feeds.find(f => extractChannelId(f.url) === id);
-
-        if (feed) {
-          const processor = new LiveProcessor();
-          await processor._processFeed(feed, new AbortController().signal, { successful: 0, failed: 0, cacheHits: 0 }, { apiQuotaExceeded: false });
-        }
-      }
-
-      this.refresh();
-      showNotification('✅ Item retried successfully', 'success');
-
-    } catch (error) {
-      console.error('Failed to retry item:', error);
-      showNotification('❌ Failed to retry item', 'error');
-    }
-  }
-
-  /**
-   * Remove a single item from retry queue
-   */
-  removeSingleItem(id, type) {
-    if (type === 'rss') {
-      rssRetryManager.recordSuccess(id);
-    } else if (type === 'live') {
-      liveRetryManager.recordSuccess(id);
-    }
-
-    this.refresh();
-    showNotification('✅ Item removed from retry queue', 'success');
-  }
-
-  /**
-   * Clear all failed items
-   */
-  clearFailedItems() {
-    if (!confirm('Are you sure you want to clear all failed items? This cannot be undone.')) {
-      return;
-    }
-
-    const rssCleared = rssRetryManager.cleanup(60 * 60 * 1000);
-    const liveCleared = liveRetryManager.cleanup(60 * 60 * 1000);
-
-    this.refresh();
-    showNotification(`✅ Cleared ${rssCleared + liveCleared} failed items`, 'success');
-  }
-
-  /**
-   * Force a retry check
-   */
-  forceRetryCheck() {
-    checkAndProcessRetries();
-    this.refresh();
-    showNotification('🔁 Force checking retries...', 'info');
-  }
-
-  /**
-   * Start auto-refresh interval
-   */
-  startAutoRefresh() {
-    this.stopAutoRefresh();
-
-    this.updateCheckInterval = setInterval(() => {
-      if (this.isOpen) {
-        this.refresh();
-      }
-    }, 10000);
-  }
-
-  /**
-   * Stop auto-refresh interval
-   */
-  stopAutoRefresh() {
+    // Stop auto-refresh
     if (this.updateCheckInterval) {
       clearInterval(this.updateCheckInterval);
       this.updateCheckInterval = null;
     }
+
+    this.hideManualAddModal();
   }
 
   /**
    * Switch between tabs
    */
-  switchTab(tab) {
-    document.querySelectorAll('.tab-btn').forEach(btn => {
-      btn.classList.remove('active');
-      if (btn.dataset.tab === tab) {
-        btn.classList.add('active');
+  switchTab(tabName) {
+    this.currentTab = tabName;
+
+    // Update tab buttons
+    const tabs = document.querySelectorAll('.tab-btn');
+    tabs.forEach(tab => {
+      tab.classList.toggle('active', tab.dataset.tab === tabName);
+    });
+
+    // Update content
+    const contents = document.querySelectorAll('.tab-content');
+    contents.forEach(content => {
+      const contentId = `${tabName}Tab`;
+      content.classList.toggle('active', content.id === contentId);
+    });
+
+    this.refresh();
+  }
+
+  /**
+   * Refresh the current view - optimized with requestAnimationFrame
+   */
+  refresh() {
+    if (!this.isOpen) return;
+
+    requestAnimationFrame(() => {
+      this.updateSummary();
+      this.updateContent();
+      this.updateLastCheckInfo();
+    });
+  }
+
+  /**
+   * Update summary statistics - optimized
+   */
+  updateSummary() {
+    const rssStats = rssRetryManager.getEnhancedStats();
+    const liveStats = liveRetryManager.getEnhancedStats();
+
+    const total = rssStats.total + liveStats.total;
+    const ready = rssStats.ready + liveStats.ready;
+    const manual = rssStats.manual + liveStats.manual;
+    const blocked = (rssStats.total - rssStats.ready) + (liveStats.total - liveStats.ready);
+
+    // Use textContent for better performance
+    const updateElement = (id, value) => {
+      const el = document.getElementById(id);
+      if (el && el.textContent !== String(value)) {
+        el.textContent = value;
+      }
+    };
+
+    updateElement('totalCount', total);
+    updateElement('readyCount', ready);
+    updateElement('manualCount', manual);
+    updateElement('blockedCount', blocked);
+  }
+
+  /**
+   * Update content for current tab
+   */
+  updateContent() {
+    const rssEntries = rssRetryManager.getAllEntries();
+    const liveEntries = liveRetryManager.getAllEntries();
+    
+    // Add type to entries
+    rssEntries.forEach(entry => entry.type = 'rss');
+    liveEntries.forEach(entry => entry.type = 'live');
+
+    const allEntries = [...rssEntries, ...liveEntries];
+
+    let filteredEntries;
+    switch (this.currentTab) {
+      case 'ready':
+        filteredEntries = allEntries.filter(e => this.isReady(e));
+        break;
+      case 'manual':
+        filteredEntries = allEntries.filter(e => e.manuallyAdded);
+        break;
+      case 'blocked':
+        filteredEntries = allEntries.filter(e => !this.isReady(e));
+        break;
+      default:
+        filteredEntries = allEntries;
+    }
+
+    const contentId = `${this.currentTab}Tab`;
+    const container = document.getElementById(contentId);
+    if (!container) return;
+
+    // Use DocumentFragment for better performance
+    this.renderUpdateList(container, filteredEntries);
+  }
+
+  /**
+   * Render update list - optimized with DocumentFragment
+   */
+  renderUpdateList(container, entries) {
+    if (entries.length === 0) {
+      container.innerHTML = `
+        <div class="empty-state">
+          <i class="fas fa-inbox" style="font-size: 48px; margin-bottom: 15px; opacity: 0.3;"></i>
+          <p>No items found in this category</p>
+        </div>
+      `;
+      return;
+    }
+
+    const fragment = document.createDocumentFragment();
+    
+    // Create header
+    const header = document.createElement('div');
+    header.className = 'update-list-header';
+    header.innerHTML = `
+      <div>Name</div>
+      <div>Type</div>
+      <div>Status</div>
+      <div>Retries</div>
+      <div>Next Try</div>
+      <div>Actions</div>
+    `;
+    fragment.appendChild(header);
+
+    // Create list container
+    const list = document.createElement('div');
+    list.className = 'update-list';
+
+    // Add items
+    entries.forEach(entry => {
+      const item = this.createUpdateItem(entry);
+      list.appendChild(item);
+    });
+
+    fragment.appendChild(list);
+    
+    // Replace content
+    container.innerHTML = '';
+    container.appendChild(fragment);
+  }
+
+  /**
+   * Create update item element
+   */
+  createUpdateItem(entry) {
+    const item = document.createElement('div');
+    const isReady = this.isReady(entry);
+    const statusClass = isReady ? 'status-ready' : 'status-blocked';
+    const typeClass = entry.manuallyAdded ? 'type-manual' : '';
+
+    item.className = `update-item ${statusClass} ${typeClass}`;
+    item.dataset.id = entry.id;
+    item.dataset.type = entry.type;
+
+    const nextRetryTime = entry.nextRetry ? 
+      this.formatTimeRemaining(entry.nextRetry - Date.now()) : 'Now';
+    
+    const statusBadge = isReady ? 
+      '<span class="status-badge status-ready">Ready</span>' :
+      '<span class="status-badge status-blocked">Blocked</span>';
+
+    item.innerHTML = `
+      <div class="item-name" title="${entry.name || entry.id}">
+        ${entry.name || entry.id}
+        ${entry.manuallyAdded ? '<i class="fas fa-hand-paper" style="margin-left: 8px; color: #FFC107;" title="Manually Added"></i>' : ''}
+      </div>
+      <div class="item-type">${entry.type.toUpperCase()}</div>
+      <div class="item-status">${statusBadge}</div>
+      <div class="item-retries">${entry.retries || 0} / 3</div>
+      <div class="item-next-try">${nextRetryTime}</div>
+      <div class="item-actions">
+        ${isReady ? '<button class="action-btn retry-btn" title="Retry Now"><i class="fas fa-redo"></i></button>' : ''}
+        <button class="action-btn edit-btn" title="Edit Entry"><i class="fas fa-edit"></i></button>
+        <button class="action-btn remove-btn" title="Remove Entry"><i class="fas fa-trash"></i></button>
+      </div>
+    `;
+
+    return item;
+  }
+
+  /**
+   * Check if entry is ready for retry
+   */
+  isReady(entry) {
+    return entry.nextRetry <= Date.now();
+  }
+
+  /**
+   * Format time remaining
+   */
+  formatTimeRemaining(ms) {
+    if (ms <= 0) return 'Ready';
+    
+    const minutes = Math.floor(ms / 60000);
+    const hours = Math.floor(minutes / 60);
+    const days = Math.floor(hours / 24);
+
+    if (days > 0) return `${days}d ${hours % 24}h`;
+    if (hours > 0) return `${hours}h ${minutes % 60}m`;
+    return `${minutes}m`;
+  }
+
+  /**
+   * Update last check info
+   */
+  updateLastCheckInfo() {
+    const lastCheck = localStorage.getItem('last_update_check');
+    const lastCheckTime = document.getElementById('lastCheckTime');
+    
+    if (lastCheckTime) {
+      if (lastCheck) {
+        const time = new Date(parseInt(lastCheck));
+        lastCheckTime.textContent = this.formatRelativeTime(time);
+      } else {
+        lastCheckTime.textContent = 'Never';
+      }
+    }
+
+    const autoCheckStatus = document.getElementById('autoCheckStatus');
+    if (autoCheckStatus) {
+      autoCheckStatus.textContent = this.updateCheckInterval ? 'Active' : 'Inactive';
+      autoCheckStatus.className = this.updateCheckInterval ? 
+        'info-value status-on' : 'info-value status-off';
+    }
+
+    const nextCheckTime = document.getElementById('nextCheckTime');
+    if (nextCheckTime) {
+      if (this.updateCheckInterval && lastCheck) {
+        const next = new Date(parseInt(lastCheck) + 300000); // 5 minutes
+        nextCheckTime.textContent = this.formatRelativeTime(next);
+      } else {
+        nextCheckTime.textContent = '-';
+      }
+    }
+  }
+
+  /**
+   * Format relative time
+   */
+  formatRelativeTime(date) {
+    const now = Date.now();
+    const diff = date - now;
+    const absDiff = Math.abs(diff);
+
+    const minutes = Math.floor(absDiff / 60000);
+    const hours = Math.floor(minutes / 60);
+    const days = Math.floor(hours / 24);
+
+    if (diff > 0) {
+      if (days > 0) return `in ${days}d`;
+      if (hours > 0) return `in ${hours}h`;
+      return `in ${minutes}m`;
+    } else {
+      if (days > 0) return `${days}d ago`;
+      if (hours > 0) return `${hours}h ago`;
+      if (minutes > 0) return `${minutes}m ago`;
+      return 'just now';
+    }
+  }
+
+  /**
+   * Handle retry button click
+   */
+  handleRetry(button) {
+    const item = button.closest('.update-item');
+    if (!item) return;
+
+    const id = item.dataset.id;
+    const type = item.dataset.type;
+    const manager = type === 'rss' ? rssRetryManager : liveRetryManager;
+
+    // Reset retry timer
+    manager.updateEntry(id, {
+      nextRetry: Date.now(),
+      retries: 0
+    });
+
+    showNotification('✅ Retry scheduled', 'success');
+    this.refresh();
+  }
+
+  /**
+   * Handle edit button click - FIXED
+   */
+  handleEdit(button) {
+    const item = button.closest('.update-item');
+    if (!item) return;
+
+    const id = item.dataset.id;
+    const type = item.dataset.type;
+    const manager = type === 'rss' ? rssRetryManager : liveRetryManager;
+    const entry = manager.getEntry(id);
+
+    if (!entry) {
+      showNotification('❌ Entry not found', 'error');
+      return;
+    }
+
+    // Show edit dialog
+    this.showEditDialog(id, type, entry);
+  }
+
+  /**
+   * Show edit dialog for entry
+   */
+  showEditDialog(id, type, entry) {
+    const dialog = prompt(`Edit name for ${type.toUpperCase()} entry:`, entry.name || id);
+    
+    if (dialog !== null && dialog.trim() !== '') {
+      const manager = type === 'rss' ? rssRetryManager : liveRetryManager;
+      const success = manager.updateEntry(id, { name: dialog.trim() });
+      
+      if (success) {
+        showNotification('✅ Entry updated', 'success');
+        this.refresh();
+      } else {
+        showNotification('❌ Failed to update entry', 'error');
+      }
+    }
+  }
+
+  /**
+   * Handle remove button click
+   */
+  handleRemove(button) {
+    const item = button.closest('.update-item');
+    if (!item) return;
+
+    const id = item.dataset.id;
+    const type = item.dataset.type;
+    const manager = type === 'rss' ? rssRetryManager : liveRetryManager;
+    const entry = manager.getEntry(id);
+
+    if (!confirm(`Remove "${entry.name || id}" from retry queue?`)) {
+      return;
+    }
+
+    manager.remove(id);
+    showNotification('✅ Entry removed', 'success');
+    this.refresh();
+  }
+
+  /**
+   * Clear all blocked items
+   */
+  clearAllBlocked() {
+    if (!confirm('Clear all blocked items from both RSS and Live retry queues?')) {
+      return;
+    }
+
+    const rssEntries = rssRetryManager.getAllEntries();
+    const liveEntries = liveRetryManager.getAllEntries();
+
+    let cleared = 0;
+
+    rssEntries.forEach(entry => {
+      if (!this.isReady(entry)) {
+        rssRetryManager.remove(entry.id);
+        cleared++;
       }
     });
 
-    document.querySelectorAll('.tab-content').forEach(content => {
-      content.classList.remove('active');
-      if (content.id === `${tab}Tab`) {
-        content.classList.add('active');
+    liveEntries.forEach(entry => {
+      if (!this.isReady(entry)) {
+        liveRetryManager.remove(entry.id);
+        cleared++;
       }
     });
+
+    showNotification(`✅ Cleared ${cleared} blocked items`, 'success');
+    this.refresh();
   }
 
   /**
    * Show manual add modal
    */
   showManualAddModal() {
-    const modal = document.getElementById('manualAddModal');
-    modal.style.display = 'block';
+    const manualModal = document.getElementById('manualAddModal');
+    if (!manualModal) return;
 
-    // Populate existing items with default type
-    const initialType = document.getElementById('retryTypeSelectExisting').value;
-    this.populateExistingItems(initialType);
-    
-    setTimeout(() => {
-      document.getElementById('existingSearch').focus();
-    }, 100);
+    manualModal.style.display = 'block';
+    this.loadExistingItems();
   }
 
   /**
    * Hide manual add modal
    */
   hideManualAddModal() {
-    const modal = document.getElementById('manualAddModal');
-    modal.style.display = 'none';
+    const manualModal = document.getElementById('manualAddModal');
+    if (!manualModal) return;
+
+    manualModal.style.display = 'none';
     
+    // Reset form
+    document.getElementById('existingSelect').innerHTML = '<option value="">Select an item...</option>';
     document.getElementById('existingSearch').value = '';
-    document.getElementById('existingItemsSelect').innerHTML = '';
-    document.getElementById('manualRetryReason').value = '';
-    this.clearSelectedPreview();
+    
+    const preview = document.getElementById('selectedPreview');
+    if (preview) preview.style.display = 'none';
   }
 
+  /**
+   * Switch between existing and custom source
+   */
+  switchSource(source) {
+    this.currentSource = source;
+
+    // Update tabs
+    document.querySelectorAll('.source-tab-btn').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.source === source);
+    });
+
+    // Update content
+    document.querySelectorAll('.source-content').forEach(content => {
+      const contentId = source === 'existing' ? 'existingSource' : 'customSource';
+      content.classList.toggle('active', content.id === contentId);
+    });
+  }
+
+  /**
+   * Load existing items - optimized
+   */
+  loadExistingItems() {
+    const type = document.getElementById('existingType').value;
+    const manager = type === 'rss' ? rssRetryManager : liveRetryManager;
+    const items = manager.getExistingItems();
+    
+    const select = document.getElementById('existingSelect');
+    const countSpan = document.getElementById('existingItemCount');
+    
+    if (!select || !countSpan) return;
+
+    // Use DocumentFragment for better performance
+    const fragment = document.createDocumentFragment();
+    const defaultOption = document.createElement('option');
+    defaultOption.value = '';
+    defaultOption.textContent = 'Select an item...';
+    fragment.appendChild(defaultOption);
+
+    items.forEach(item => {
+      const option = document.createElement('option');
+      option.value = item.id;
+      option.textContent = `${item.name} (${item.category || 'Unknown'})`;
+      option.dataset.itemData = JSON.stringify(item);
+      fragment.appendChild(option);
+    });
+
+    select.innerHTML = '';
+    select.appendChild(fragment);
+    countSpan.textContent = `${items.length} items available`;
+  }
+
+  /**
+   * Handle search with debouncing
+   */
+  handleSearch() {
+    const searchTerm = document.getElementById('existingSearch').value.toLowerCase();
+    const select = document.getElementById('existingSelect');
+    
+    if (!select) return;
+
+    Array.from(select.options).forEach(option => {
+      if (option.value === '') return;
+      
+      const text = option.textContent.toLowerCase();
+      option.style.display = text.includes(searchTerm) ? '' : 'none';
+    });
+  }
+
+  /**
+   * Update selected item preview
+   */
+  updateSelectedPreview() {
+    const select = document.getElementById('existingSelect');
+    const selectedOption = select.options[select.selectedIndex];
+    const preview = document.getElementById('selectedPreview');
+    
+    if (!selectedOption || !selectedOption.value || !preview) {
+      if (preview) preview.style.display = 'none';
+      return;
+    }
+
+    const itemData = JSON.parse(selectedOption.dataset.itemData || '{}');
+    
+    document.getElementById('previewName').textContent = itemData.name || '-';
+    document.getElementById('previewType').textContent = itemData.type?.toUpperCase() || '-';
+    document.getElementById('previewId').textContent = itemData.id || '-';
+    document.getElementById('previewUrl').textContent = itemData.url || '-';
+    
+    preview.style.display = 'block';
+    
+    const selectedInfo = document.getElementById('selectedInfo');
+    if (selectedInfo) {
+      selectedInfo.textContent = `✓ ${itemData.name}`;
+      selectedInfo.classList.add('visible');
+    }
+  }
+
+  /**
+   * Confirm manual add
+   */
+  confirmManualAdd() {
+    this.addFromExisting();
+  }
+
+  /**
+   * Add from existing items
+   */
+  addFromExisting() {
+    const select = document.getElementById('existingSelect');
+    const type = document.getElementById('existingType').value;
+    
+    if (!select.value) {
+      showNotification('⚠️ Please select an item', 'warning');
+      return;
+    }
+
+    const selectedOption = select.options[select.selectedIndex];
+    const itemData = JSON.parse(selectedOption.dataset.itemData || '{}');
+    const manager = type === 'rss' ? rssRetryManager : liveRetryManager;
+
+    if (manager.existsInQueue(itemData.id)) {
+      showNotification('⚠️ This item is already in the retry queue', 'warning');
+      return;
+    }
+
+    const success = manager.addManually(itemData.id, itemData.name, {
+      reason: 'Added from existing items',
+      user: 'manual_modal'
+    });
+
+    if (success) {
+      showNotification(`✅ Added "${itemData.name}" to retry queue`, 'success');
+      this.hideManualAddModal();
+      this.refresh();
+    } else {
+      showNotification('❌ Failed to add to retry queue', 'error');
+    }
+  }
 
 }
 
 // ============================================
-// UI Integration Functions
+// UI Integration
 // ============================================
 
 /**
@@ -1323,6 +1226,7 @@ class UpdateManagerModal {
 function addUpdateManagerButton() {
   const checkModal = setInterval(() => {
     const settingsModal = document.getElementById('settingsModal');
+    
     if (settingsModal) {
       clearInterval(checkModal);
 
@@ -1387,202 +1291,6 @@ function addChannelToRetryQueue(channelId, name, type = 'live', reason = 'Manual
   }
 }
 
-/**
- * Add context menu option to channel items for manual retry
- */
-function addRetryContextMenu() {
-  document.addEventListener('contextmenu', (e) => {
-    const channelItem = e.target.closest('.channel-item');
-    if (!channelItem) return;
-
-    e.preventDefault();
-
-    const channelData = {
-      url: channelItem.dataset.url,
-      name: channelItem.dataset.name,
-      isLive: channelItem.dataset.isLive === 'true'
-    };
-
-    const isYouTube = channelData.url.includes('youtube.com') || channelData.url.includes('youtu.be');
-
-    if (isYouTube) {
-      const videoId = extractYouTubeID(channelData.url);
-      if (videoId) {
-        showContextMenu(e, channelData, videoId);
-      }
-    }
-  }, true);
-}
-
-/**
- * Show context menu for channel retry options
- */
-function showContextMenu(e, channelData, videoId) {
-  const existing = document.getElementById('retryContextMenu');
-  if (existing) existing.remove();
-
-  const menu = document.createElement('div');
-  menu.id = 'retryContextMenu';
-  menu.className = 'context-menu';
-  menu.style.cssText = `
-    position: fixed;
-    top: ${e.clientY}px;
-    left: ${e.clientX}px;
-    background: #2d2d2d;
-    border-radius: 8px;
-    box-shadow: 0 4px 20px rgba(0,0,0,0.3);
-    z-index: 10000;
-    min-width: 220px;
-    border: 1px solid #444;
-  `;
-
-  const isYouTube = channelData.url.includes('youtube.com') || 
-                    channelData.url.includes('youtu.be');
-  const type = isYouTube ? 'live' : 'rss';
-
-  menu.innerHTML = `
-    <div class="context-menu-header">
-      <strong>${channelData.name}</strong>
-      <small>(${type.toUpperCase()})</small>
-    </div>
-    <div class="context-menu-item" data-action="quick-retry">
-      <i class="fas fa-redo"></i> Quick Add to Retry Queue
-    </div>
-    <div class="context-menu-item" data-action="open-manager">
-      <i class="fas fa-external-link-alt"></i> Open Update Manager
-    </div>
-    <div class="context-menu-divider"></div>
-    <div class="context-menu-item" data-action="copy-url">
-      <i class="fas fa-copy"></i> Copy URL
-    </div>
-    ${isYouTube ? `
-      <div class="context-menu-item" data-action="copy-id">
-        <i class="fas fa-id-card"></i> Copy Channel ID
-      </div>
-    ` : ''}
-  `;
-
-  document.body.appendChild(menu);
-
-  menu.addEventListener('click', (menuEvent) => {
-    const action = menuEvent.target.closest('[data-action]')?.dataset.action;
-
-    if (action === 'quick-retry') {
-      updateManager.quickAddFromChannel(channelData);
-    } else if (action === 'open-manager') {
-      updateManager.open();
-      updateManager.switchTab('manual');
-    } else if (action === 'copy-url') {
-      navigator.clipboard.writeText(channelData.url);
-      showNotification('✅ URL copied to clipboard', 'success');
-    } else if (action === 'copy-id' && isYouTube) {
-      const channelId = extractChannelId(channelData.url);
-      if (channelId) {
-        navigator.clipboard.writeText(channelId);
-        showNotification('✅ Channel ID copied to clipboard', 'success');
-      }
-    }
-
-    menu.remove();
-  });
-
-  setTimeout(() => {
-    const closeHandler = (clickEvent) => {
-      if (!menu.contains(clickEvent.target)) {
-        menu.remove();
-        document.removeEventListener('click', closeHandler);
-      }
-    };
-    document.addEventListener('click', closeHandler);
-  }, 100);
-}
-
-/**
- * Add quick retry buttons to channel items
- */
-function addQuickRetryButtons() {
-  const observer = new MutationObserver((mutations) => {
-    mutations.forEach((mutation) => {
-      mutation.addedNodes.forEach((node) => {
-        if (node.nodeType === 1 && node.classList && node.classList.contains('channel-item')) {
-          addQuickRetryButton(node);
-        }
-      });
-    });
-  });
-
-  observer.observe(document.body, {
-    childList: true,
-    subtree: true
-  });
-
-  document.querySelectorAll('.channel-item').forEach(addQuickRetryButton);
-}
-
-/**
- * Add quick retry button to a channel item
- */
-function addQuickRetryButton(item) {
-  if (item.querySelector('.quick-retry-btn')) return;
-
-  const channelData = {
-    url: item.dataset.url || '',
-    name: item.dataset.name || 'Unknown',
-    isLive: item.dataset.isLive === 'true',
-    category: item.dataset.category || 'Unknown'
-  };
-
-  const isYouTube = channelData.url.includes('youtube.com') || 
-                    channelData.url.includes('youtu.be');
-  const type = isYouTube ? 'live' : 'rss';
-
-  if ((type === 'live' && extractChannelId(channelData.url)) || type === 'rss') {
-    const button = document.createElement('button');
-    button.className = 'quick-retry-btn';
-    button.title = `Add ${channelData.name} to retry queue`;
-    button.innerHTML = '<i class="fas fa-redo"></i>';
-    
-    button.addEventListener('click', (e) => {
-      e.stopPropagation();
-      e.preventDefault();
-      
-      const identifier = type === 'live' ? 
-        extractChannelId(channelData.url) : channelData.url;
-      
-      const retryManager = type === 'rss' ? rssRetryManager : liveRetryManager;
-      
-      if (retryManager.existsInQueue(identifier)) {
-        showNotification('⚠️ This item is already in the retry queue', 'warning');
-        return;
-      }
-      
-      const success = retryManager.addManually(identifier, channelData.name, {
-        reason: 'Quick add from channel item',
-        user: 'quick_button'
-      });
-      
-      if (success) {
-        showNotification(`✅ Added "${channelData.name}" to retry queue`, 'success');
-        
-        button.innerHTML = '<i class="fas fa-check"></i>';
-        button.style.background = '#4CAF50';
-        
-        setTimeout(() => {
-          button.innerHTML = '<i class="fas fa-redo"></i>';
-          button.style.background = '';
-        }, 2000);
-        
-        if (!updateManager.isOpen) {
-          updateManager.open();
-          updateManager.switchTab('manual');
-        }
-      }
-    });
-    
-    item.appendChild(button);
-  }
-}
-
 
 // ============================================
 // Initialize Update Manager
@@ -1596,8 +1304,6 @@ const updateManager = new UpdateManagerModal();
 // Initialize when DOM is ready
 document.addEventListener('DOMContentLoaded', () => {
   addUpdateManagerButton();
-  //addRetryContextMenu();
-  //addQuickRetryButtons();
 });
 
 // Export for use in final.js
@@ -1605,6 +1311,5 @@ window.UpdateManager = {
   rssRetryManager,
   liveRetryManager,
   updateManager,
-  addChannelToRetryQueue,
-  showContextMenu
+  addChannelToRetryQueue
 };

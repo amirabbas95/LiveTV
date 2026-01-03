@@ -76,7 +76,7 @@ CHANNEL GRID & CARDS
 ====================================== */
 .content-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
     gap: 20px;
 }
 
@@ -89,7 +89,6 @@ CHANNEL GRID & CARDS
     transition: transform 0.25s ease, box-shadow 0.25s ease, outline-color 0.2s ease, filter 0.2s ease;
     cursor: pointer;
     border-radius: 50%;
-    outline: 2px solid transparent;
     background: linear-gradient(145deg, var(--bg-medium), #1b1b22);
 }
 
@@ -128,8 +127,7 @@ CHANNEL GRID & CARDS
     height: auto;
     aspect-ratio: 1/1;
     object-fit: cover;
-    border-radius: 50%;
-    display: block;
+    border-radius: inherit;
 }
 
 .content-card img {
@@ -165,12 +163,8 @@ CHANNEL GRID & CARDS
     transition: opacity 0.25s ease, color 0.2s ease, transform 0.2s ease;
     opacity: 0;
     padding: 2px 4px;
-    z-index: 2;
     cursor: pointer;
-    border-radius: 6px;
-    background: rgba(0, 0, 0, 0.35);
-    backdrop-filter: blur(4px);
-    z-index: 5;
+    z-index: 2;
 }
 
 .content-card:hover .favorite-icon,
@@ -193,7 +187,6 @@ CHANNEL GRID & CARDS
     left: 8px;
     right: 38px;
     background: rgba(0, 0, 0, 0.55);
-    backdrop-filter: blur(6px);
     color: var(--text-light);
     font-size: 0.75rem;
     font-weight: 600;
@@ -335,17 +328,6 @@ VIDEO PLAYER & MODAL
     pointer-events: none;
 }
 
-@keyframes buttonFadeIn {
-    from {
-        opacity: 0;
-        transform: scale(0.8);
-    }
-
-    to {
-        opacity: 1;
-        transform: scale(1);
-    }
-}
 
 .closeModal {
     animation: buttonFadeIn 0.3s ease-out;
@@ -428,7 +410,6 @@ VIDEO PLAYER & MODAL
     height: 100vh !important;
     z-index: 9999 !important;
     margin: 0 !important;
-    padding: env(safe-area-inset-top, 0) env(safe-area-inset-right, 0) env(safe-area-inset-bottom, 0) env(safe-area-inset-left, 0) !important;
     background-color: #000 !important;
 }
 
@@ -575,72 +556,24 @@ OVERLAYS
 }
 
 /* ====================================== 
-SETTINGS MODAL
+API MODAL
 ====================================== */
-.settings-btn {
-    background: rgba(255, 255, 255, 0.1);
-    color: white;
-    padding: 8px 16px;
-    border-radius: 8px;
-    cursor: pointer;
-    font-size: 14px;
-    transition: all 0.3s ease;
-    border: none;
-}
 
-.settings-btn:hover {
-    background: rgba(255, 255, 255, 0.2);
-}
 
-.setting-item {
-    margin-bottom: 25px;
-    padding-bottom: 20px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-}
-
-.setting-item:last-of-type {
-    border-bottom: none;
-}
-
-.setting-item label {
+.api-key-actions {
     display: flex;
-    align-items: center;
-    gap: 10px;
-    cursor: pointer;
-    font-size: 16px;
-    font-weight: 500;
+    gap: 12px;
+    margin-top: 20px;
 }
 
-.setting-item input[type="checkbox"] {
-    width: 20px;
-    height: 20px;
-    cursor: pointer;
-    accent-color: var(--accent-color);
-}
-
-.setting-item select {
-    width: 100%;
-    padding: 10px;
-    background: rgba(255, 255, 255, 0.1);
-    border: 1px solid rgba(255, 255, 255, 0.2);
-    border-radius: 6px;
-    color: white;
+.api-key-info {
+    margin-top: 20px;
+    padding: 14px;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 8px;
     font-size: 14px;
-    cursor: pointer;
-    margin-top: 8px;
-}
-
-.setting-description {
-    font-size: 13px;
-    color: rgba(255, 255, 255, 0.6);
-    margin: 8px 0 0 30px;
+    color: #ddd;
     line-height: 1.5;
-}
-
-.input-button-wrapper {
-    position: relative;
-    width: 100%;
-    margin-top: 8px;
 }
 
 .api-key-input {
@@ -680,6 +613,10 @@ SETTINGS MODAL
 .toggle-visibility-btn:hover {
     color: white;
 }
+
+/* ====================================== 
+SETTINGS MODAL
+====================================== */
 
 .settings-modal {
     display: none;
@@ -1024,25 +961,6 @@ SETTINGS MODAL
     color: #ff9800;
 }
 
-.storage-display,
-.cache-stats {
-    padding: 16px;
-    background: rgba(0, 0, 0, 0.4);
-    border-radius: 8px;
-    margin-bottom: 16px;
-    font-size: 14px;
-    min-height: 60px;
-}
-
-.storage-loading,
-.cache-loading {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 10px;
-    color: #888;
-    padding: 20px;
-}
 
 .setting-divider {
     height: 1px;
@@ -1511,6 +1429,9 @@ ENHANCED FULLSCREEN PROMPT STYLES
     }
 }
 
+/* ====================================== 
+Notification MODAL
+====================================== */
 .iptv-notification {
     position: fixed;
     top: -100px;
@@ -1551,6 +1472,9 @@ ENHANCED FULLSCREEN PROMPT STYLES
 .notification-general {
     background: #607D8B;
 }
+
+
+/* ============================================ */
 
 .storage-grid {
     display: grid;
@@ -1619,6 +1543,8 @@ ENHANCED FULLSCREEN PROMPT STYLES
     border-color: rgba(33, 150, 243, 0.3);
     background: rgba(33, 150, 243, 0.04);
 }
+
+/* ============================================= */
 
 .network-status-indicator {
     cursor: pointer;

@@ -1,281 +1,6 @@
-// ============================================
-// ============================================
-
-// ============================================
-// ============================================
-(function initUserAgentOverride() {
-  const _originalUserAgent = navigator.userAgent;
-  const UA_STORAGE_KEY = "custom-useragent-string-ua";
-
-  try {
-    Object.defineProperty(navigator, "userAgent", {
-      get: function () {
-        const customUA = localStorage.getItem(UA_STORAGE_KEY);
-        return customUA ? customUA : _originalUserAgent;
-      },
-      configurable: true
-    });
-
-  } catch (error) {
-    console.error('❌ Failed to override User Agent:', error);
-  }
-
-  window.UserAgentManager = {
-    get current() { return navigator.userAgent; },
-    get original() { return _originalUserAgent; },
-    get isCustom() { return localStorage.getItem(UA_STORAGE_KEY) !== null; },
-
-    set(ua) {
-      if (!ua || typeof ua !== 'string') return false;
-      try {
-        localStorage.setItem(UA_STORAGE_KEY, ua);
-        console.log('✅ Custom User Agent set. Reload to apply.');
-        return true;
-      } catch (error) {
-        console.error('❌ Failed to set User Agent:', error);
-        return false;
-      }
-    },
-
-    reset() {
-      try {
-        localStorage.removeItem(UA_STORAGE_KEY);
-        console.log('✅ User Agent reset. Reload to apply.');
-        return true;
-      } catch (error) {
-        return false;
-      }
-    },
-
-    presets: {
-      chromeWindows: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-      iPhoneSafari: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
-      androidChrome: 'Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.6099.144 Mobile Safari/537.36',
-      androidTV: 'Mozilla/5.0 (Linux; Android 9; SHIELD Android TV) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.164 Safari/537.36',
-      samsungTV: 'Mozilla/5.0 (SMART-TV; Linux; Tizen 6.0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/85.0.4183.93 TV Safari/537.36'
-    },
-    usePreset(presetName) {
-      if (!this.presets[presetName]) {
-        console.error('Unknown preset:', presetName);
-        return false;
-      }
-      return this.set(this.presets[presetName]);
-    },
-
-    info() {
-      console.group('🔍 User Agent Info');
-      console.log('Current:', this.current);
-      console.log('Original:', this.original);
-      console.log('Is Custom:', this.isCustom);
-      console.groupEnd();
-    }
-  };
-})();
-
-/**
- * LRU (Least Recently Used) Cache implementation
- */
-class LRUCache {
-  constructor(maxSize = 50, maxAge = 3600000, maxBytes = 5 * 1024 * 1024) {
-    this.cache = new Map();
-    this.maxSize = maxSize;
-    this.maxAge = maxAge;
-    this.maxBytes = maxBytes;
-    this.hits = 0;
-    this.misses = 0;
-  }
-
-  /**
-   * Get item from cache
-   * Returns null if expired or not found
-   * Moves item to end (most recently used)
-   */
-  get(key) {
-    if (!this.cache.has(key)) {
-      this.misses++;
-      return null;
-    }
-
-    const item = this.cache.get(key);
-    const now = Date.now();
-
-    if (now - item.timestamp > this.maxAge) {
-      this.cache.delete(key);
-      this.misses++;
-      return null;
-    }
-
-    this.cache.delete(key);
-    this.cache.set(key, {
-      ...item,
-      timestamp: now,
-      accessCount: (item.accessCount || 0) + 1
-    });
-
-    this.hits++;
-    return item.data;
-  }
-
-  /**
-   * Set item in cache
-   * Automatically evicts oldest item if size limit reached
-   */
-  set(key, data, options = {}) {
-    const now = Date.now();
-    const size = this.estimateSize(data);
-
-    while (this.getTotalSize() + size > this.maxBytes && this.cache.size > 0) {
-      this.evictOldest();
-    }
-
-    if (size > this.maxBytes) {
-      console.warn(`⚠️ Item too large for cache: ${size} bytes`);
-      return false;
-    }
-
-    if (this.cache.size >= this.maxSize && !this.cache.has(key)) {
-      this.evictOldest();
-    }
-
-    if (this.cache.has(key)) {
-      this.cache.delete(key);
-    }
-
-    this.cache.set(key, {
-      data,
-      timestamp: options.timestamp || now,
-      accessCount: 0,
-      size: this.estimateSize(data)
-    });
-  }
-
-  /**
-   * Check if key exists and is not expired
-   */
-  has(key) {
-    if (!this.cache.has(key)) return false;
-
-    const item = this.cache.get(key);
-    const isExpired = Date.now() - item.timestamp > this.maxAge;
-
-    if (isExpired) {
-      this.cache.delete(key);
-      return false;
-    }
-
-    return true;
-  }
-
-  /**
-   * Delete specific key
-   */
-  delete(key) {
-    return this.cache.delete(key);
-  }
-
-  /**
-   * Evict oldest (least recently used) item
-   */
-  evictOldest() {
-    if (this.cache.size === 0) return;
-
-    const oldestKey = this.cache.keys().next().value;
-    this.cache.delete(oldestKey);
-
-    console.log(`🗑️ Evicted cache entry: ${oldestKey}`);
-  }
-
-  /**
-   * Clear all cache entries
-   */
-  clear() {
-    this.cache.clear();
-    this.hits = 0;
-    this.misses = 0;
-  }
-
-  /**
-   * Get cache statistics
-   */
-  getStats() {
-    const totalAccess = this.hits + this.misses;
-    const hitRate = totalAccess > 0 ? (this.hits / totalAccess * 100).toFixed(2) : 0;
-
-    return {
-      size: this.cache.size,
-      maxSize: this.maxSize,
-      hits: this.hits,
-      misses: this.misses,
-      hitRate: `${hitRate}%`,
-      entries: Array.from(this.cache.keys())
-    };
-  }
-
-  /**
-   * Remove expired entries
-   */
-  pruneExpired() {
-    const now = Date.now();
-    const keysToDelete = [];
-
-    this.cache.forEach((item, key) => {
-      if (now - item.timestamp > this.maxAge) {
-        keysToDelete.push(key);
-      }
-    });
-
-    keysToDelete.forEach(key => this.cache.delete(key));
-
-    if (keysToDelete.length > 0) {
-      console.log(`🧹 Pruned ${keysToDelete.length} expired cache entries`);
-    }
-
-    return keysToDelete.length;
-  }
-
-  /**
-   * Estimate size of data for monitoring
-   */
-  estimateSize(data) {
-    try {
-      const str = typeof data === 'string' ? data : JSON.stringify(data);
-      return new Blob([str]).size;
-    } catch (e) {
-      return 0;
-    }
-  }
-
-  /**
-   * Get total cache size in bytes (approximate)
-   */
-  getTotalSize() {
-    let total = 0;
-    this.cache.forEach(item => {
-      total += item.size || 0;
-    });
-    return total;
-  }
-}
-
-/**
- * Cancellation token for async operations
- */
-class CancellationToken {
-  constructor() {
-    this.cancelled = false;
-    this.reason = null;
-  }
-  cancel(reason = 'Operation cancelled') {
-    this.cancelled = true;
-    this.reason = reason;
-  }
-  throwIfCancelled() {
-    if (this.cancelled) throw new Error(this.reason || 'Cancelled');
-  }
-  isCancelled() {
-    return this.cancelled;
-  }
-}
+import { AppStateManager } from './app-state-manager.js';
+import { NetworkMonitor } from './network-monitor.js';
+import { LRUCache } from './lru-cache.js';
 
 /**
  * Performance monitoring utility
@@ -300,528 +25,28 @@ class PerformanceMonitor {
   }
 }
 
-/**
- * Network Status Monitoring System
- * Enhanced, configurable, and AppState-friendly single-file class
- */
-class NetworkMonitor {
-  constructor(options = {}) {
-    this.config = {
-      checkInterval: options.checkInterval || 30000,
-      healthCheckTimeout: options.healthCheckTimeout || 5000,
-      qualitySamples: options.qualitySamples || 5,
-      maxRetries: options.maxRetries || 3,
-      autoResumeDelay: options.autoResumeDelay || 1000,
-      thresholds: {
-        EXCELLENT: (options.thresholds && options.thresholds.EXCELLENT) || 100,
-        GOOD: (options.thresholds && options.thresholds.GOOD) || 300,
-        FAIR: (options.thresholds && options.thresholds.FAIR) || 600,
-        POOR: (options.thresholds && options.thresholds.POOR) || 1000
-      },
-      ...options
-    };
-
-    this.isOnline = navigator.onLine;
-    this.latency = 0;
-    this.quality = 'unknown';
-    this.connectionType = 'unknown';
-    this.lastCheck = 0;
-    this.checkInterval = null;
-    this.statusListeners = new Set();
-    this.qualityListeners = new Set();
-
-    this.retryCount = 0;
-    this.maxRetries = this.config.maxRetries;
-
-    this.stats = {
-      totalChecks: 0,
-      successfulChecks: 0,
-      failedChecks: 0,
-      totalDowntime: 0,
-      lastDowntimeStart: null
-    };
-
-    this._onOnline = null;
-    this._onOffline = null;
-    this._onVisibilityChange = null;
-    this._onConnectionChange = null;
-  }
-
-  /**
-   * Initialize network monitoring
-   */
-  initialize() {
-    if (this._initialized) return this;
-    this._initialized = true;
-
-    this.setupEventListeners();
-    this.startQualityMonitoring();
-    this.detectConnectionType();
-
-    try {
-      appState.set('settings.isOnline', this.isOnline);
-      appState.set('settings.networkQuality', this.quality);
-      appState.set('settings.connectionType', this.connectionType);
-    } catch (e) {
-    }
-
-    try {
-      if (typeof appState?.addCleanup === 'function') {
-        this._appStateCleanupUnsub = appState.addCleanup(() => this.cleanup());
-      }
-    } catch (e) { /* ignore */ }
-
-    console.log(`🌐 Network Monitor: ${this.isOnline ? 'Online' : 'Offline'}, Type: ${this.connectionType}`);
-    return this;
-  }
-
-  /**
-   * Setup online/offline event listeners (stores bound handlers for cleanup)
-   */
-  setupEventListeners() {
-    this._onOnline = this.handleOnline.bind(this);
-    this._onOffline = this.handleOffline.bind(this);
-    this._onVisibilityChange = this.handleVisibilityChange.bind(this);
-    this._onConnectionChange = this.handleConnectionChange.bind(this);
-
-    window.addEventListener('online', this._onOnline);
-    window.addEventListener('offline', this._onOffline);
-
-    if (navigator.connection) {
-      try {
-        navigator.connection.addEventListener('change', this._onConnectionChange);
-      } catch (e) {
-      }
-    }
-
-    document.addEventListener('visibilitychange', this._onVisibilityChange);
-  }
-
-  /**
-   * Start periodic network quality checks
-   */
-  startQualityMonitoring() {
-    if (this.checkInterval) {
-      clearInterval(this.checkInterval);
-      this.checkInterval = null;
-    }
-
-    const intervalMs = this.config.checkInterval || 30000;
-
-    this.checkInterval = setInterval(() => {
-      if (this.isOnline) {
-        this.checkConnectionQuality();
-      }
-    }, intervalMs);
-
-    if (this.isOnline) {
-      setTimeout(() => this.checkConnectionQuality(), 1000);
-    }
-
-    try {
-      if (typeof appState?.setIntervalRef === 'function') {
-        appState.setIntervalRef('networkMonitor', this.checkInterval);
-      }
-    } catch (e) { /* ignore */ }
-  }
-
-  /**
-   * Detect connection type using Network Information API
-   */
-  detectConnectionType() {
-    try {
-      const connection = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
-      if (connection) {
-        this.connectionType = connection.effectiveType || connection.type || 'unknown';
-        if (typeof appState?.set === 'function') {
-          appState.set('settings.connectionType', this.connectionType);
-        }
-      }
-    } catch (e) {
-    }
-  }
-
-  /**
-   * Check connection quality by measuring latency
-   */
-  async checkConnectionQuality() {
-    if (!this.isOnline) return;
-
-    this.stats.totalChecks++;
-    const startTime = Date.now();
-    this.lastCheck = startTime;
-
-    try {
-      const endpoints = [
-        'https://connectivitycheck.gstatic.com/generate_204',
-        'https://clients3.google.com/generate_204'
-      ];
-
-      const results = await Promise.allSettled(
-        endpoints.map(url => this.measureLatency(url))
-      );
-
-      const successful = results.filter(r => r.status === 'fulfilled');
-      const successRate = successful.length / endpoints.length;
-
-      if (successful.length > 0) {
-        const latencies = successful.map(r => r.value);
-        this.latency = Math.round(
-          latencies.reduce((a, b) => a + b, 0) / latencies.length
-        );
-
-        this.quality = this.determineQuality(this.latency);
-
-        try {
-          appState.set('settings.networkLatency', this.latency);
-          appState.set('settings.networkQuality', this.quality);
-        } catch (e) { /* ignore */ }
-
-        this.notifyQualityChange();
-
-        if (this.quality === 'poor') {
-          this.showQualityWarning();
-        }
-
-        this.stats.successfulChecks++;
-        this.retryCount = 0;
-      } else {
-        this.stats.failedChecks++;
-        this.retryCount++;
-        console.warn(`Network checks failed (${this.retryCount}/${this.maxRetries})`);
-        if (this.retryCount >= this.maxRetries) {
-          this.handleOffline({ manual: false });
-        }
-      }
-    } catch (error) {
-      this.stats.failedChecks++;
-      this.retryCount++;
-      console.warn('Network quality check failed:', error);
-      if (this.retryCount >= this.maxRetries) {
-        this.handleOffline({ manual: false });
-      }
-    }
-  }
-
-  /**
-   * Measure latency to a specific endpoint
-   */
-  async measureLatency(url) {
-    return new Promise((resolve, reject) => {
-      const controller = new AbortController();
-      const timeoutMs = this.config.healthCheckTimeout || 5000;
-      const timeoutId = setTimeout(() => {
-        controller.abort();
-        reject(new Error('Timeout'));
-      }, timeoutMs);
-
-      const start = performance.now();
-
-      fetch(url, {
-        method: 'HEAD',
-        mode: 'no-cors',
-        cache: 'no-cache',
-        signal: controller.signal
-      })
-        .then(() => {
-          clearTimeout(timeoutId);
-          const end = performance.now();
-          resolve(end - start);
-        })
-        .catch(error => {
-          clearTimeout(timeoutId);
-          reject(error);
-        });
-    });
-  }
-
-  /**
-   * Determine connection quality based on latency
-   */
-  determineQuality(latency) {
-    const t = this.config.thresholds;
-    if (latency <= t.EXCELLENT) return 'excellent';
-    if (latency <= t.GOOD) return 'good';
-    if (latency <= t.FAIR) return 'fair';
-    return 'poor';
-  }
-
-  /**
-   * Handle online event
-   */
-  handleOnline(event) {
-    if (this.isOnline) return;
-
-    this.isOnline = true;
-    try { appState.set('settings.isOnline', true); } catch (e) { /* ignore */ }
-
-    if (this.stats.lastDowntimeStart) {
-      this.stats.totalDowntime += Date.now() - this.stats.lastDowntimeStart;
-      this.stats.lastDowntimeStart = null;
-    }
-
-    console.log('🌐 Network: Online');
-    showNotification('📶 Network connection restored', 'success');
-
-    this.detectConnectionType();
-
-    this.startQualityMonitoring();
-
-    this.notifyStatusChange();
-
-    this.handleAutoResume();
-
-    setTimeout(() => this.checkConnectionQuality(), 1000);
-  }
-
-  /**
-   * Handle offline event
-   */
-  handleOffline(options = {}) {
-    if (!this.isOnline && !options.force) return;
-
-    this.isOnline = false;
-    appState.set('settings.isOnline', false);
-    this.quality = 'offline';
-    try { appState.set('settings.isOnline', false); } catch (e) { /* ignore */ }
-
-    if (!this.stats.lastDowntimeStart) {
-      this.stats.lastDowntimeStart = Date.now();
-    }
-
-    console.log('🌐 Network: Offline');
-    showNotification('📴 Network connection lost', 'error');
-
-    this.notifyStatusChange();
-
-    this.handlePlaybackInterruption();
-  }
-
-  /**
-   * Handle connection change (Network Information API)
-   */
-  handleConnectionChange() {
-    const previousType = this.connectionType;
-    this.detectConnectionType();
-
-    if (previousType !== this.connectionType) {
-      console.log(`🔀 Connection type changed: ${previousType} → ${this.connectionType}`);
-      showNotification(`Network changed to ${this.connectionType}`, 'info');
-    }
-  }
-
-  /**
-   * Handle visibility change (tab switch)
-   */
-  handleVisibilityChange() {
-    if (!document.hidden && this.isOnline) {
-      setTimeout(() => this.checkConnectionQuality(), 1000);
-    }
-  }
-
-  /**
-   * Handle playback interruption on network loss
-   */
-  handlePlaybackInterruption() {
-    const player = channelLoader?.getPlayer?.();
-    if (!player) return;
-
-    try {
-      if (!player.paused()) {
-        player.pause();
-        console.log('⏸️ Playback paused due to network loss');
-      }
-    } catch (error) {
-      console.warn('Failed to pause player:', error);
-    }
-
-    try {
-      if (player.tech_ && player.tech_.vhs && typeof player.tech_.vhs.resetEverything === 'function') {
-        player.tech_.vhs.resetEverything();
-        console.log('🧹 Cleared video buffers');
-      }
-    } catch (error) {
-    }
-  }
-
-  /**
-   * Handle auto-resume when network returns
-   */
-  handleAutoResume() {
-    const player = channelLoader?.getPlayer?.();
-    const currentChannel = (typeof appState?.get === 'function') ? appState.get('player.currentChannel') : null;
-
-    if (!player || !currentChannel) return;
-
-    if (player && player.paused()) {
-      setTimeout(() => {
-        if (this.isOnline && player.paused()) {
-          player.play()
-            .then(() => {
-              console.log('▶️ Auto-resumed playback');
-              showNotification('Playback resumed', 'success');
-            })
-            .catch((error) => {
-              if (error && (error.name === 'NotAllowedError' || error.name === 'AbortError')) {
-                console.warn("Could not auto-resume playback due to browser policy or interruption:", error?.message);
-                try { channelLoader.showPlayButton(); } catch (e) { /* ignore */ }
-                showNotification("Playback failed: Please click the 'Play' button.", "warning");
-              } else {
-                console.error("Critical error during auto-resume:", error);
-                showNotification("Error resuming stream. Please re-select the channel.", "error");
-              }
-            });
-        }
-      }, this.config.autoResumeDelay || 1000);
-    }
-  }
-
-  /**
-   * Show quality warning when connection is poor
-   */
-  showQualityWarning() {
-    if (!this.isOnline) return;
-
-    const lastWarning = (typeof appState?.get === 'function') ? appState.get('ui.lastNetworkWarning') || 0 : 0;
-    if (Date.now() - lastWarning < 120000) return;
-
-    try { appState.set('ui.lastNetworkWarning', Date.now()); } catch (e) { /* ignore */ }
-
-    showNotification(
-      `⚠️ Poor network detected (${this.latency}ms). Playback may buffer.`,
-      'warning',
-      5000
-    );
-  }
-
-  /**
-   * Add status change listener
-   */
-  addStatusListener(callback) {
-    this.statusListeners.add(callback);
-    return () => this.statusListeners.delete(callback);
-  }
-
-  /**
-   * Add quality change listener
-   */
-  addQualityListener(callback) {
-    this.qualityListeners.add(callback);
-    return () => this.qualityListeners.delete(callback);
-  }
-
-  /**
-   * Notify status change to all listeners
-   */
-  notifyStatusChange() {
-    this.statusListeners.forEach(callback => {
-      try {
-        callback(this.isOnline, this.connectionType);
-      } catch (error) {
-        console.warn('Network status listener error:', error);
-      }
-    });
-  }
-
-  /**
-   * Notify quality change to all listeners
-   */
-  notifyQualityChange() {
-    this.qualityListeners.forEach(callback => {
-      try {
-        callback(this.quality, this.latency);
-      } catch (error) {
-        console.warn('Network quality listener error:', error);
-      }
-    });
-  }
-
-  /**
-   * Get current network status
-   */
-  getStatus() {
-    return {
-      isOnline: this.isOnline,
-      latency: this.latency,
-      quality: this.quality,
-      connectionType: this.connectionType,
-      lastCheck: this.lastCheck,
-      stats: { ...this.stats }
-    };
-  }
-
-  /**
-   * Force a network check
-   */
-  async forceCheck() {
-    console.log('🔄 Forcing network check...');
-    await this.checkConnectionQuality();
-    return this.getStatus();
-  }
-
-  /**
-   * Cleanup resources
-   */
-  cleanup() {
-    if (this.checkInterval) {
-      clearInterval(this.checkInterval);
-      this.checkInterval = null;
-    }
-    try {
-      if (typeof appState?.clearIntervalRef === 'function') {
-        appState.clearIntervalRef('networkMonitor');
-      }
-    } catch (e) { /* ignore */ }
-
-    this.statusListeners.clear();
-    this.qualityListeners.clear();
-
-    if (this._onOnline) window.removeEventListener('online', this._onOnline);
-    if (this._onOffline) window.removeEventListener('offline', this._onOffline);
-    if (this._onVisibilityChange) document.removeEventListener('visibilitychange', this._onVisibilityChange);
-    if (this._onConnectionChange && navigator.connection) {
-      try {
-        navigator.connection.removeEventListener('change', this._onConnectionChange);
-      } catch (e) { /* ignore */ }
-    }
-
-    try {
-      if (this._appStateCleanupUnsub) {
-        this._appStateCleanupUnsub();
-        this._appStateCleanupUnsub = null;
-      }
-    } catch (e) { /* ignore */ }
-
-    this._onOnline = null;
-    this._onOffline = null;
-    this._onVisibilityChange = null;
-    this._onConnectionChange = null;
-
-    this._initialized = false;
-  }
-}
-
-// ============================================
-// ============================================
-const networkMonitor = new NetworkMonitor();
-
-// ============================================
-// ============================================
 const CACHE_DURATION = 60 * 60 * 1000;
 const DOUBLE_TAP_DELAY = 300;
 
-// ============================================
-// ============================================
+// 1. Initialize State
+const appState = new AppStateManager();
+
+// 2. Initialize Cache
 const rssCache = new LRUCache(50, CACHE_DURATION);
 const liveCache = new LRUCache(30, CACHE_DURATION);
 
-// ============================================
-// ============================================
-let fullscreenPrompt = null;
-let hasUserInteracted = false;
+// 3. Initialize Network (Passing appState dependency)
+const networkMonitor = new NetworkMonitor({ checkInterval: 15000 }, appState);
+networkMonitor.initialize();
 
-// ============================================
-// ============================================
+// 4. Example usage of State + Cache
+appState.subscribe('settings.isOnline', (isOnline) => {
+    console.log(`Application UI reacting to: ${isOnline ? 'Online' : 'Offline'}`);
+});
+
+
+let fullscreenPrompt = null;
+
 const AUTO_UPDATE_KEY = "autoUpdateEnabled";
 const UPDATE_INTERVAL_KEY = "updateIntervalHours";
 const MAX_RECENT = 18;
@@ -856,221 +81,7 @@ const DEBOUNCE_MS = 180;
 
 const pendingRequests = new Map();
 
-class AppStateManager {
-  constructor() {
-    this.state = {
-      channels: {
-        all: [],
-        filtered: [],
-        searchQuery: ''
-      },
-      player: {
-        instance: null,
-        currentChannel: null,
-        watchStartTime: 0,
-        isPlaying: false
-      },
-      ui: {
-        lastNetworkWarning: null,
-        focusedIndex: 0,
-        lastFocusedElement: null,
-        sortMethod: 'none',
-        isModalOpen: false,
-        numberBuffer: '',
-        touchStartX: 0,
-        touchStartY: 0,
-        touchEndX: 0,
-        touchEndY: 0,
-        lastTapTime: 0,
-        doubleTapDelay: 300
-      },
-      cache: {
-        lastUpdate: 0
-      },
-      intervals: {
-        watch: null,
-        autoUpdate: null,
-        overlayShow: null,
-        overlayHide: null,
-        promptTimeout: null,
-        numberTimeout: null,
-        navigationDebounce: null
-      },
-      settings: {
-        isOnline: navigator.onLine,
-        networkQuality: null,
-        connectionType: null,
-        networkLatency: null,
-        apiKey: '',
-        isAutoUpdateEnabled: true,
-        updateIntervalHours: 8
-      },
-      uiCollections: {
-        allChannelItems: []
-      }
-    };
-    this.subscribers = new Map();
-    this.cleanupCallbacks = new Set();
-  }
 
-  get userAgent() {
-    return this._state.system.userAgent.current;
-  }
-
-  get isCustomUserAgent() {
-    return this._state.system.userAgent.isCustom;
-  }
-
-  get(path) {
-    if (!path) return this.state;
-    return path.split('.').reduce((o, k) => (o ? o[k] : undefined), this.state);
-  }
-
-  set(path, value) {
-    const version = (this._version || 0) + 1;
-    this._version = version;
-
-    const keys = path.split('.');
-    const last = keys.pop();
-    let target = this.state;
-    for (const k of keys) {
-      if (!(k in target)) target[k] = {};
-      target = target[k];
-    }
-    target[last] = value;
-
-    this._queuePersist(path, value, version);
-
-    this.notify(path, value);
-  }
-
-  _queuePersist(path, value, version) {
-    clearTimeout(this._persistTimer);
-    this._persistTimer = setTimeout(() => {
-      if (this._version === version) {
-        this._doPersist(path, value);
-      }
-    }, 100);
-  }
-
-  _doPersist(path, value) {
-    try {
-      if (path === 'channels.all') {
-        safeLocalStorageSet(LS_KEYS.CHANNELS, JSON.stringify(this.state.channels?.all || []));
-      } else {
-      }
-    } catch (e) {
-      console.warn("Failed to persist", e);
-    }
-  }
-
-  merge(path, obj) {
-    const cur = this.get(path) || {};
-    this.set(path, Object.assign({}, cur, obj));
-    return this.get(path);
-  }
-
-  subscribe(path, cb) {
-    if (!this.subscribers.has(path)) this.subscribers.set(path, []);
-    this.subscribers.get(path).push(cb);
-    return () => {
-      const arr = this.subscribers.get(path) || [];
-      const i = arr.indexOf(cb);
-      if (i !== -1) arr.splice(i, 1);
-    };
-  }
-
-  notify(path, newVal, oldVal) {
-    if (this.subscribers.has(path)) {
-      for (const cb of [...this.subscribers.get(path)]) {
-        try { cb(newVal, oldVal); } catch (e) { console.error(e); }
-      }
-    }
-    const parts = path.split('.');
-    while (parts.length > 1) {
-      parts.pop();
-      const p = parts.join('.');
-      if (this.subscribers.has(p)) {
-        for (const cb of [...this.subscribers.get(p)]) {
-          try { cb(this.get(p)); } catch (e) { console.error(e); }
-        }
-      }
-    }
-  }
-
-  setIntervalRef(name, id) {
-    const prev = this.get(`intervals.${name}`);
-    if (prev) clearInterval(prev);
-    this.set(`intervals.${name}`, id);
-  }
-  clearIntervalRef(name) {
-    const id = this.get(`intervals.${name}`);
-    if (id) { clearInterval(id); this.set(`intervals.${name}`, null); }
-  }
-  setTimeoutRef(name, id) {
-    const prev = this.get(`intervals.${name}`);
-    if (prev) clearTimeout(prev);
-    this.set(`intervals.${name}`, id);
-  }
-
-  getTimeoutRef(key) {
-    return this.timeoutRefs[key];
-  }
-
-  clearTimeoutRef(name) {
-    const id = this.get(`intervals.${name}`);
-    if (id) { clearTimeout(id); this.set(`intervals.${name}`, null); }
-  }
-
-  addCleanup(fn) {
-    this.cleanupCallbacks.add(fn);
-    return () => this.cleanupCallbacks.delete(fn);
-  }
-
-  reset(path) {
-    if (path === 'intervals') {
-      const ints = this.state.intervals;
-      Object.values(ints).forEach(i => {
-        if (i) {
-          clearInterval(i);
-          clearTimeout(i);
-        }
-      });
-      this.state.intervals = {
-        watch: null,
-        autoUpdate: null,
-        overlayShow: null,
-        overlayHide: null,
-        promptTimeout: null,
-        numberTimeout: null
-      };
-    } else if (path === 'cache') {
-      try {
-        this.state.cache.rss.clear();
-        this.state.cache.live.clear();
-        this.state.cache.lastUpdate = 0;
-      } catch (e) { }
-    }
-  }
-  cleanup() {
-    try { this.reset('intervals'); } catch (e) { }
-    try { this.reset('cache'); } catch (e) { }
-
-    for (const cb of Array.from(this.cleanupCallbacks)) {
-      try { cb(); } catch (e) { console.warn(e); }
-    }
-
-    this.cleanupCallbacks.clear();
-    this.subscribers.clear();
-    this.set('player.instance', null);
-  }
-
-}
-
-const appState = new AppStateManager();
-
-// ============================================
-// ============================================
 function safeJSONParse(value, fallback = null) {
   try {
     return JSON.parse(value);
@@ -1110,8 +121,6 @@ function writeArray(key, arr) {
   }
 }
 
-// ============================================
-// ============================================
 function getActualStorageSize(str) {
   return new Blob([str]).size;
 }
@@ -1181,8 +190,6 @@ function safeLocalStorageSet(key, value, retryOnFail = true) {
   }
 }
 
-// ============================================
-// ============================================
 
 /**
  * Debounce function to limit rapid calls
@@ -1190,7 +197,9 @@ function safeLocalStorageSet(key, value, retryOnFail = true) {
 function debounce(fn, wait = DEBOUNCE_MS, options = {}) {
   let timeout;
   let lastArgs, lastThis;
-  const { leading = false, trailing = true, maxWait } = options;
+  const {
+    leading = false, trailing = true, maxWait
+  } = options;
 
   function invoke() {
     fn.apply(lastThis, lastArgs);
@@ -1248,8 +257,6 @@ function getTimeAgo(timestamp) {
 
 }
 
-// ============================================
-// ============================================
 function showNotification(message, type = 'info', time = 3000) {
   appState.clearTimeoutRef('notificationTimer');
 
@@ -1314,7 +321,10 @@ function showNotification(message, type = 'info', time = 3000) {
     }
   });
 
-  return { hide, cleanup };
+  return {
+    hide,
+    cleanup
+  };
 }
 
 function showErrorToUser(message) {
@@ -1339,8 +349,6 @@ function showErrorToUser(message) {
   }, PLAYBACK_CONSTANTS.PLAYER_READY_TIMEOUT);
 }
 
-// ============================================
-// ============================================
 
 /**
  * Get all favorites with validation
@@ -1551,10 +559,320 @@ window.addEventListener('iptv-storage-updated', (e) => {
   }
 });
 
+
+function saveAPIKey(apiKey) {
+  if (!apiKey || !apiKey.trim()) return false;
+  try {
+    const enc = btoa(btoa(apiKey.trim()));
+    localStorage.setItem(API_KEY_STORAGE_KEY, enc);
+    appState.set('settings.apiKey', apiKey.trim());
+    return true;
+  } catch (e) {
+    console.error(e);
+    return false;
+  }
+}
+
+function getStoredAPIKey() {
+  const enc = localStorage.getItem(API_KEY_STORAGE_KEY);
+  if (!enc) return null;
+  try {
+    const key = atob(atob(enc));
+    appState.set('settings.apiKey', key);
+    return key;
+  } catch (e) {
+    return null;
+  }
+}
+
+function hasValidAPIKey() {
+  const storedKey = getStoredAPIKey();
+  return storedKey && storedKey.length > 10;
+}
+
+function clearAPIKey() {
+  localStorage.removeItem(API_KEY_STORAGE_KEY);
+  appState.set('settings.apiKey', '');
+}
+
 // ============================================
+// STREAM CONFIGURATION
 // ============================================
-// ======================================================================
-// ======================================================================
+
+/**
+ * Cancellation token for async operations
+ */
+class CancellationToken {
+  constructor() {
+    this.cancelled = false;
+    this.reason = null;
+  }
+
+  cancel(reason = 'Operation cancelled') {
+    this.cancelled = true;
+    this.reason = reason;
+  }
+
+  throwIfCancelled() {
+    if (this.cancelled) throw new Error(this.reason || 'Cancelled');
+  }
+
+  isCancelled() {
+    return this.cancelled;
+  }
+}
+
+/**
+ * Create stream configuration based on URL
+ */
+function createStreamConfig(url, opts = {}) {
+  if (!url || typeof url !== "string") {
+    console.warn("createStreamConfig: invalid URL");
+    return null;
+  }
+
+  url = url.trim();
+  const isHTTPS = window.location.protocol === "https:";
+  const isHTTP = url.startsWith("http://");
+  const isM3U8 = url.includes(".m3u8") || url.includes("playlist");
+  const isMPD = url.endsWith(".mpd");
+  const isMP4 = url.endsWith(".mp4") || url.includes(".mp4?") || url.includes("imarkaz");
+  const isTS = url.endsWith(".ts");
+  const isYouTube = url.includes("youtube.com") || url.includes("youtu.be");
+
+  if (isHTTPS && isHTTP) {
+    console.error("❌ Mixed Content Blocked:", url);
+
+    let httpsRewrite = null;
+    try {
+      if (url.startsWith("http://")) {
+        httpsRewrite = "https://" + url.substring(7);
+      }
+    } catch { }
+
+    const proxy = opts.proxyUrl || "https://cors-anywhere.herokuapp.com/";
+    const proxiedUrl = proxy + url;
+
+    showNotification(
+      "⚠ HTTP stream blocked on HTTPS. Using secure proxy fallback...",
+      "warning"
+    );
+
+    return {
+      techOrder: ["html5"],
+      type: isM3U8 ? "hls" : "auto",
+      source: {
+        src: proxiedUrl,
+        type: isM3U8 ?
+          "application/x-mpegURL" : isMP4 ?
+            "video/mp4" : "video/mp2t",
+      },
+      _fallbackInfo: {
+        original: url,
+        throughProxy: proxiedUrl,
+        httpsRewriteAttempt: httpsRewrite,
+      },
+    };
+  }
+
+  if (isYouTube) {
+    return {
+      type: "youtube",
+      techOrder: ["youtube", "html5"],
+      source: {
+        src: url,
+        type: "video/youtube"
+      },
+    };
+  }
+
+  if (isM3U8) {
+    return {
+      type: "hls",
+      techOrder: ["html5"],
+      html5: {
+        hls: {
+          overrideNative: true,
+          enableLowLatency: true,
+          smoothQualityChange: true,
+          enableLowInitialPlaylist: true,
+          withCredentials: false,
+          maxPlaylistRetries: 5,
+          bufferBehind: 30
+        },
+      },
+      source: {
+        src: url,
+        type: "application/x-mpegURL",
+      },
+    };
+  }
+
+  if (isMPD) {
+    return {
+      type: "dash",
+      techOrder: ["html5"],
+      source: {
+        src: url,
+        type: "application/dash+xml",
+      },
+    };
+  }
+
+  if (isMP4) {
+    return {
+      type: "mp4",
+      source: {
+        src: url,
+        type: "video/mp4"
+      },
+    };
+  }
+
+  if (isTS) {
+    return {
+      type: "ts",
+      techOrder: ["html5"],
+      source: {
+        src: url,
+        type: "video/mp2t"
+      },
+    };
+  }
+
+  console.warn("createStreamConfig: unknown format, using auto-detect →", url);
+
+  return {
+    type: "auto",
+    techOrder: ["html5"],
+    source: {
+      src: url,
+      type: "video/mp4"
+    },
+  };
+}
+
+/**
+ * Build video.js player options
+ */
+function buildPlayerOptions(streamConfig, metadata) {
+  const baseOptions = {
+    autoplay: true,
+    controls: false,
+    preload: 'auto',
+    fluid: true,
+    liveui: metadata && (metadata.isLive === true || metadata.isLive === 'true'),
+    responsive: true,
+    techOrder: streamConfig.techOrder,
+    sources: Array.isArray(streamConfig.source) ?
+      streamConfig.source : (streamConfig.source ? [streamConfig.source] : []),
+    playbackRates: [0.5, 1, 1.25, 1.5, 2],
+    loadingSpinner: true,
+    errorDisplay: false,
+    html5: {
+      nativeTextTracks: false,
+      preloadTextTracks: false
+    }
+  };
+
+  if (streamConfig.type === 'youtube') {
+    baseOptions.youtube = {
+      ytControls: true,
+      playerVars: {
+        autoplay: 1,
+        playsinline: 1,
+        controls: 1,
+        mute: 1,
+        rel: 0,
+        enablejsapi: 1,
+        modestbranding: 1
+      }
+    };
+  }
+
+  /*   if (streamConfig.type === 'hls') {
+          baseOptions.html5 = baseOptions.html5 || {};
+           baseOptions.html5.vhs = Object.assign({}, baseOptions.html5.vhs || {}, {
+                overrideNative: true,
+                enableLowInitialPlaylist: true,
+                smoothQualityChange: true,
+                bandwidth: 4194304,
+                withCredentials: false,
+                limitRenditionByPlayerDimensions: false,
+                useDevicePixelRatio: false,
+                useNetworkInformationApi: false,
+                maxPlaylistRetries: 5,
+                experimentalBufferBasedABR: false,
+                experimentalLLHLS: false,
+                handleManifestRedirects: true,
+                useBandwidthFromLocalStorage: false,
+                timeout: 45000,
+                enablePlaylistRefresh: true,
+                playlistRefreshInterval: 30000,
+                maxBufferLength: 30,
+                maxBufferSize: 60 * 1024 * 1024,
+                bufferBehind: 30
+              });
+          baseOptions.html5.nativeAudioTracks = false;
+          baseOptions.html5.nativeVideoTracks = false;
+    } */
+
+  if (streamConfig.type === 'dash') {
+    baseOptions.html5 = baseOptions.html5 || {};
+    baseOptions.html5.vhs = Object.assign({}, (baseOptions.html5.vhs || {}), {
+      overrideNative: true,
+      withCredentials: false
+    });
+  }
+
+  if (!baseOptions.sources || baseOptions.sources.length === 0) {
+    console.warn('⚠️ buildPlayerOptions: sources are empty. Check streamConfig.source');
+  }
+  if (!baseOptions.techOrder || baseOptions.techOrder.length === 0) {
+    console.warn('⚠️ buildPlayerOptions: techOrder is empty. Check streamConfig.techOrder');
+  }
+
+  return baseOptions;
+}
+
+/**
+ * Resolve YouTube playback errors
+ */
+function resolveYouTubePlayback(player) {
+  try {
+    const src = player?.currentSrc?.();
+    if (!src) return null;
+
+    const videoId = extractYouTubeID(src);
+    if (!videoId) return null;
+
+    const liveFeeds = window.safeJSONParse ? window.safeJSONParse(
+      window.LS_KEYS ? window.LS_KEYS.LIVE : "liveChannelsData",
+      []
+    ) : [];
+
+    const match = liveFeeds.find(feed =>
+      feed?.name &&
+      document.body.textContent.includes(feed.name)
+    );
+
+    return match ? window.extractChannelId ? window.extractChannelId(match.url) : null : null;
+  } catch {
+    return null;
+  }
+}
+
+
+/**
+ * Extract YouTube ID from URL
+ */
+function extractYouTubeID(url) {
+  if (!url) return null;
+  const match = url.match(/(?:youtube\.com\/(?:.*v=|live\/|embed\/)|youtu\.be\/)([^&?/]+)/i);
+  return match ? match[1] : null;
+}
+
+
 /**
  * Manages video player lifecycle with race condition protection
  * @class ChannelLoader
@@ -1574,14 +892,25 @@ class ChannelLoader {
     this.eventCleanupCallbacks = [];
 
     this.cleanupRegistry = new FinalizationRegistry((cleanup) => {
-      try { cleanup(); } catch (e) { console.warn("Finalizer cleanup error:", e); }
+      try {
+        cleanup();
+      } catch (e) {
+        console.warn("Finalizer cleanup error:", e);
+      }
     });
 
-    this.config = Object.assign({ playerContainerId: "player-container", persistDelay: 100 }, opts);
+    this.config = Object.assign({
+      playerContainerId: "player-container",
+      persistDelay: 100
+    }, opts);
 
     if (typeof appState !== "undefined" && typeof appState.addCleanup === "function") {
       appState.addCleanup(() => {
-        try { this.cleanupPlayer(true); } catch (e) { console.warn(e); }
+        try {
+          this.cleanupPlayer(true);
+        } catch (e) {
+          console.warn(e);
+        }
       });
     }
   }
@@ -1595,11 +924,16 @@ class ChannelLoader {
       } else if (typeof player.addListener === "function") {
         player.addListener(event, handler);
       }
-    } catch (e) { /* ignore */ }
+    } catch (e) {
+      /* ignore */
+    }
 
     try {
       if (!player._boundEvents) player._boundEvents = [];
-      player._boundEvents.push({ event, handler });
+      player._boundEvents.push({
+        event,
+        handler
+      });
 
       this.cleanupRegistry.register(player, () => {
         try {
@@ -1612,35 +946,46 @@ class ChannelLoader {
           }
         } catch (e) { }
       });
-    } catch (e) { /* ignore */ }
+    } catch (e) {
+      /* ignore */
+    }
   }
 
   /**
- * Safely disposes video.js player with HLS cleanup
- * @private
- * @param {Object} player - Video.js player instance
- * @returns {Promise<void>}
- */
+   * Safely disposes video.js player with HLS cleanup
+   * @private
+   * @param {Object} player - Video.js player instance
+   * @returns {Promise<void>}
+   */
   async _disposeVideoJS(player) {
     try {
       if (!player) return;
 
-      try { player.pause?.(); } catch (e) { }
+      try {
+        player.pause?.();
+      } catch (e) { }
 
       try {
         if (typeof player.off === "function") {
-          try { player.off(); } catch (e) { }
+          try {
+            player.off();
+          } catch (e) { }
         } else if (typeof player.removeEventListener === "function") {
           const events = player._boundEvents;
           if (events && typeof events.forEach === "function") {
             try {
-              events.forEach(({ event, handler }) => {
+              events.forEach(({
+                event,
+                handler
+              }) => {
                 try {
                   player.removeEventListener(event, handler);
                 } catch (e) { }
               });
             } catch (e) { }
-            try { events.clear?.(); } catch (e) { }
+            try {
+              events.clear?.();
+            } catch (e) { }
           }
         }
       } catch (e) { }
@@ -1649,33 +994,47 @@ class ChannelLoader {
         const tech = player.tech_ || (typeof player.tech === "function" && player.tech(true)) || null;
         const hls = tech?.hls || tech?.vhs || tech?.hlsHandler || tech?.vhsHandler;
         if (hls) {
-          try { typeof hls.dispose === "function" && hls.dispose(); } catch (e) { }
-          try { typeof hls.destroy === "function" && hls.destroy(); } catch (e) { }
+          try {
+            typeof hls.dispose === "function" && hls.dispose();
+          } catch (e) { }
+          try {
+            typeof hls.destroy === "function" && hls.destroy();
+          } catch (e) { }
         }
       } catch (e) { }
 
       try {
         if (typeof player.dispose === "function") {
-          try { player.dispose(); } catch (e) { console.warn("player.dispose() error:", e); }
+          try {
+            player.dispose();
+          } catch (e) {
+            console.warn("player.dispose() error:", e);
+          }
         }
       } catch (e) { }
 
       try {
         if (typeof player.destroy === "function") {
-          try { await player.destroy(); } catch (e) { }
+          try {
+            await player.destroy();
+          } catch (e) { }
         }
       } catch (e) { }
 
       try {
         const el = (typeof player.el === "function") ? player.el() : player.element || null;
         if (el && el.parentNode) {
-          try { el.parentNode.removeChild(el); } catch (e) { }
+          try {
+            el.parentNode.removeChild(el);
+          } catch (e) { }
         }
 
         const container = document.getElementById(this.config.playerContainerId);
         if (container) {
           container.querySelectorAll("video, .video-js, .vjs-tech, .vjs-video").forEach(node => {
-            try { node.remove(); } catch (e) { }
+            try {
+              node.remove();
+            } catch (e) { }
           });
         }
       } catch (e) { }
@@ -1684,10 +1043,10 @@ class ChannelLoader {
     }
   }
 
-  // ======================================================================
-  // ======================================================================
   async cleanupPlayer(force = false) {
-    try { stopWatching?.(); } catch { }
+    try {
+      stopWatching?.();
+    } catch { }
 
     const player = this.playerRef?.deref?.() || this.playerInstance;
 
@@ -1714,10 +1073,13 @@ class ChannelLoader {
     token.throwIfCancelled();
 
     const streamConfig = createStreamConfig(url);
-    const metadata = { isLive: !!isLive };
+    const metadata = {
+      isLive: !!isLive
+    };
 
     const videoId = `player-${Date.now()}`;
     const videoElement = this.createVideoElement(videoId);
+
     container.innerHTML = "";
     container.appendChild(videoElement);
 
@@ -1743,7 +1105,9 @@ class ChannelLoader {
     try {
       this.playerRef = new WeakRef(player);
     } catch {
-      this.playerRef = { deref: () => player };
+      this.playerRef = {
+        deref: () => player
+      };
     }
 
     if (!player._boundEvents) {
@@ -1752,13 +1116,19 @@ class ChannelLoader {
 
     try {
       this._bindPlayerEvent(player, "error", (e) => {
-        try { console.warn("⚠️ Player error event:", e); } catch { }
+        try {
+          console.warn("⚠️ Player error event:", e);
+        } catch { }
       });
       this._bindPlayerEvent(player, "ended", () => {
-        try { console.log("ℹ️ Playback ended"); } catch { }
+        try {
+          console.log("ℹ️ Playback ended");
+        } catch { }
       });
       this._bindPlayerEvent(player, "timeupdate", () => {
-        try { /* analytics hook */ } catch { }
+        try {
+          /* analytics hook */
+        } catch { }
       });
     } catch (e) {
       console.warn("Event binding failed:", e);
@@ -1766,14 +1136,18 @@ class ChannelLoader {
 
     try {
       this.cleanupRegistry.register(player, () => {
-        try { this._disposeVideoJS(player); } catch { }
+        try {
+          this._disposeVideoJS(player);
+        } catch { }
       });
     } catch (e) {
       console.warn("Cleanup registry failed:", e);
     }
 
     try {
-      if (streamConfig.type === "hls" && player.tech({ IWillNotUseThisInPlugins: true })) {
+      if (streamConfig.type === "hls" && player.tech({
+        IWillNotUseThisInPlugins: true
+      })) {
         this.setupHLSErrorRecovery();
       }
     } catch (e) {
@@ -1812,16 +1186,16 @@ class ChannelLoader {
   }
 
   /**
- * Loads a channel with race-condition protection and cleanup
- * @param {string} url - Stream URL (HLS/DASH/YouTube)
- * @param {string} name - Channel display name
- * @param {string} image - Channel thumbnail URL
- * @param {string} description - Channel description
- * @param {number} number - Channel number for direct access
- * @param {boolean} isLive - Whether channel is live stream
- * @returns {Promise<void>}
- * @throws {Error} If player initialization fails
- */
+   * Loads a channel with race-condition protection and cleanup
+   * @param {string} url - Stream URL (HLS/DASH/YouTube)
+   * @param {string} name - Channel display name
+   * @param {string} image - Channel thumbnail URL
+   * @param {string} description - Channel description
+   * @param {number} number - Channel number for direct access
+   * @param {boolean} isLive - Whether channel is live stream
+   * @returns {Promise<void>}
+   * @throws {Error} If player initialization fails
+   */
   async loadChannel(url, name, image, description, number, isLive) {
     if (!url) return;
 
@@ -1848,7 +1222,14 @@ class ChannelLoader {
       await this.initializePlayer(url, name, isLive, token);
 
       this.verifyOperation(opId, token);
-      appState.set("player.currentChannel", { url, name, image, description, number, isLive });
+      appState.set("player.currentChannel", {
+        url,
+        name,
+        image,
+        description,
+        number,
+        isLive
+      });
       appState.set("player.isPlaying", true);
 
     } catch (err) {
@@ -1868,7 +1249,7 @@ class ChannelLoader {
 
   updateChannelUI(name, image, description, number) {
     const map = {
-      'content-image': (el) => el.src = fixImageUrl(image),
+      'content-image': (el) => el.src = prepareImageUrl(image),
       'video-title': (el) => el.textContent = name || 'Unknown Channel',
       'channel-description': (el) => el.textContent = description || '',
       'channel-number': (el) => el.textContent = number ? `${number}.` : '',
@@ -1877,7 +1258,11 @@ class ChannelLoader {
     for (const id in map) {
       const el = document.getElementById(id);
       if (el) {
-        try { map[id](el); } catch (e) { console.warn(e); }
+        try {
+          map[id](el);
+        } catch (e) {
+          console.warn(e);
+        }
       }
     }
     appState.set('ui.lastFocusedElement', document.activeElement);
@@ -1886,7 +1271,9 @@ class ChannelLoader {
   setupHLSErrorRecovery() {
     if (!this.playerInstance) return;
     try {
-      const tech = this.playerInstance.tech ? this.playerInstance.tech({ IWillNotUseThisInPlugins: true }) : null;
+      const tech = this.playerInstance.tech ? this.playerInstance.tech({
+        IWillNotUseThisInPlugins: true
+      }) : null;
       if (!tech || !tech.vhs) return;
       let errorCount = 0;
       const maxErrors = 3;
@@ -1895,7 +1282,9 @@ class ChannelLoader {
         console.warn(`⚠️ HLS error detected (${errorCount}/${maxErrors})`);
         if (errorCount < maxErrors) {
           setTimeout(() => {
-            try { tech.vhs.playlists.trigger('loadedplaylist'); } catch (e) { }
+            try {
+              tech.vhs.playlists.trigger('loadedplaylist');
+            } catch (e) { }
           }, 1000);
         } else {
           console.error('Max HLS errors reached');
@@ -1903,9 +1292,13 @@ class ChannelLoader {
       };
       tech.vhs.on('error', vhsErrorHandler);
       this.eventCleanupCallbacks.push(() => {
-        try { if (tech && tech.vhs) tech.vhs.off('error', vhsErrorHandler); } catch (e) { }
+        try {
+          if (tech && tech.vhs) tech.vhs.off('error', vhsErrorHandler);
+        } catch (e) { }
       });
-    } catch (e) { console.warn(e); }
+    } catch (e) {
+      console.warn(e);
+    }
   }
 
   createVideoElement(id) {
@@ -1929,16 +1322,23 @@ class ChannelLoader {
       const obs = new MutationObserver(() => {
         const el = document.getElementById(id);
         if (el) {
-          try { obs.disconnect(); } catch (_) { }
+          try {
+            obs.disconnect();
+          } catch (_) { }
           if (tid) clearTimeout(tid);
           resolve(el);
         }
       });
 
-      obs.observe(document.body, { childList: true, subtree: true });
+      obs.observe(document.body, {
+        childList: true,
+        subtree: true
+      });
 
       tid = setTimeout(() => {
-        try { obs.disconnect(); } catch (_) { }
+        try {
+          obs.disconnect();
+        } catch (_) { }
         reject(new Error(`Element ${id} not found`));
       }, PLAYBACK_CONSTANTS.MAX_ELEMENT_WAIT_TIME);
     });
@@ -1949,14 +1349,21 @@ class ChannelLoader {
       if (!this.playerInstance) return reject(new Error('No player instance'));
       let done = false;
       const timeoutId = setTimeout(() => {
-        if (!done) { done = true; reject(new Error('Player ready timeout')); }
+        if (!done) {
+          done = true;
+          reject(new Error('Player ready timeout'));
+        }
       }, PLAYBACK_CONSTANTS.PLAYER_READY_TIMEOUT);
 
       this.playerInstance.ready(() => {
         if (done) return;
         clearTimeout(timeoutId);
-        if (token.isCancelled()) { done = true; return reject(new Error('Cancelled')); }
-        done = true; resolve();
+        if (token.isCancelled()) {
+          done = true;
+          return reject(new Error('Cancelled'));
+        }
+        done = true;
+        resolve();
       });
 
       this.playerInstance.one && this.playerInstance.one('error', () => {
@@ -2138,6 +1545,8 @@ class ChannelLoader {
       if (token.isCancelled()) return;
       console.log('ℹ️ Playback ended');
       stopWatching();
+      navigateToNextChannel();
+
     };
 
     /* --------------------------------------------------
@@ -2236,17 +1645,26 @@ class ChannelLoader {
       attempts++;
       if (attempts > maxAttempts) return;
       try {
-        const tech = this.playerInstance.tech && this.playerInstance.tech({ IWillNotUseThisInPlugins: true });
+        const tech = this.playerInstance.tech && this.playerInstance.tech({
+          IWillNotUseThisInPlugins: true
+        });
         if (!tech || !tech.ytPlayer) return setTimeout(check, PLAYBACK_CONSTANTS.YOUTUBE_READY_CHECK_INTERVAL);
         const qualityChangeHandler = (event) => {
           const qEl = document.getElementById('video-quality');
           if (qEl) qEl.textContent = event.data || 'auto';
         };
-        try { tech.ytPlayer.addEventListener('onPlaybackQualityChange', qualityChangeHandler); } catch (e) { }
+        try {
+          tech.ytPlayer.addEventListener('onPlaybackQualityChange', qualityChangeHandler);
+        } catch (e) { }
         this.eventCleanupCallbacks.push(() => {
-          try { if (tech && tech.ytPlayer) tech.ytPlayer.removeEventListener('onPlaybackQualityChange', qualityChangeHandler); } catch (e) { }
+          try {
+            if (tech && tech.ytPlayer) tech.ytPlayer.removeEventListener('onPlaybackQualityChange', qualityChangeHandler);
+          } catch (e) { }
         });
-      } catch (e) { console.warn(e); setTimeout(check, PLAYBACK_CONSTANTS.YOUTUBE_READY_CHECK_INTERVAL); }
+      } catch (e) {
+        console.warn(e);
+        setTimeout(check, PLAYBACK_CONSTANTS.YOUTUBE_READY_CHECK_INTERVAL);
+      }
     };
     check();
   }
@@ -2304,11 +1722,13 @@ class ChannelLoader {
     this.eventCleanupCallbacks = [];
   }
 
-  getPlayer() { return this.playerInstance; }
+  getPlayer() {
+    return this.playerInstance;
+  }
   /**
-     * Sets up a dynamic close button that appears ONLY when the player is in Video.js fullscreen mode.
-     * This is necessary because Video.js creates a new stacking context that overlays the main modal's close button.
-     */
+   * Sets up a dynamic close button that appears ONLY when the player is in Video.js fullscreen mode.
+   * This is necessary because Video.js creates a new stacking context that overlays the main modal's close button.
+   */
   setupFullscreenCloseButton() {
     if (!this.playerInstance) return;
     try {
@@ -2346,282 +1766,12 @@ class ChannelLoader {
 const channelLoader = new ChannelLoader();
 
 // ============================================
+// CHANNEL SELECTION & PLAYBACK
 // ============================================
 
-function resolveYouTubePlayback(player) {
-  try {
-    const src = player?.currentSrc?.();
-    if (!src) return null;
-
-    const videoId = extractYouTubeID(src);
-    if (!videoId) return null;
-
-    const liveFeeds = safeJSONParse(
-      localStorage.getItem(LS_KEYS.LIVE),
-      []
-    );
-
-    const match = liveFeeds.find(feed =>
-      feed?.name &&
-      document.body.textContent.includes(feed.name)
-    );
-
-    return match ? extractChannelId(match.url) : null;
-  } catch {
-    return null;
-  }
-}
-
-function extractYouTubeID(url) {
-  if (!url) return null;
-  const match = url.match(/(?:youtube\.com\/(?:.*v=|live\/|embed\/)|youtu\.be\/)([^&?/]+)/i);
-  return match ? match[1] : null;
-}
-
-// ============================================
-// ============================================
-
-function saveAPIKey(apiKey) {
-  if (!apiKey || !apiKey.trim()) return false;
-  try {
-    const enc = btoa(btoa(apiKey.trim()));
-    localStorage.setItem(API_KEY_STORAGE_KEY, enc);
-    appState.set('settings.apiKey', apiKey.trim());
-    return true;
-  } catch (e) {
-    console.error(e);
-    return false;
-  }
-}
-
-function getStoredAPIKey() {
-  const enc = localStorage.getItem(API_KEY_STORAGE_KEY);
-  if (!enc) return null;
-  try {
-    const key = atob(atob(enc));
-    appState.set('settings.apiKey', key);
-    return key;
-  } catch (e) {
-    return null;
-  }
-}
-
-function hasValidAPIKey() {
-  const storedKey = getStoredAPIKey();
-  return storedKey && storedKey.length > 10;
-}
-
-function clearAPIKey() {
-  localStorage.removeItem(API_KEY_STORAGE_KEY);
-  appState.set('settings.apiKey', '');
-}
-
-// ============================================
-// ============================================
-
-// ======================================================================
-// ======================================================================
-function createStreamConfig(url, opts = {}) {
-  if (!url || typeof url !== "string") {
-    console.warn("createStreamConfig: invalid URL");
-    return null;
-  }
-
-  url = url.trim();
-  const isHTTPS = window.location.protocol === "https:";
-  const isHTTP = url.startsWith("http://");
-  const isM3U8 = url.includes(".m3u8") || url.includes("playlist");
-  const isMPD = url.endsWith(".mpd");
-  const isMP4 = url.endsWith(".mp4") || url.includes(".mp4?") || url.includes("imarkaz");
-  const isTS = url.endsWith(".ts");
-  const isYouTube = url.includes("youtube.com") || url.includes("youtu.be");
-
-  if (isHTTPS && isHTTP) {
-    console.error("❌ Mixed Content Blocked:", url);
-
-    let httpsRewrite = null;
-    try {
-      if (url.startsWith("http://")) {
-        httpsRewrite = "https://" + url.substring(7);
-      }
-    } catch { }
-
-    const proxy = opts.proxyUrl || "https://cors-anywhere.herokuapp.com/";
-    const proxiedUrl = proxy + url;
-
-    showNotification(
-      "⚠ HTTP stream blocked on HTTPS. Using secure proxy fallback...",
-      "warning"
-    );
-
-    return {
-      techOrder: ["html5"],
-      type: isM3U8 ? "hls" : "auto",
-      source: {
-        src: proxiedUrl,
-        type: isM3U8
-          ? "application/x-mpegURL"
-          : isMP4
-            ? "video/mp4"
-            : "video/mp2t",
-      },
-      _fallbackInfo: {
-        original: url,
-        throughProxy: proxiedUrl,
-        httpsRewriteAttempt: httpsRewrite,
-      },
-    };
-  }
-
-  if (isYouTube) {
-    return {
-      type: "youtube",
-      techOrder: ["youtube", "html5"],
-      source: { src: url, type: "video/youtube" },
-    };
-  }
-
-  if (isM3U8) {
-    return {
-      type: "hls",
-      techOrder: ["html5"],
-      html5: {
-        hls: {
-          overrideNative: true,
-          enableLowLatency: true,
-          smoothQualityChange: true,
-          enableLowInitialPlaylist: true,
-          withCredentials: false,
-          maxPlaylistRetries: 5,
-          bufferBehind: 30
-        },
-      },
-      source: {
-        src: url,
-        type: "application/x-mpegURL",
-      },
-    };
-  }
-
-  if (isMPD) {
-    return {
-      type: "dash",
-      techOrder: ["html5"],
-      source: {
-        src: url,
-        type: "application/dash+xml",
-      },
-    };
-  }
-
-  if (isMP4) {
-    return {
-      type: "mp4",
-      source: { src: url, type: "video/mp4" },
-    };
-  }
-
-  if (isTS) {
-    return {
-      type: "ts",
-      techOrder: ["html5"],
-      source: { src: url, type: "video/mp2t" },
-    };
-  }
-
-  console.warn("createStreamConfig: unknown format, using auto-detect →", url);
-
-  return {
-    type: "auto",
-    techOrder: ["html5"],
-    source: { src: url, type: "video/mp4" },
-  };
-}
-
-function buildPlayerOptions(streamConfig, metadata) {
-  const baseOptions = {
-    autoplay: true,
-    controls: false,
-    preload: 'auto',
-    fluid: true,
-    liveui: metadata && (metadata.isLive === true || metadata.isLive === 'true'),
-    responsive: true,
-    techOrder: streamConfig.techOrder,
-    sources: Array.isArray(streamConfig.source)
-      ? streamConfig.source
-      : (streamConfig.source ? [streamConfig.source] : []),
-    playbackRates: [0.5, 1, 1.25, 1.5, 2],
-    loadingSpinner: true,
-    errorDisplay: false,
-    html5: {
-      nativeTextTracks: false,
-      preloadTextTracks: false
-    }
-  };
-
-  if (streamConfig.type === 'youtube') {
-    baseOptions.youtube = {
-      ytControls: true,
-      playerVars: {
-        autoplay: 1,
-        playsinline: 1,
-        controls: 1,
-        mute: 1,
-        rel: 0,
-        enablejsapi: 1,
-        modestbranding: 1
-      }
-    };
-  }
-
-  if (streamConfig.type === 'hls') {
-    /*     baseOptions.html5 = baseOptions.html5 || {};
-         baseOptions.html5.vhs = Object.assign({}, baseOptions.html5.vhs || {}, {
-              overrideNative: true,
-              enableLowInitialPlaylist: true,
-              smoothQualityChange: true,
-              bandwidth: 4194304,
-              withCredentials: false,
-              limitRenditionByPlayerDimensions: false,
-              useDevicePixelRatio: false,
-              useNetworkInformationApi: false,
-              maxPlaylistRetries: 5,
-              experimentalBufferBasedABR: false,
-              experimentalLLHLS: false,
-              handleManifestRedirects: true,
-              useBandwidthFromLocalStorage: false,
-              timeout: 45000,
-              enablePlaylistRefresh: true,
-              playlistRefreshInterval: 30000,
-              maxBufferLength: 30,
-              maxBufferSize: 60 * 1024 * 1024,
-              bufferBehind: 30
-            });
-        baseOptions.html5.nativeAudioTracks = false;
-        baseOptions.html5.nativeVideoTracks = false; */
-  }
-
-  if (streamConfig.type === 'dash') {
-    baseOptions.html5 = baseOptions.html5 || {};
-    baseOptions.html5.vhs = Object.assign({}, (baseOptions.html5.vhs || {}), {
-      overrideNative: true,
-      withCredentials: false
-    });
-  }
-
-  if (!baseOptions.sources || baseOptions.sources.length === 0) {
-    console.warn('⚠️ buildPlayerOptions: sources are empty. Check streamConfig.source');
-  }
-  if (!baseOptions.techOrder || baseOptions.techOrder.length === 0) {
-    console.warn('⚠️ buildPlayerOptions: techOrder is empty. Check streamConfig.techOrder');
-  }
-
-  return baseOptions;
-}
-
-// ============================================
-// ============================================
-
+/**
+ * Select and load channel
+ */
 async function selectChannel(url, name, image, description, number, isLive) {
   if (!url) return;
 
@@ -2637,13 +1787,17 @@ async function selectChannel(url, name, image, description, number, isLive) {
   });
 }
 
-// ============================================
-// ============================================
+/**
+ * Show channel info overlay
+ */
 function showChannelInfoOverlay() {
   const overlay = document.getElementById('channel-info-overlay');
   if (!overlay) return;
   const modal = document.getElementById('videoModal');
-  if (modal) { modal.style.display = 'flex'; modal.classList.remove('hidden'); }
+  if (modal) {
+    modal.style.display = 'flex';
+    modal.classList.remove('hidden');
+  }
   overlay.classList.remove('show');
   appState.clearTimeoutRef('overlayShow');
   appState.clearTimeoutRef('overlayHide');
@@ -2653,6 +1807,9 @@ function showChannelInfoOverlay() {
   appState.setTimeoutRef('overlayHide', hid);
 }
 
+/**
+ * Close video modal
+ */
 function closeModal() {
   const modal = document.getElementById('videoModal');
   if (modal) {
@@ -2680,14 +1837,9 @@ function closeModal() {
 
   try {
     renderRecentlyWatched();
-  } catch (e) {
-    console.error("Error rendering recently watched:", e);
-  }
-
-  try {
     updateAllChannelItems();
   } catch (e) {
-    console.error("Error updating channel items:", e);
+    console.error("Error updating UI:", e);
   }
 
   const lastFocused = appState.get('ui.lastFocusedElement');
@@ -2712,11 +1864,13 @@ function closeModal() {
   appState.set('player.currentChannel', null);
 }
 
-/**
- * Show enhanced fullscreen prompt with controls for mobile users
- */
-let promptHandlers = null;
+// ============================================
+// FULLSCREEN MANAGEMENT
+// ============================================
 
+/**
+ * Show fullscreen prompt
+ */
 function showFullscreenPrompt() {
   const modal = document.getElementById('videoModal');
   if (!modal || modal.style.display !== 'flex') return;
@@ -2756,11 +1910,26 @@ function showFullscreenPrompt() {
   const fsBtn = el.querySelector('#promptFullscreenBtn');
   const closeBtn = el.querySelector('.prompt-close');
 
-  promptHandlers = {
-    prev: (e) => { e.stopPropagation(); navigateToPreviousChannel(); removeFullscreenPrompt(); },
-    next: (e) => { e.stopPropagation(); navigateToNextChannel(); removeFullscreenPrompt(); },
-    fs: (e) => { e.stopPropagation(); toggleFullscreen(); removeFullscreenPrompt(); },
-    close: (e) => { e.stopPropagation(); removeFullscreenPrompt(); }
+  const promptHandlers = {
+    prev: (e) => {
+      e.stopPropagation();
+      navigateToPreviousChannel();
+      removeFullscreenPrompt();
+    },
+    next: (e) => {
+      e.stopPropagation();
+      navigateToNextChannel();
+      removeFullscreenPrompt();
+    },
+    fs: (e) => {
+      e.stopPropagation();
+      toggleFullscreen();
+      removeFullscreenPrompt();
+    },
+    close: (e) => {
+      e.stopPropagation();
+      removeFullscreenPrompt();
+    }
   };
 
   prevBtn && prevBtn.addEventListener('click', promptHandlers.prev);
@@ -2775,21 +1944,22 @@ function showFullscreenPrompt() {
   appState.addCleanup(() => removeFullscreenPrompt(true));
 }
 
+/**
+ * Remove fullscreen prompt
+ */
 function removeFullscreenPrompt(forceImmediate = false) {
   appState.clearTimeoutRef('promptTimeout');
   const el = window.fullscreenPrompt;
   if (!el) return;
 
   try {
-    if (promptHandlers) {
-      const btns = el.querySelectorAll('button');
-      btns.forEach(btn => {
-        btn.replaceWith(btn.cloneNode(true));
-      });
-    }
-  } catch (e) { console.warn(e); }
-
-  promptHandlers = null;
+    const btns = el.querySelectorAll('button');
+    btns.forEach(btn => {
+      btn.replaceWith(btn.cloneNode(true));
+    });
+  } catch (e) {
+    console.warn(e);
+  }
 
   if (forceImmediate) {
     if (el.parentNode) el.parentNode.removeChild(el);
@@ -2805,13 +1975,15 @@ function removeFullscreenPrompt(forceImmediate = false) {
   }
 }
 
+/**
+ * Toggle fullscreen mode
+ */
 function toggleFullscreen() {
   const player = channelLoader.getPlayer();
   const modal = document.getElementById('videoModal');
 
   if (!player || !modal || modal.style.display !== 'flex') return;
 
-  hasUserInteracted = true;
   const isFs = player.isFullscreen ? player.isFullscreen() : false;
   if (isFs) {
     try {
@@ -2837,8 +2009,12 @@ function toggleFullscreen() {
 }
 
 // ============================================
+// WATCH TIME TRACKING
 // ============================================
 
+/**
+ * Start watching timer
+ */
 function startWatching(channelId) {
   stopWatching();
 
@@ -2858,6 +2034,9 @@ function startWatching(channelId) {
   console.log(`▶️ Started watching: ${channelId}`);
 }
 
+/**
+ * Stop watching timer
+ */
 function stopWatching() {
   const channelId = appState.get("player.currentChannelId");
   if (!channelId) return;
@@ -2869,6 +2048,9 @@ function stopWatching() {
   appState.set("player.watchStartTime", 0);
 }
 
+/**
+ * Save current watch time
+ */
 function saveCurrentWatchTime() {
   const channelId = appState.get("player.currentChannelId");
   const start = appState.get("player.watchStartTime");
@@ -2889,6 +2071,9 @@ function saveCurrentWatchTime() {
   }
 }
 
+/**
+ * Load watch time data
+ */
 function loadWatchTime() {
   try {
     const data = localStorage.getItem(LS_KEYS.WATCH_TIME);
@@ -2897,17 +2082,17 @@ function loadWatchTime() {
     return JSON.parse(data);
   } catch (e) {
     console.error("Error loading watch time:", e);
-    logErrorToService({ type: 'storage_parse_error', key: LS_KEYS.WATCH_TIME, error: e });
-
     try {
       localStorage.removeItem(LS_KEYS.WATCH_TIME);
     } catch { }
-
     showNotification('Watch history data corrupted - resetting', 'warning');
     return {};
   }
 }
 
+/**
+ * Sort channels by watch time
+ */
 function sortChannelsByWatchTime(channels) {
   const watchData = loadWatchTime();
   return channels.slice().sort((a, b) => {
@@ -2918,6 +2103,7 @@ function sortChannelsByWatchTime(channels) {
 }
 
 // ============================================
+// CHANNEL UI RENDERING
 // ============================================
 
 /**
@@ -2979,7 +2165,7 @@ function createChannelItem(channel) {
   thumb.className = 'thumb-wrapper';
 
   const img = document.createElement('img');
-  const imageUrl = fixImageUrl(channel.image);
+  const imageUrl = prepareImageUrl(channel.image);
 
   img.dataset.src = imageUrl;
 
@@ -3061,33 +2247,50 @@ function observeNewImages() {
   });
 }
 
+/**
+ * Cleanup channel items
+ */
 function cleanupChannelItems() {
   const arr = appState.get('uiCollections.allChannelItems') || [];
   arr.forEach(item => {
     if (item._cleanupHandlers) {
       item._cleanupHandlers.forEach(cleanup => {
-        try { cleanup(); } catch (e) { }
+        try {
+          cleanup();
+        } catch (e) { }
       });
       delete item._cleanupHandlers;
     }
 
     if (!item.isConnected) {
-      try { item.remove(); } catch (e) { }
+      try {
+        item.remove();
+      } catch (e) { }
     }
   });
   appState.set('uiCollections.allChannelItems', []);
 }
 
+/**
+ * Cleanup single channel item
+ */
 function cleanupChannelItem(item) {
   if (item._cleanupHandlers) {
     item._cleanupHandlers.forEach(fn => {
-      try { fn(); } catch (e) { }
+      try {
+        fn();
+      } catch (e) { }
     });
     delete item._cleanupHandlers;
   }
-  try { item.remove(); } catch (e) { }
+  try {
+    item.remove();
+  } catch (e) { }
 }
 
+/**
+ * Create or update category heading
+ */
 function createOrUpdateHeading(category, count) {
   let heading = document.querySelector(`h2[data-category="${category}"]`);
   if (!heading) {
@@ -3101,6 +2304,9 @@ function createOrUpdateHeading(category, count) {
   return heading;
 }
 
+/**
+ * Create or update grid container
+ */
 function createOrUpdateGrid(category) {
   let grid = document.querySelector(`.content-grid[data-category="${category}"]`);
   if (!grid) {
@@ -3141,13 +2347,14 @@ function renderChannels(channels) {
 
   const fragment = document.createDocumentFragment();
 
-  const categorized = (sortMethod === 'none' && !isSearching)
-    ? channels.reduce((acc, ch) => {
+  const categorized = (sortMethod === 'none' && !isSearching) ?
+    channels.reduce((acc, ch) => {
       const c = ch.category || 'Unknown';
       (acc[c] || (acc[c] = [])).push(ch);
       return acc;
-    }, {})
-    : { [isSearching ? 'Search Results' : 'All Channels']: channels };
+    }, {}) : {
+      [isSearching ? 'Search Results' : 'All Channels']: channels
+    };
 
   if (!shouldReuseDOM) {
     main.innerHTML = '';
@@ -3182,9 +2389,7 @@ function renderChannels(channels) {
 
   if (shouldReuseDOM) {
     existingItems.forEach(item => cleanupChannelItem(item));
-
     main.querySelectorAll('.content-grid, .dynamic-heading').forEach(el => el.remove());
-
     main.appendChild(fragment);
   } else {
     main.appendChild(fragment);
@@ -3201,16 +2406,17 @@ function renderChannels(channels) {
   } else {
     showFavoritesAndRecent();
   }
-
 }
 
+/**
+ * Render favorites section
+ */
 function renderFavorites() {
   const container = document.getElementById('favoritesGrid');
   if (!container) return;
 
   const favorites = getFavorites();
   const favSection = document.getElementById('favorites');
-
   const frag = document.createDocumentFragment();
 
   if (!favorites || favorites.length === 0) {
@@ -3228,6 +2434,9 @@ function renderFavorites() {
   container.appendChild(frag);
 }
 
+/**
+ * Render recently watched section
+ */
 function renderRecentlyWatched() {
   const container = document.getElementById('recentlyWatchedGrid');
   if (!container) return;
@@ -3243,6 +2452,9 @@ function renderRecentlyWatched() {
   recent.forEach(ch => container.appendChild(createChannelItem(ch)));
 }
 
+/**
+ * Update favorite icons state
+ */
 function updateFavoriteIcons() {
   const favorites = getFavorites();
   const favSet = new Set(favorites.map(f => f.url));
@@ -3256,14 +2468,21 @@ function updateFavoriteIcons() {
   });
 }
 
+/**
+ * Update all channel items reference
+ */
 function updateAllChannelItems() {
   const items = Array.from(document.querySelectorAll('.channel-item'));
   appState.set('uiCollections.allChannelItems', items);
 }
 
 // ============================================
+// SEARCH FUNCTIONALITY
 // ============================================
 
+/**
+ * Search channels
+ */
 function searchChannels(query) {
   const q = (query || '').toLowerCase().trim();
   appState.set('channels.searchQuery', q);
@@ -3298,6 +2517,9 @@ function searchChannels(query) {
   }
 }
 
+/**
+ * Clear search
+ */
 function clearSearch() {
   appState.set('channels.searchQuery', '');
   appState.set('channels.filtered', []);
@@ -3309,6 +2531,9 @@ function clearSearch() {
   sortChannelsAndRender(appState.get('ui.sortMethod') || 'none');
 }
 
+/**
+ * Hide favorites and recent sections
+ */
 function hideFavoritesAndRecent() {
   const fav = document.getElementById('favorites');
   if (fav) fav.style.display = 'none';
@@ -3316,15 +2541,22 @@ function hideFavoritesAndRecent() {
   if (recent) recent.style.display = 'none';
 }
 
+/**
+ * Show favorites and recent sections
+ */
 function showFavoritesAndRecent() {
   const favs = getFavorites();
   const favSection = document.getElementById('favorites');
   if (favSection && favs.length > 0) favSection.style.display = 'grid';
+
   const rec = getRecentlyWatched();
   const recSection = document.getElementById('recentlyWatched');
   if (recSection && rec.length > 0) recSection.style.display = 'grid';
 }
 
+/**
+ * Setup search bar functionality
+ */
 function setupSearchBar() {
   const inputs = [document.getElementById('channelSearch'), document.getElementById('channelSearchDesktop'), document.getElementById('channelSearchMobile')].filter(Boolean);
   const clears = [document.getElementById('clearSearch'), document.getElementById('clearSearchMobile')].filter(Boolean);
@@ -3339,6 +2571,7 @@ function setupSearchBar() {
         searchChannels(query), 300
       );
     };
+
     input.addEventListener('input', handler);
     appState.addCleanup(() => input.removeEventListener('input', handler));
     input.addEventListener('keydown', (e) => {
@@ -3347,9 +2580,11 @@ function setupSearchBar() {
         input.blur();
       }
     });
+
     input.addEventListener('focus', () => input.style.borderColor = '#007bff');
     input.addEventListener('blur', () => input.style.borderColor = '#444');
   });
+
   clears.forEach((btn, idx) => {
     const cb = () => {
       inputs.forEach(i => {
@@ -3364,8 +2599,12 @@ function setupSearchBar() {
 }
 
 // ============================================
+// SORTING FUNCTIONALITY
 // ============================================
 
+/**
+ * Sort channels and render
+ */
 function sortChannelsAndRender(sortMethod = 'none') {
   const isSearching = appState.get('channels.searchQuery') !== '';
   const channelsToSort = (isSearching ? appState.get('channels.filtered') : appState.get('channels.all')) || [];
@@ -3400,6 +2639,9 @@ function sortChannelsAndRender(sortMethod = 'none') {
   }
 }
 
+/**
+ * Handle sort change
+ */
 function handleSortChange(sortMethod) {
   localStorage.setItem("defaultSortMethod", sortMethod);
   sortChannelsAndRender(sortMethod);
@@ -3410,6 +2652,9 @@ function handleSortChange(sortMethod) {
   }
 }
 
+/**
+ * Update sort buttons state
+ */
 function updateSortButtons(method) {
   if (!method) return;
 
@@ -3435,8 +2680,12 @@ function updateSortButtons(method) {
 }
 
 // ============================================
+// KEYBOARD NAVIGATION
 // ============================================
 
+/**
+ * Get grid columns count
+ */
 function getGridColumns() {
   const grid = document.querySelector('.content-grid');
   if (!grid) return 1;
@@ -3445,11 +2694,8 @@ function getGridColumns() {
   return cols.split(' ').length;
 }
 
-// ================================
-// ================================
-
 /**
- * Setup keyboard navigation system
+ * Setup keyboard navigation
  */
 function setupKeyboardNavigation() {
   const numberKeyHandler = handleNumberKeyPress.bind(null);
@@ -3509,7 +2755,10 @@ function handleNumberKeyPress(e) {
           const item = allChannelItems[index];
           if (item) {
             item.focus();
-            item.scrollIntoView({ behavior: "smooth", block: "center" });
+            item.scrollIntoView({
+              behavior: "smooth",
+              block: "center"
+            });
           }
         }
 
@@ -3548,10 +2797,7 @@ function handleNavigationKeys(event) {
     const focusedElement = document.activeElement;
     let currentFocusedIndex = allChannelItems.findIndex((item) => item === focusedElement);
 
-    // ===========================
-    // ===========================
     if (isModalOpen) {
-
       if (event.key === "Enter" || event.key === "OK") {
         event.preventDefault();
         event.stopPropagation();
@@ -3598,19 +2844,36 @@ function handleNavigationKeys(event) {
         }
 
         const newChannelCard = allChannelItems[newIndex];
-        const { url, name, image, description, number, isLive = "false", category = "Unknown" } = newChannelCard.dataset;
+        const {
+          url,
+          name,
+          image,
+          description,
+          number,
+          isLive = "false",
+          category = "Unknown"
+        } = newChannelCard.dataset;
 
-        newChannelCard.scrollIntoView({ behavior: "smooth", block: "center" });
+        newChannelCard.scrollIntoView({
+          behavior: "smooth",
+          block: "center"
+        });
         selectChannel(url, name, image, description, number, isLive);
-        saveRecentlyWatched({ name, url, image, description, number, isLive, category });
+        saveRecentlyWatched({
+          name,
+          url,
+          image,
+          description,
+          number,
+          isLive,
+          category
+        });
 
         appState.set('ui.lastFocusedElement', newChannelCard);
       }
       return;
     }
 
-    // ===========================
-    // ===========================
     if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)) {
       event.preventDefault();
 
@@ -3618,7 +2881,10 @@ function handleNavigationKeys(event) {
 
       if (currentFocusedIndex === -1) {
         allChannelItems[0].focus();
-        allChannelItems[0].scrollIntoView({ behavior: "smooth", block: "center" });
+        allChannelItems[0].scrollIntoView({
+          behavior: "smooth",
+          block: "center"
+        });
         appState.set('ui.focusedIndex', 0);
         return;
       }
@@ -3638,21 +2904,23 @@ function handleNavigationKeys(event) {
       const newCard = allChannelItems[newIndex];
       if (newCard) {
         newCard.focus();
-        newCard.scrollIntoView({ behavior: "smooth", block: "center" });
+        newCard.scrollIntoView({
+          behavior: "smooth",
+          block: "center"
+        });
         appState.set('ui.focusedIndex', newIndex);
       }
-    }
-
-    // ===========================
-    // ===========================
-    else if (["PageUp", "PageDown", "Home", "End"].includes(event.key)) {
+    } else if (["PageUp", "PageDown", "Home", "End"].includes(event.key)) {
       event.preventDefault();
 
       if (allChannelItems.length === 0) return;
 
       if (currentFocusedIndex === -1) {
         allChannelItems[0].focus();
-        allChannelItems[0].scrollIntoView({ behavior: "smooth", block: "center" });
+        allChannelItems[0].scrollIntoView({
+          behavior: "smooth",
+          block: "center"
+        });
         appState.set('ui.focusedIndex', 0);
         return;
       }
@@ -3672,24 +2940,42 @@ function handleNavigationKeys(event) {
       const newCard = allChannelItems[newIndex];
       if (newCard) {
         newCard.focus();
-        newCard.scrollIntoView({ behavior: "smooth", block: "center" });
+        newCard.scrollIntoView({
+          behavior: "smooth",
+          block: "center"
+        });
         appState.set('ui.focusedIndex', newIndex);
       }
-    }
-
-    // ===========================
-    // ===========================
-    else if (event.key === "Enter" && currentFocusedIndex !== -1) {
+    } else if (event.key === "Enter" && currentFocusedIndex !== -1) {
       event.preventDefault();
 
       const card = allChannelItems[currentFocusedIndex];
       if (!card) return;
 
-      const { url, name, image, description, number, isLive = "false", category = "Unknown" } = card.dataset;
+      const {
+        url,
+        name,
+        image,
+        description,
+        number,
+        isLive = "false",
+        category = "Unknown"
+      } = card.dataset;
 
-      card.scrollIntoView({ behavior: "smooth", block: "center" });
+      card.scrollIntoView({
+        behavior: "smooth",
+        block: "center"
+      });
       selectChannel(url, name, image, description, number, isLive);
-      saveRecentlyWatched({ name, url, image, description, number, isLive, category });
+      saveRecentlyWatched({
+        name,
+        url,
+        image,
+        description,
+        number,
+        isLive,
+        category
+      });
     }
 
     appState.setTimeoutRef('navigationDebounce', null);
@@ -3698,8 +2984,7 @@ function handleNavigationKeys(event) {
   appState.setTimeoutRef('navigationDebounce', timeoutId);
 }
 
-// ============================================
-// ============================================
+
 class RetryManager {
   constructor(storageKey, options = {}) {
     this.storageKey = storageKey;
@@ -3716,7 +3001,9 @@ class RetryManager {
     localStorage.setItem(this.storageKey, JSON.stringify(data));
   }
 
-  _createRetryEntry(currentEntry = { retries: 0 }) {
+  _createRetryEntry(currentEntry = {
+    retries: 0
+  }) {
     const retries = currentEntry.retries + 1;
     return {
       retries,
@@ -3808,8 +3095,6 @@ class RetryManager {
   }
 }
 
-// ============================================
-// ============================================
 
 function extractChannelId(feedUrl) {
   const match = feedUrl.match(/channel_id=([^&]+)/);
@@ -3842,7 +3127,10 @@ function updateOrAddChannel(channelObj) {
 
   if (existingIndex !== -1) {
     const existing = channels[existingIndex];
-    channels[existingIndex] = { ...existing, ...channelObj };
+    channels[existingIndex] = {
+      ...existing,
+      ...channelObj
+    };
   } else {
     channels.push(channelObj);
   }
@@ -3871,12 +3159,6 @@ function processRSSData(data, feed) {
   console.log(`✅ RSS updated: ${feed.name}`);
 }
 
-// ============================================
-// ============================================
-
-/* const rssRetryManager = new RetryManager("rss_retry_queue", RETRY_CONFIG.RSS);
-const liveRetryManager = new RetryManager("live_retry_queue", RETRY_CONFIG.LIVE); */
-
 class FeedProcessor {
   constructor(type, cache, retryManager) {
     this.type = type;
@@ -3886,13 +3168,19 @@ class FeedProcessor {
   }
 
   async loadFeeds(options = {}) {
-    const { force = false, signal } = options;
+    const {
+      force = false, signal
+    } = options;
 
     const feeds = this._loadFeedsFromStorage();
     if (!feeds.length) return null;
 
     const feedsToProcess = this._getFeedsToProcess(feeds, force);
-    const results = { successful: 0, failed: 0, cacheHits: 0 };
+    const results = {
+      successful: 0,
+      failed: 0,
+      cacheHits: 0
+    };
 
     for (const [index, feed] of feedsToProcess.entries()) {
       if (index > 0) await this._delay(index);
@@ -3941,7 +3229,9 @@ class FeedProcessor {
   _cleanupAndLog(results) {
     try {
       this.cache.pruneExpired?.();
-    } catch (e) { /* ignore */ }
+    } catch (e) {
+      /* ignore */
+    }
 
     console.log(
       `${this.type.toUpperCase()} update summary → ` +
@@ -3951,9 +3241,6 @@ class FeedProcessor {
     console.log(`🔄 ${this.type.toUpperCase()} Retry Manager Stats:`, this.retryManager.getStats());
   }
 }
-
-// ============================================
-// ============================================
 
 class RSSProcessor extends FeedProcessor {
   constructor() {
@@ -3997,7 +3284,10 @@ class RSSProcessor extends FeedProcessor {
 
   async _fetchAndProcess(feed, signal, cacheKey) {
     const feedUrl = `https://api.rss2json.com/v1/api.json?rss_url=${encodeURIComponent(feed.url)}`;
-    const res = await fetchWithTimeout(feedUrl, { timeout: 15000, signal });
+    const res = await fetchWithTimeout(feedUrl, {
+      timeout: 15000,
+      signal
+    });
 
     if (!res?.ok) {
       throw new Error(`HTTP ${res?.status || "fetch failed"}`);
@@ -4015,15 +3305,14 @@ class RSSProcessor extends FeedProcessor {
   }
 }
 
-// ============================================
-// ============================================
-
 class LiveProcessor extends FeedProcessor {
   constructor() {
     super('live', liveCache, liveRetryManager);
   }
 
-  async _processFeed(feed, signal, results, context = { apiQuotaExceeded: false }) {
+  async _processFeed(feed, signal, results, context = {
+    apiQuotaExceeded: false
+  }) {
     if (!feed || typeof feed !== 'object') {
       console.warn(`⚠️ Skipping invalid live feed:`, feed);
       results.failed++;
@@ -4084,7 +3373,10 @@ class LiveProcessor extends FeedProcessor {
       `part=snippet&channelId=${encodeURIComponent(channelId)}&eventType=live&` +
       `type=video&order=date&maxResults=1&key=${encodeURIComponent(apiKey)}`;
 
-    const res = await fetchWithTimeout(apiUrl, { timeout: 15000, signal });
+    const res = await fetchWithTimeout(apiUrl, {
+      timeout: 15000,
+      signal
+    });
 
     if (!res.ok) {
       this._handleApiError(res, channelId, context, results);
@@ -4118,7 +3410,10 @@ class LiveProcessor extends FeedProcessor {
       const title = item?.snippet?.title || '';
 
       if (videoId) {
-        cacheData = { videoId, title };
+        cacheData = {
+          videoId,
+          title
+        };
         const channelObj = youtubeItemToChannel(videoId, title, feed);
         updateOrAddChannel(channelObj);
         results.successful++;
@@ -4149,15 +3444,20 @@ class LiveProcessor extends FeedProcessor {
   }
 }
 
-// ============================================
-// ============================================
 
-async function loadYouTubeLatestFeeds({ force = false } = {}) {
+async function loadYouTubeLatestFeeds({
+  force = false
+} = {}) {
   const processor = new RSSProcessor();
   return deduplicateRequest(
     'loadYouTubeLatestFeeds',
-    async ({ signal } = {}) => {
-      const result = await processor.loadFeeds({ force, signal });
+    async ({
+      signal
+    } = {}) => {
+      const result = await processor.loadFeeds({
+        force,
+        signal
+      });
 
       if (result && !rssRetryManager.hasPending()) {
         localStorage.setItem(CACHE_KEY, Date.now().toString());
@@ -4166,8 +3466,11 @@ async function loadYouTubeLatestFeeds({ force = false } = {}) {
       }
 
       return result;
-    },
-    { timeout: 20_000, ttl: 2 * 60 * 1000, force }
+    }, {
+    timeout: 20_000,
+    ttl: 2 * 60 * 1000,
+    force
+  }
   );
 }
 
@@ -4179,14 +3482,24 @@ async function loadYouTubeLatestFeeds({ force = false } = {}) {
  * - Retry mechanisms (when YouTube error 1150 or other errors occur)
  * - Manual/programmatic calls if needed
  */
-async function loadYouTubeLiveFeeds({ force = false } = {}) {
+async function loadYouTubeLiveFeeds({
+  force = false
+} = {}) {
   const processor = new LiveProcessor();
   return deduplicateRequest(
     'loadYouTubeLiveFeeds',
-    async ({ signal } = {}) => {
-      return processor.loadFeeds({ force, signal });
-    },
-    { ttl: 30_000, timeout: 15_000, force }
+    async ({
+      signal
+    } = {}) => {
+      return processor.loadFeeds({
+        force,
+        signal
+      });
+    }, {
+    ttl: 30_000,
+    timeout: 15_000,
+    force
+  }
   );
 }
 
@@ -4228,8 +3541,6 @@ async function loadAllChannelFeeds() {
   }
 }
 
-// ============================================
-// ============================================
 
 function _updateUI(channels) {
   console.log("🔄 Refreshing UI...");
@@ -4240,8 +3551,6 @@ function _updateUI(channels) {
   updateAllChannelItems();
 }
 
-// ============================================
-// ============================================
 /**
  * Checks for pending retries and processes them when ready
  * Runs more frequently than the main update cycle
@@ -4253,7 +3562,9 @@ async function checkAndProcessRetries() {
     if (rssRetryManager.hasReadyRetries()) {
       console.log('🔁 RSS retry check: Processing ready retries...');
       const processor = new RSSProcessor();
-      const result = await processor.loadFeeds({ force: false });
+      const result = await processor.loadFeeds({
+        force: false
+      });
       if (result && result.successful > 0) {
         hadRetries = true;
         console.log(`✅ RSS retry successful: ${result.successful} feeds recovered`);
@@ -4263,7 +3574,9 @@ async function checkAndProcessRetries() {
     if (liveRetryManager.hasReadyRetries()) {
       console.log('🔁 LIVE retry check: Processing ready retries...');
       const processor = new LiveProcessor();
-      const result = await processor.loadFeeds({ force: false });
+      const result = await processor.loadFeeds({
+        force: false
+      });
       if (result && result.successful > 0) {
         hadRetries = true;
         console.log(`✅ LIVE retry successful: ${result.successful} feeds recovered`);
@@ -4432,8 +3745,8 @@ function stopAutoUpdateService() {
   stopRetryChecker();
   console.log("Auto-update service stopped");
 }
-// ============================================
-// ============================================
+
+
 function showSettingsModal() {
   const settingsModal = document.getElementById("settingsModal");
   if (!settingsModal) return;
@@ -4442,8 +3755,8 @@ function showSettingsModal() {
 
   const autoUpdateToggle = document.getElementById("autoUpdateToggle");
   const updateIntervalSelect = document.getElementById("updateInterval");
-
   const sortSelect = document.getElementById("sortSelect");
+
   if (sortSelect) {
     const currentSort = appState.get('ui.sortMethod') || localStorage.getItem("defaultSortMethod") || 'none';
     sortSelect.value = currentSort;
@@ -4455,9 +3768,9 @@ function showSettingsModal() {
   const isAutoUpdateEnabled =
     savedAutoUpdate === null ? true : savedAutoUpdate === "true";
   const updateIntervalHours =
-    savedInterval !== null && !isNaN(parseInt(savedInterval))
-      ? parseInt(savedInterval)
-      : 8;
+    savedInterval !== null && !isNaN(parseInt(savedInterval)) ?
+      parseInt(savedInterval) :
+      8;
 
   appState.set("settings.isAutoUpdateEnabled", isAutoUpdateEnabled);
   appState.set("settings.updateIntervalHours", updateIntervalHours);
@@ -4466,82 +3779,22 @@ function showSettingsModal() {
   if (updateIntervalSelect) updateIntervalSelect.value = updateIntervalHours.toString();
 
   updateIntervalDescriptionText(updateIntervalHours);
-
   updateUserAgentDisplay();
   updateStorageDisplay();
   updateTotalChannelsDisplay();
   updateLastUpdateDisplay();
-  updateNetworkInfoDisplay();
 
-}
-
-function updateNetworkInfoDisplay() {
-  const networkInfoEl = document.getElementById('networkInfoDisplay');
-  if (!networkInfoEl) return;
-
-  const isOnline = appState.get('settings.isOnline');
-  const quality = appState.get('settings.networkQuality') || 'unknown';
-  const latency = appState.get('settings.networkLatency') || 0;
-  const connectionType = appState.get('settings.connectionType') || 'unknown';
-
-  let statusColor = '#4CAF50';
-  let statusText = 'Online';
-
-  if (!isOnline) {
-    statusColor = '#f44336';
-    statusText = 'Offline';
-  } else if (quality === 'poor') {
-    statusColor = '#ff9800';
-    statusText = 'Poor';
-  }
-
-  const statusClass = !networkMonitor?.isOnline ? 'network-offline' : `network-quality-${quality}`;
-  const connBadgeClass = `connection-badge connection-${(connectionType || 'unknown').toString().replace(/\s+/g, '-').toLowerCase()}`;
-
-  networkInfoEl.innerHTML = `
-  <div class="network-info" role="status" aria-live="polite">
-    <div class="info-row" style="display:flex;justify-content:space-between;align-items:center;">
-      <div class="info-label">Status</div>
-      <div class="info-value ${statusClass}" style="font-weight:700;">${statusText}</div>
-    </div>
-
-    <div class="info-row" style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;">
-      <div class="info-label">Quality</div>
-      <div class="info-value ${statusClass}">
-        ${quality.charAt(0).toUpperCase() + quality.slice(1)}
-      </div>
-    </div>
-
-    ${latency > 0 ? `
-      <div class="info-row" style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;">
-        <div class="info-label">Latency</div>
-        <div class="info-value">${latency}ms</div>
-      </div>
-    ` : ''}
-
-    <div class="info-row" style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;">
-      <div class="info-label">Connection</div>
-      <div style="display:flex;gap:8px;align-items:center;">
-        <span class="${connBadgeClass}">${connectionType}</span>
-      </div>
-    </div>
-
-    <div class="modal-actions" style="margin-top:14px;">
-      <button class="btn-secondary" type="button" onclick="networkMonitor.forceCheck()" aria-label="Test connection">
-        🔄 Test Connection
-      </button>
-    </div>
-  </div>
-`;
 }
 
 /**
  * Create network status indicator in UI
  */
 function setupNetworkStatusIndicator() {
+  // Remove existing indicator if any
   const existing = document.getElementById('network-status-indicator');
   if (existing) existing.remove();
 
+  // 1. Create the main container (Now transparent)
   const indicator = document.createElement('div');
   indicator.id = 'network-status-indicator';
   indicator.className = 'network-status-indicator';
@@ -4555,19 +3808,25 @@ function setupNetworkStatusIndicator() {
     display: flex;
     align-items: center;
     justify-content: center;
-    background: transparent;
-    font-size: 18px;
+    background: transparent; /* No background */
   `;
 
-  const emojiMarker = document.createElement('span');
-  emojiMarker.textContent = '⚪';
-  indicator.appendChild(emojiMarker);
+  // 2. Create the FontAwesome Icon
+  const icon = document.createElement('i');
+  icon.className = 'fa fa-signal';
+  icon.setAttribute('aria-hidden', 'true');
+  icon.style.fontSize = '18px'; // Adjust size as needed
+  icon.style.textShadow = '0 1px 3px rgba(0,0,0,0.5)'; // Makes it visible on light/dark backgrounds
+  indicator.appendChild(icon);
 
+  // 3. Click handler for details
   indicator.addEventListener('click', () => {
     const isOnline = appState.get('settings.isOnline');
     const quality = appState.get('settings.networkQuality') || 'unknown';
     const connectionType = appState.get('settings.connectionType') || 'unknown';
-    const latency = appState.get('settings.networkLatency') || 0;
+    const latency = appState.get('settings.networkLatency') || 0; // Retrieve latency from state
+
+    // Format Strings
 
     const currentStatus = isOnline ? 'Online' : 'Offline';
     const qualityText = quality.charAt(0).toUpperCase() + quality.slice(1);
@@ -4583,40 +3842,46 @@ function setupNetworkStatusIndicator() {
     );
   });
 
+
   document.body.appendChild(indicator);
 
+  // 4. Update logic: Change ONLY the icon color
   const updateIndicator = (isOnline, quality) => {
     if (!indicator.isConnected) return;
 
+    // Set data attributes for CSS animations
     indicator.setAttribute('data-status', isOnline ? 'online' : 'offline');
     indicator.setAttribute('data-quality', quality);
 
     if (!isOnline) {
-      emojiMarker.textContent = '🔴';
+      icon.style.color = '#ff4d4d'; // Bright Red for offline (alert)
       indicator.title = 'Offline';
       return;
     }
 
+    // Change color based on quality (modern palette)
     switch (quality) {
       case 'excellent':
-        emojiMarker.textContent = '🟢';
+        icon.style.color = '#009688'; // Spotify Green (Excellent)
         break;
       case 'good':
-        emojiMarker.textContent = '🔵';
+        icon.style.color = '#1DB954'; // Indigo Blue (Good)
         break;
       case 'fair':
-        emojiMarker.textContent = '🟡';
+        icon.style.color = '#FFC107'; // Amber Yellow (Fair)
         break;
       case 'poor':
-        emojiMarker.textContent = '🟠';
+        icon.style.color = '#D32F2F'; // Crimson Red (Poor)
         break;
       default:
-        emojiMarker.textContent = '⚪';
+        icon.style.color = '#455A64'; // Blue Gray (Unknown/Neutral)
     }
 
     indicator.title = `Quality: ${quality}`;
+
   };
 
+  // 5. Listeners
   networkMonitor.addStatusListener((isOnline) => {
     const quality = appState.get('settings.networkQuality') || 'unknown';
     updateIndicator(isOnline, quality);
@@ -4627,15 +3892,20 @@ function setupNetworkStatusIndicator() {
     updateIndicator(isOnline, quality);
   });
 
+  // Initial update
   updateIndicator(appState.get('settings.isOnline'), appState.get('settings.networkQuality') || 'unknown');
 
+  /**
+   * 6. MODAL HIDE LOGIC
+   * This ensures the icon disappears completely when a video/modal is open
+   */
   const syncVisibility = (isOpen) => {
     if (!isOpen) {
       indicator.style.opacity = '0';
       indicator.style.pointerEvents = 'none';
       indicator.style.visibility = 'hidden';
     } else {
-      indicator.style.opacity = '1';
+      indicator.style.opacity = '1'; // Full visibility for the icon
       indicator.style.pointerEvents = 'auto';
       indicator.style.visibility = 'visible';
     }
@@ -4647,6 +3917,9 @@ function setupNetworkStatusIndicator() {
   return indicator;
 }
 
+/**
+ * Hide settings modal
+ */
 function hideSettingsModal() {
   const settingsModal = document.getElementById("settingsModal");
   if (settingsModal) {
@@ -4654,6 +3927,9 @@ function hideSettingsModal() {
   }
 }
 
+/**
+ * Toggle auto-update
+ */
 function toggleAutoUpdate(enabled) {
   localStorage.setItem(AUTO_UPDATE_KEY, enabled.toString());
   appState.set("settings.isAutoUpdateEnabled", enabled);
@@ -4669,6 +3945,9 @@ function toggleAutoUpdate(enabled) {
   }
 }
 
+/**
+ * Change update interval
+ */
 function changeUpdateInterval(hours) {
   const parsed = parseInt(hours);
   localStorage.setItem(UPDATE_INTERVAL_KEY, parsed.toString());
@@ -4684,6 +3963,9 @@ function changeUpdateInterval(hours) {
   }
 }
 
+/**
+ * Manual update channels
+ */
 async function manualUpdate() {
   const manualUpdateBtn = document.getElementById("manualUpdateBtn");
   if (!manualUpdateBtn) return;
@@ -4712,10 +3994,14 @@ async function manualUpdate() {
   }
 }
 
+/**
+ * Update last update display
+ */
 function updateLastUpdateDisplay() {
   const lastUpdate = parseInt(localStorage.getItem(CACHE_KEY) || "0");
   const lastUpdateEl = document.getElementById("lastUpdateDisplay");
   if (!lastUpdateEl) return;
+
   if (lastUpdate === 0) {
     lastUpdateEl.textContent = "Never updated";
     lastUpdateEl.style.color = "#ff9800";
@@ -4728,6 +4014,9 @@ function updateLastUpdateDisplay() {
   }
 }
 
+/**
+ * Update interval description text
+ */
 function updateIntervalDescriptionText(hours) {
   const descriptionEl = document.getElementById("updateIntervalDescription");
   if (descriptionEl) {
@@ -4735,6 +4024,9 @@ function updateIntervalDescriptionText(hours) {
   }
 }
 
+/**
+ * Setup settings modal
+ */
 function setupSettingsModal() {
   const settingsModal = document.getElementById("settingsModal");
   if (!settingsModal) return;
@@ -4814,6 +4106,9 @@ function setupSettingsModal() {
   updateStorageDisplay();
 }
 
+/**
+ * Update user agent display
+ */
 function updateUserAgentDisplay() {
   const display = document.getElementById('currentUserAgent');
   if (!display) return;
@@ -4840,6 +4135,9 @@ function updateUserAgentDisplay() {
   }
 }
 
+/**
+ * Setup user agent controls
+ */
 function setupUserAgentControls() {
   const presetSelect = document.getElementById('userAgentPreset');
   const customInput = document.getElementById('customUserAgent');
@@ -4891,7 +4189,14 @@ function setupUserAgentControls() {
     });
   }
 }
+
 // ============================================
+// API KEY MODAL
+// ============================================
+
+/**
+ * Show API key modal
+ */
 // ============================================
 function showAPIKeyModal() {
   const apiModal = document.getElementById("apiKeyModal");
@@ -4915,6 +4220,9 @@ function showAPIKeyModal() {
   setupAPIKeyModalEvents();
 }
 
+/**
+ * Hide API key modal
+ */
 function hideAPIKeyModal() {
   const apiModal = document.getElementById("apiKeyModal");
   if (apiModal) {
@@ -4922,6 +4230,9 @@ function hideAPIKeyModal() {
   }
 }
 
+/**
+ * Setup API key modal events
+ */
 function setupAPIKeyModalEvents() {
   const submitBtn = document.getElementById("submitApiKey");
   const skipBtn = document.getElementById("skipApiKey");
@@ -4946,8 +4257,6 @@ function setupAPIKeyModalEvents() {
 
     hideAPIKeyModal();
     showNotification("✅ API Key saved successfully!", "success");
-    console.log("🔄 Starting live feeds update with new API key...");
-    loadYouTubeLiveFeeds().catch(console.error);
   };
 
   const handleSkip = () => {
@@ -5060,17 +4369,40 @@ async function initialize() {
     }
 
 
-    const features = [
-      { name: 'Lazy Loading', fn: initializeLazyLoading },
-      { name: 'Cache Maintenance', fn: startCacheMaintenance },
-      { name: 'Network Status', fn: setupNetworkStatusIndicator },
-      { name: 'Settings Modal', fn: setupSettingsModal },
-      { name: 'Search Bar', fn: setupSearchBar },
-      { name: 'Touch Gestures', fn: setupTouchGestures },
-      { name: 'Keyboard Navigation', fn: setupKeyboardNavigation }
+    const features = [{
+      name: 'Lazy Loading',
+      fn: initializeLazyLoading
+    },
+    {
+      name: 'Cache Maintenance',
+      fn: startCacheMaintenance
+    },
+    {
+      name: 'Network Status',
+      fn: setupNetworkStatusIndicator
+    },
+    {
+      name: 'Settings Modal',
+      fn: setupSettingsModal
+    },
+    {
+      name: 'Search Bar',
+      fn: setupSearchBar
+    },
+    {
+      name: 'Touch Gestures',
+      fn: setupTouchGestures
+    },
+    {
+      name: 'Keyboard Navigation',
+      fn: setupKeyboardNavigation
+    }
     ];
 
-    for (const { name, fn } of features) {
+    for (const {
+      name,
+      fn
+    } of features) {
       try {
         fn();
       } catch (e) {
@@ -5204,39 +4536,42 @@ document.addEventListener("visibilitychange", () => {
   }
 });
 
-function fixImageUrl(imageUrl) {
+
+function prepareImageUrl(imageUrl, width = 160) {
   if (!imageUrl) return 'placeholder.png';
-  if (imageUrl.startsWith('https://')) return imageUrl;
 
-  if (imageUrl.startsWith('http://')) {
-    const cleanUrl = imageUrl.replace('http://', '');
-
-    const proxies = [
-      `https://images.weserv.nl/?url=${encodeURIComponent(cleanUrl)}`,
-      `https://wsrv.nl/?url=${encodeURIComponent(cleanUrl)}`, // Backup
-      `https://imageproxy.pimg.tw/resize?url=${encodeURIComponent(imageUrl)}` // Another backup
-    ];
-
-    return proxies[0];
-  }
-
-  return imageUrl;
-}
-
-function optimizeImageUrl(imageUrl, width = 200) {
+  // Already optimized via weserv.nl
   if (imageUrl.startsWith('https://images.weserv.nl/')) {
     return imageUrl;
   }
-  const cleanUrl = imageUrl.replace('http://', '').replace('https://', '');
-  return `https://images.weserv.nl/?url=${encodeURIComponent(cleanUrl)}&w=${width}&fit=cover&a=attention`;
+
+  // Handle HTTPS input
+  if (imageUrl.startsWith('https://')) {
+    const cleanUrl = imageUrl.replace('https://', '');
+    return `https://images.weserv.nl/?url=${encodeURIComponent(cleanUrl)}&w=${width}&fit=cover&a=attention`;
+  }
+
+  // Handle HTTP input
+  if (imageUrl.startsWith('http://')) {
+    const cleanUrl = imageUrl.replace('http://', '');
+    return `https://images.weserv.nl/?url=${encodeURIComponent(cleanUrl)}&w=${width}&fit=cover&a=attention`;
+  }
+
+  // Fallback: return as-is
+  return imageUrl;
 }
+
 
 function setupTouchGestures() {
   const modal = document.getElementById('videoModal');
   if (!modal) return;
 
-  modal.addEventListener('touchstart', handleTouchStart, { passive: true });
-  modal.addEventListener('touchend', handleTouchEnd, { passive: true });
+  modal.addEventListener('touchstart', handleTouchStart, {
+    passive: true
+  });
+  modal.addEventListener('touchend', handleTouchEnd, {
+    passive: true
+  });
 }
 
 function handleTouchStart(e) {
@@ -5305,9 +4640,7 @@ function handleSwipe(deltaX, deltaY) {
     }
   } else {
     if (Math.abs(deltaY) > minSwipeDistance) {
-      if (deltaY < 0) {
-      } else {
-      }
+      if (deltaY < 0) { } else { }
     }
   }
 }
@@ -5326,10 +4659,26 @@ function navigateChannel(direction = 1) {
   const newIndex = (currentIndex + direction + items.length) % items.length;
   const target = items[newIndex];
 
-  const { url, name, image, description, number, isLive, category } = target.dataset;
+  const {
+    url,
+    name,
+    image,
+    description,
+    number,
+    isLive,
+    category
+  } = target.dataset;
 
   selectChannel(url, name, image, description, number, isLive);
-  saveRecentlyWatched({ name, url, image, description, number, isLive, category });
+  saveRecentlyWatched({
+    name,
+    url,
+    image,
+    description,
+    number,
+    isLive,
+    category
+  });
   appState.set('ui.lastFocusedElement', target);
 
   const icon = direction === -1 ? "⏮️" : "⏭️";
@@ -5349,9 +4698,9 @@ function navigateToNextChannel() {
  */
 function clearOldStorageData() {
   const keysToTryClearing = [
-    LS_KEYS.WATCH_TIME,
-    CACHE_KEY,
     LS_KEYS.RECENT,
+    LS_KEYS.FAVORITES,
+    LS_KEYS.WATCH_TIME
   ];
 
   for (const key of keysToTryClearing) {
@@ -5433,6 +4782,7 @@ function logStorageUsage() {
 }
 
 // ============================================
+// DATA IMPORT/EXPORT
 // ============================================
 
 /**
@@ -5457,7 +4807,9 @@ function exportAllData() {
       }
     };
 
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+    const blob = new Blob([JSON.stringify(data, null, 2)], {
+      type: "application/json"
+    });
     const url = URL.createObjectURL(blob);
 
     const a = document.createElement("a");
@@ -5567,9 +4919,9 @@ function isVersionCompatible(version) {
  */
 function showImportConfirmation(data) {
   return new Promise((resolve) => {
-    const exportDate = data?.exportDate
-      ? new Date(data.exportDate).toLocaleString()
-      : "Unknown";
+    const exportDate = data?.exportDate ?
+      new Date(data.exportDate).toLocaleString() :
+      "Unknown";
 
     const channelCount = Array.isArray(data?.channels) ? data.channels.length : 0;
     const favoriteCount = Array.isArray(data?.favorites) ? data.favorites.length : 0;
@@ -5631,18 +4983,25 @@ function showImportConfirmation(data) {
     confirmBtn.addEventListener("click", () => {
       const mergeData = mergeCheckbox.checked;
       modal.remove();
-      resolve({ confirmed: true, merge: mergeData });
+      resolve({
+        confirmed: true,
+        merge: mergeData
+      });
     });
 
     cancelBtn.addEventListener("click", () => {
       modal.remove();
-      resolve({ confirmed: false });
+      resolve({
+        confirmed: false
+      });
     });
 
     modal.addEventListener("click", (e) => {
       if (e.target === modal) {
         modal.remove();
-        resolve({ confirmed: false });
+        resolve({
+          confirmed: false
+        });
       }
     });
   }).then((result) => {
@@ -5676,7 +5035,10 @@ async function performImport(data) {
         data.channels.forEach(importedChannel => {
           const existingIndex = channels.findIndex(ch => ch.url === importedChannel.url);
           if (existingIndex !== -1) {
-            channels[existingIndex] = { ...channels[existingIndex], ...importedChannel };
+            channels[existingIndex] = {
+              ...channels[existingIndex],
+              ...importedChannel
+            };
           } else {
             channels.push(importedChannel);
           }
@@ -5691,9 +5053,8 @@ async function performImport(data) {
     }
 
     if (Array.isArray(data.favorites)) {
-      let favorites = mergeMode
-        ? safeJSONParse(localStorage.getItem(LS_KEYS.FAVORITES) || "[]", [])
-        : [];
+      let favorites = mergeMode ?
+        safeJSONParse(localStorage.getItem(LS_KEYS.FAVORITES) || "[]", []) : [];
 
       if (mergeMode) {
         data.favorites.forEach(fav => {
@@ -5709,9 +5070,8 @@ async function performImport(data) {
     }
 
     if (Array.isArray(data.recentlyWatched)) {
-      let recent = mergeMode
-        ? safeJSONParse(localStorage.getItem(LS_KEYS.RECENT) || "[]", [])
-        : [];
+      let recent = mergeMode ?
+        safeJSONParse(localStorage.getItem(LS_KEYS.RECENT) || "[]", []) : [];
 
       if (mergeMode) {
         data.recentlyWatched.forEach(item => {
@@ -5849,7 +5209,12 @@ function triggerImportDialog() {
 }
 
 // ============================================
+// STORAGE CONTROLS SETUP
 // ============================================
+
+/**
+ * Setup storage controls
+ */
 function setupStorageControls() {
   const viewStorageDetailsBtn = document.getElementById('viewStorageDetails');
   if (viewStorageDetailsBtn) {
@@ -5885,9 +5250,9 @@ function setupStorageControls() {
   }
 }
 
-// ============================================
-// ============================================
-
+/**
+ * Update total channels display
+ */
 function updateTotalChannelsDisplay() {
   const totalChannelsElement = document.getElementById('totalChannelsCount');
   if (!totalChannelsElement) return;
@@ -5905,38 +5270,9 @@ function updateTotalChannelsDisplay() {
   }
 }
 
-function updateStorageStatsDisplay() {
-  const statsEl = document.getElementById("storageUsageDisplay");
-  if (!statsEl) return;
-
-  const usage = getStorageUsage();
-  if (!usage) {
-    statsEl.innerHTML = "<em>⚠️ No storage usage data available.</em>";
-    return;
-  }
-
-  const availableBytes = getAvailableSpace();
-  const availableMB = (availableBytes / (1024 * 1024)).toFixed(2);
-  const availableKB = (availableBytes / 1024).toFixed(2);
-
-  statsEl.innerHTML = `
-    <div style="display: grid; gap: 10px; margin-top: 10px;">
-      <div style="background: rgba(76, 175, 80, 0.1); padding: 10px; border-radius: 8px;">
-        <strong>Total Space:</strong><br>
-        ${MAX_MB} MB
-      </div>
-      <div style="background: rgba(33, 150, 243, 0.1); padding: 10px; border-radius: 8px;">
-        <strong>Used:</strong><br>
-        ${usage.totalMB} MB (${usage.totalKB} KB) | ${usage.itemCount} items
-      </div>
-      <div style="background: rgba(255, 152, 0, 0.1); padding: 10px; border-radius: 8px;">
-        <strong>Remaining:</strong><br>
-        ${availableMB} MB (${availableKB} KB)
-      </div>
-    </div>
-  `;
-}
-
+/**
+ * Update storage display
+ */
 async function updateStorageDisplay() {
   const display = document.getElementById('storageUsageDisplay');
   if (!display) return;
@@ -5946,9 +5282,9 @@ async function updateStorageDisplay() {
 
   try {
     const maybePromise = getStorageUsage();
-    const usage = (maybePromise && typeof maybePromise.then === 'function')
-      ? await maybePromise
-      : maybePromise;
+    const usage = (maybePromise && typeof maybePromise.then === 'function') ?
+      await maybePromise :
+      maybePromise;
 
     if (!usage || typeof usage.totalBytes !== 'number') {
       display.innerHTML = '<div class="storage-loading">⚠️ Unable to calculate storage usage</div>';
@@ -6063,8 +5399,92 @@ function checkStorageHealth() {
   }
 }
 
-// ============================================
-// ============================================
+
+function predictiveCleanup() {
+  try {
+    const usage = getStorageUsage();
+    if (!usage) return {
+      freedBytes: 0,
+      removedKeys: []
+    };
+
+    const threshold = 8 * 1024 * 1024;
+
+    if (usage.totalBytes <= threshold) {
+      return {
+        freedBytes: 0,
+        removedKeys: []
+      };
+    }
+
+    const importance = {
+      [LS_KEYS.CHANNELS]: 10,
+      [LS_KEYS.WATCH_TIME]: 5,
+      [LS_KEYS.FAVORITES]: 2,
+      [LS_KEYS.RECENT]: 1,
+    };
+
+    const items = Object.entries(usage.items || {}).map(([key, size]) => {
+      const imp = importance.hasOwnProperty(key) ? importance[key] : 5;
+      return {
+        key,
+        size,
+        importance: imp,
+        ratio: size / imp
+      };
+    });
+
+    items.sort((a, b) => b.ratio - a.ratio);
+
+    const removedKeys = [];
+    let freedBytes = 0;
+    let totalBytes = usage.totalBytes;
+
+    for (const item of items) {
+      if (totalBytes <= threshold) break;
+
+      if (!item.key || item.key === '__iptv' || item.key.startsWith('__')) continue;
+
+      if (item.key === LS_KEYS.CHANNELS || item.key === LS_KEYS.FAVORITES) {
+        if (totalBytes <= threshold * 1.5) continue;
+      }
+
+      try {
+        console.log(`🧹 predictiveCleanup: removing ${item.key} (~${Math.round(item.size / 1024)}KB)`);
+        localStorage.removeItem(item.key);
+        removedKeys.push(item.key);
+        freedBytes += item.size;
+        totalBytes -= item.size;
+
+        if (item.key === LS_KEYS.RECENT) dispatchStorageUpdate('recent');
+        if (item.key === LS_KEYS.FAVORITES) dispatchStorageUpdate('favorites');
+        if (item.key === CACHE_KEY) {
+          try {
+            rssCache.clear();
+            liveCache.clear();
+          } catch (e) {
+            /* ignore */
+          }
+        }
+
+      } catch (e) {
+        console.warn('predictiveCleanup: failed to remove', item.key, e);
+      }
+    }
+
+    console.log(`🧹 predictiveCleanup: Freed ~${Math.round(freedBytes / 1024)} KB, removed:`, removedKeys);
+    return {
+      freedBytes,
+      removedKeys
+    };
+  } catch (err) {
+    console.warn('predictiveCleanup failed:', err);
+    return {
+      freedBytes: 0,
+      removedKeys: []
+    };
+  }
+}
 
 /**
  * Initialize global lazy load observer
@@ -6153,7 +5573,11 @@ function startCacheMaintenance({
         console.groupEnd();
       }
 
-      onComplete?.({ rssPruned, livePruned, totalPruned });
+      onComplete?.({
+        rssPruned,
+        livePruned,
+        totalPruned
+      });
     } catch (error) {
       console.error(`${LOG_PREFIX} Maintenance error:`, error);
     }
@@ -6173,133 +5597,6 @@ function startCacheMaintenance({
   };
 }
 
-// ======================================================================
-// ======================================================================
-
-(function setupGlobalErrorHandlers() {
-  if (window.__GLOBAL_ERROR_BOUNDARIES_INSTALLED__) return;
-  window.__GLOBAL_ERROR_BOUNDARIES_INSTALLED__ = true;
-
-  window.addEventListener("error", (event) => {
-    try {
-      const error = event.error || event.message || "Unknown error";
-
-      console.error("GLOBAL ERROR:", error);
-
-      try { logErrorToService?.(error); } catch { }
-
-      try { showNotification?.("Unexpected error occurred", "error"); } catch { }
-
-      try {
-        if (typeof canRecover === "function" && canRecover(error)) {
-          attemptRecovery?.();
-        }
-      } catch { }
-
-    } catch (handlerErr) {
-      console.warn("Global error handler failed:", handlerErr);
-    }
-  });
-
-  window.addEventListener("unhandledrejection", (event) => {
-    try {
-      const reason = event.reason || "Unknown async error";
-
-      console.error("UNHANDLED REJECTION:", reason);
-
-      event.preventDefault();
-
-      try { showNotification?.("Failed to complete operation", "error"); } catch { }
-      try { logErrorToService?.(reason); } catch { }
-
-    } catch (handlerErr) {
-      console.warn("Rejection handler failed:", handlerErr);
-    }
-  });
-
-})();
-
-/**
- * Predictive cleanup - attempts to free storage by removing
- * low-importance, large items first based on a size/importance ratio.
- *
- * This function is non-destructive for critical keys (channels / favorites)
- * unless absolutely necessary: it uses the importance map to prefer
- * removing watch-time, caches, recent lists, or the last-update cache.
- *
- * Returns: { freedBytes: number, removedKeys: string[] }
- */
-function predictiveCleanup() {
-  try {
-    const usage = getStorageUsage();
-    if (!usage) return { freedBytes: 0, removedKeys: [] };
-
-    const threshold = 8 * 1024 * 1024;
-
-    if (usage.totalBytes <= threshold) {
-      return { freedBytes: 0, removedKeys: [] };
-    }
-
-    const importance = {
-      [LS_KEYS.CHANNELS]: 10,
-      [LS_KEYS.FAVORITES]: 9,
-      [LS_KEYS.FEEDS]: 8,
-      [LS_KEYS.LIVE]: 7,
-      [LS_KEYS.RECENT]: 5,
-      [LS_KEYS.WATCH_TIME]: 2,
-      [CACHE_KEY]: 1
-    };
-
-    const items = Object.entries(usage.items || {}).map(([key, size]) => {
-      const imp = importance.hasOwnProperty(key) ? importance[key] : 5;
-      return {
-        key,
-        size,
-        importance: imp,
-        ratio: size / imp
-      };
-    });
-
-    items.sort((a, b) => b.ratio - a.ratio);
-
-    const removedKeys = [];
-    let freedBytes = 0;
-    let totalBytes = usage.totalBytes;
-
-    for (const item of items) {
-      if (totalBytes <= threshold) break;
-
-      if (!item.key || item.key === '__iptv' || item.key.startsWith('__')) continue;
-
-      if (item.key === LS_KEYS.CHANNELS || item.key === LS_KEYS.FAVORITES) {
-        if (totalBytes <= threshold * 1.5) continue;
-      }
-
-      try {
-        console.log(`🧹 predictiveCleanup: removing ${item.key} (~${Math.round(item.size / 1024)}KB)`);
-        localStorage.removeItem(item.key);
-        removedKeys.push(item.key);
-        freedBytes += item.size;
-        totalBytes -= item.size;
-
-        if (item.key === LS_KEYS.RECENT) dispatchStorageUpdate('recent');
-        if (item.key === LS_KEYS.FAVORITES) dispatchStorageUpdate('favorites');
-        if (item.key === CACHE_KEY) {
-          try { rssCache.clear(); liveCache.clear(); } catch (e) { /* ignore */ }
-        }
-
-      } catch (e) {
-        console.warn('predictiveCleanup: failed to remove', item.key, e);
-      }
-    }
-
-    console.log(`🧹 predictiveCleanup: Freed ~${Math.round(freedBytes / 1024)} KB, removed:`, removedKeys);
-    return { freedBytes, removedKeys };
-  } catch (err) {
-    console.warn('predictiveCleanup failed:', err);
-    return { freedBytes: 0, removedKeys: [] };
-  }
-}
 
 function addSkipLinks() {
   const skipNav = document.createElement('a');
@@ -6330,7 +5627,9 @@ function addSkipLinks() {
  * Deduplicates concurrent API requests
  */
 function deduplicateRequest(key, requestFn, options = {}) {
-  const { ttl = 0, timeout = 15000, force = false } = options;
+  const {
+    ttl = 0, timeout = 15000, force = false
+  } = options;
 
   if (pendingRequests.has(key) && !force) {
     const entry = pendingRequests.get(key);
@@ -6347,10 +5646,21 @@ function deduplicateRequest(key, requestFn, options = {}) {
   const p = (async () => {
     try {
       const result = await Promise.race([
-        (typeof requestFn === 'function') ? requestFn({ signal }) : Promise.reject(new Error('requestFn not a function')),
-        new Promise((_, rej) => setTimeout(() => { timedOut = true; controller.abort(); rej(new Error('timeout')); }, timeout))
+        (typeof requestFn === 'function') ? requestFn({
+          signal
+        }) : Promise.reject(new Error('requestFn not a function')),
+        new Promise((_, rej) => setTimeout(() => {
+          timedOut = true;
+          controller.abort();
+          rej(new Error('timeout'));
+        }, timeout))
       ]);
-      pendingRequests.set(key, { resolved: true, resolvedAt: Date.now(), value: result, promise: Promise.resolve(result) });
+      pendingRequests.set(key, {
+        resolved: true,
+        resolvedAt: Date.now(),
+        value: result,
+        promise: Promise.resolve(result)
+      });
       return result;
     } catch (err) {
       pendingRequests.delete(key);
@@ -6363,7 +5673,10 @@ function deduplicateRequest(key, requestFn, options = {}) {
     }
   })();
 
-  pendingRequests.set(key, { resolved: false, promise: p });
+  pendingRequests.set(key, {
+    resolved: false,
+    promise: p
+  });
   p.abortController = controller;
   return p;
 }
@@ -6385,17 +5698,20 @@ function logErrorToService(error) {
     errorLog.shift();
   }
 
-  try {
-  } catch (e) { }
+  try { } catch (e) { }
 }
 
 function fetchWithTimeout(url, options = {}) {
-  const { timeout = 15000 } = options;
+  const {
+    timeout = 15000
+  } = options;
 
   const controller = new AbortController();
   const id = setTimeout(() => controller.abort(), timeout);
 
-  const cleanOptions = { ...options };
+  const cleanOptions = {
+    ...options
+  };
   delete cleanOptions.json;
   cleanOptions.signal = controller.signal;
 
@@ -6403,19 +5719,89 @@ function fetchWithTimeout(url, options = {}) {
     .finally(() => clearTimeout(id));
 }
 
+
+// ======================================================================
+// ======================================================================
+
+(function setupGlobalErrorHandlers() {
+  if (window.__GLOBAL_ERROR_BOUNDARIES_INSTALLED__) return;
+  window.__GLOBAL_ERROR_BOUNDARIES_INSTALLED__ = true;
+
+  window.addEventListener("error", (event) => {
+    try {
+      const error = event.error || event.message || "Unknown error";
+
+      console.error("GLOBAL ERROR:", error);
+
+      try {
+        logErrorToService?.(error);
+      } catch { }
+
+      try {
+        showNotification?.("Unexpected error occurred", "error");
+      } catch { }
+
+      try {
+        if (typeof canRecover === "function" && canRecover(error)) {
+          attemptRecovery?.();
+        }
+      } catch { }
+
+    } catch (handlerErr) {
+      console.warn("Global error handler failed:", handlerErr);
+    }
+  });
+
+  window.addEventListener("unhandledrejection", (event) => {
+    try {
+      const reason = event.reason || "Unknown async error";
+
+      console.error("UNHANDLED REJECTION:", reason);
+
+      event.preventDefault();
+
+      try {
+        showNotification?.("Failed to complete operation", "error");
+      } catch { }
+      try {
+        logErrorToService?.(reason);
+      } catch { }
+
+    } catch (handlerErr) {
+      console.warn("Rejection handler failed:", handlerErr);
+    }
+  });
+
+})();
+
+
 window.addEventListener('error', (ev) => {
-  try { logErrorToService(ev.error || { message: ev.message, stack: ev.error?.stack }); } catch (e) { /* ignore */ }
+  try {
+    logErrorToService(ev.error || {
+      message: ev.message,
+      stack: ev.error?.stack
+    });
+  } catch (e) {
+    /* ignore */
+  }
 });
 
 window.addEventListener('unhandledrejection', (ev) => {
-  try { logErrorToService(ev.reason || { message: String(ev) }); } catch (e) { /* ignore */ }
+  try {
+    logErrorToService(ev.reason || {
+      message: String(ev)
+    });
+  } catch (e) {
+    /* ignore */
+  }
 });
-
 
 
 const __iptv = {
   appState,
-  get channelLoader() { return channelLoader; }, // Getter to ensure it's available
+  get channelLoader() {
+    return channelLoader;
+  }, // Getter to ensure it's available
 
   // Channel functions
   selectChannel,
@@ -6452,7 +5838,9 @@ const __iptv = {
   getErrorLog: () => Array.isArray(errorLog) ? [...errorLog] : [],
 
   // Fullscreen prompt reference
-  get fullscreenPrompt() { return window.fullscreenPrompt; }
+  get fullscreenPrompt() {
+    return window.fullscreenPrompt;
+  }
 };
 
 
