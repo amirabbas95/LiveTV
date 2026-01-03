@@ -1,7 +1,3 @@
-import { AppStateManager } from './app-state-manager.js';
-import { NetworkMonitor } from './network-monitor.js';
-import { LRUCache } from './lru-cache.js';
-
 /**
  * Performance monitoring utility
  */

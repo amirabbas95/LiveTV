@@ -274,7 +274,7 @@ export class NetworkMonitor {
         this.isOnline = false;
         appState.set('settings.isOnline', false);
         this.quality = 'offline';
-        
+
         if (this.appState) {
             this.appState.set('settings.isOnline', false);
         }
