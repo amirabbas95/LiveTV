@@ -1,5 +1,5 @@
 
-export class AppStateManager {
+class AppStateManager {
   constructor() {
     this.state = {
       channels: {

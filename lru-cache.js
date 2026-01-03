@@ -1,7 +1,8 @@
 /**
  * LRU (Least Recently Used) Cache implementation
  */
-export class LRUCache {
+
+class LRUCache {
   constructor(maxSize = 50, maxAge = 3600000, maxBytes = 5 * 1024 * 1024) {
     this.cache = new Map();
     this.maxSize = maxSize;

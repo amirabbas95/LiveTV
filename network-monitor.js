@@ -2,7 +2,7 @@
  * Network Status Monitoring System
  * Enhanced, configurable, and AppState-friendly single-file class
  */
-export class NetworkMonitor {
+class NetworkMonitor {
     constructor(options = {}, appStateInstance = null) {
         this.appState = appStateInstance; // Explicitly pass appState
         this.config = {

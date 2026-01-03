@@ -52,7 +52,7 @@ const RETRY_CONFIG = {
 // Enhanced Retry Manager
 // ============================================
 
-export class EnhancedRetryManager extends RetryManager {
+class EnhancedRetryManager extends RetryManager {
   constructor(storageKey, options = {}) {
     super(storageKey, options);
     this.type = storageKey.includes('rss') ? 'rss' : 'live';
