@@ -15,9 +15,9 @@ class PerformanceMonitor {
       console.log(`🚀 Initializing IPTV Channel Manager in ${measure.duration.toFixed(2)}ms`);
     }
 
-    performance.clearMarks('channel-load-start');
-    performance.clearMarks('channel-load-end');
-    performance.clearMeasures('channel-load');
+    // Clear all at once for better performance
+    performance.clearMarks();
+    performance.clearMeasures();
   }
 }
 
@@ -37,7 +37,7 @@ networkMonitor.initialize();
 
 // 4. Example usage of State + Cache
 appState.subscribe('settings.isOnline', (isOnline) => {
-    console.log(`Application UI reacting to: ${isOnline ? 'Online' : 'Offline'}`);
+  console.log(`Application UI reacting to: ${isOnline ? 'Online' : 'Offline'}`);
 });
 
 
@@ -47,7 +47,8 @@ const AUTO_UPDATE_KEY = "autoUpdateEnabled";
 const UPDATE_INTERVAL_KEY = "updateIntervalHours";
 const MAX_RECENT = 18;
 
-const LS_KEYS = {
+// Frozen constants for immutability and optimization
+const LS_KEYS = Object.freeze({
   FAVORITES: "favorites",
   RECENT: "recentlyWatched",
   CHANNELS: "allChannelsData",
@@ -56,29 +57,33 @@ const LS_KEYS = {
   WATCH_TIME: "watchTimePerChannel",
   YT_QUOTA: "__iptv_yt_quota",
   RSS_FAILED: "rssFailedFeeds"
-};
+});
 
 const API_KEY_STORAGE_KEY = "youtube_api_key";
 const CACHE_KEY = "lastChannelsUpdate";
 
 const MAX_MB = 6;
+const MAX_BYTES = MAX_MB * 1024 * 1024; // Pre-calculate constant
 
 const VERSION = "1.0.0";
 
-const PLAYBACK_CONSTANTS = {
+const PLAYBACK_CONSTANTS = Object.freeze({
   MAX_ELEMENT_WAIT_TIME: 2000,
   PLAYER_READY_TIMEOUT: 5000,
   DOM_MUTATION_CHECK_INTERVAL: 50,
   YOUTUBE_READY_CHECK_INTERVAL: 100,
   TRANSITION_DELAY: 0,
-};
+});
 
 const DEBOUNCE_MS = 180;
 
 const pendingRequests = new Map();
 
+// Pre-compile regex patterns for better performance
+const WHITESPACE_REGEX = /\s+/g;
 
 function safeJSONParse(value, fallback = null) {
+  if (!value) return fallback;
   try {
     return JSON.parse(value);
   } catch (e) {
@@ -89,6 +94,7 @@ function safeJSONParse(value, fallback = null) {
 
 function readArray(key) {
   const raw = localStorage.getItem(key);
+  if (!raw) return [];
   const parsed = safeJSONParse(raw, null);
   return Array.isArray(parsed) ? parsed : [];
 }
@@ -118,17 +124,34 @@ function writeArray(key, arr) {
 }
 
 function getActualStorageSize(str) {
-  return new Blob([str]).size;
+  // TextEncoder is faster than Blob for size calculation
+  return new TextEncoder().encode(str).length;
 }
 
+// Cache storage usage to avoid recalculating
+let cachedStorageUsage = null;
+let storageUsageCacheTime = 0;
+const STORAGE_CACHE_TTL = 5000; // 5 seconds
+
 function getAvailableSpace() {
-  const MAX_BYTES = MAX_MB * 1024 * 1024;
+  const now = Date.now();
+  
+  // Use cached value if available and fresh
+  if (cachedStorageUsage && (now - storageUsageCacheTime) < STORAGE_CACHE_TTL) {
+    const available = MAX_BYTES - cachedStorageUsage.totalBytes;
+    return available > 0 ? available : 0;
+  }
+  
   const usage = getStorageUsage();
 
   if (!usage || typeof usage.totalBytes !== "number") {
     console.warn("⚠️ Storage usage unavailable.");
     return MAX_BYTES;
   }
+
+  // Cache the result
+  cachedStorageUsage = usage;
+  storageUsageCacheTime = now;
 
   const available = MAX_BYTES - usage.totalBytes;
   return available > 0 ? available : 0;
@@ -163,6 +186,8 @@ function safeLocalStorageSet(key, value, retryOnFail = true) {
 
   try {
     localStorage.setItem(key, value);
+    // Invalidate cache on successful write
+    cachedStorageUsage = null;
     return true;
   } catch (e) {
     console.warn("Storage write failed:", e);
@@ -188,7 +213,7 @@ function safeLocalStorageSet(key, value, retryOnFail = true) {
 
 
 /**
- * Debounce function to limit rapid calls
+ * Optimized debounce function with better memory management
  */
 function debounce(fn, wait = DEBOUNCE_MS, options = {}) {
   let timeout;
@@ -200,6 +225,7 @@ function debounce(fn, wait = DEBOUNCE_MS, options = {}) {
   function invoke() {
     fn.apply(lastThis, lastArgs);
     timeout = null;
+    lastArgs = lastThis = null; // Clear references for GC
   }
 
   const debounced = function (...args) {
@@ -208,7 +234,8 @@ function debounce(fn, wait = DEBOUNCE_MS, options = {}) {
 
     const shouldInvokeLeading = leading && !timeout;
 
-    clearTimeout(timeout);
+    if (timeout) clearTimeout(timeout);
+    
     timeout = setTimeout(() => {
       if (trailing) invoke();
     }, wait);
@@ -216,7 +243,14 @@ function debounce(fn, wait = DEBOUNCE_MS, options = {}) {
     if (shouldInvokeLeading) invoke();
   };
 
-  debounced.cancel = () => clearTimeout(timeout);
+  debounced.cancel = () => {
+    if (timeout) {
+      clearTimeout(timeout);
+      timeout = null;
+      lastArgs = lastThis = null;
+    }
+  };
+  
   debounced.flush = () => {
     if (timeout) {
       clearTimeout(timeout);
@@ -227,41 +261,49 @@ function debounce(fn, wait = DEBOUNCE_MS, options = {}) {
   return debounced;
 }
 
-function getTimeAgo(timestamp) {
-  const SECONDS_PER_MINUTE = 60;
-  const MINUTES_PER_HOUR = 60;
-  const HOURS_PER_DAY = 24;
+// Pre-calculate time constants
+const SECONDS_PER_MINUTE = 60;
+const SECONDS_PER_HOUR = 3600; // 60 * 60
+const SECONDS_PER_DAY = 86400; // 60 * 60 * 24
 
+function getTimeAgo(timestamp) {
   const seconds = Math.floor((Date.now() - timestamp) / 1000);
 
   if (seconds < SECONDS_PER_MINUTE) {
     return "just now";
   }
 
-  const minutes = Math.floor(seconds / SECONDS_PER_MINUTE);
-  if (minutes < MINUTES_PER_HOUR) {
+  if (seconds < SECONDS_PER_HOUR) {
+    const minutes = Math.floor(seconds / SECONDS_PER_MINUTE);
     return `${minutes} minute${minutes !== 1 ? "s" : ""} ago`;
   }
 
-  const hours = Math.floor(minutes / MINUTES_PER_HOUR);
-  if (hours < HOURS_PER_DAY) {
+  if (seconds < SECONDS_PER_DAY) {
+    const hours = Math.floor(seconds / SECONDS_PER_HOUR);
     return `${hours} hour${hours !== 1 ? "s" : ""} ago`;
   }
 
-  const days = Math.floor(hours / HOURS_PER_DAY);
+  const days = Math.floor(seconds / SECONDS_PER_DAY);
   return `${days} day${days !== 1 ? "s" : ""} ago`;
 
 }
 
+// Cache notification element to avoid repeated creation
+let activeNotification = null;
+
 function showNotification(message, type = 'info', time = 3000) {
   appState.clearTimeoutRef('notificationTimer');
 
-  document.querySelectorAll('.iptv-notification').forEach(n => {
-    n.classList.remove('visible');
+  // Remove any existing notifications efficiently
+  if (activeNotification && activeNotification.isConnected) {
+    activeNotification.classList.remove('visible');
     setTimeout(() => {
-      if (n.isConnected) n.remove();
+      if (activeNotification && activeNotification.isConnected) {
+        activeNotification.remove();
+      }
+      activeNotification = null;
     }, 400);
-  });
+  }
 
   const el = document.createElement('div');
   el.className = `iptv-notification notification-${type}`;
@@ -273,10 +315,21 @@ function showNotification(message, type = 'info', time = 3000) {
   el.innerHTML = message;
 
   document.body.appendChild(el);
+  activeNotification = el;
 
+  // Use RAF for smoother animation
   requestAnimationFrame(() => {
-    el.classList.add('visible');
+    requestAnimationFrame(() => {
+      el.classList.add('visible');
+    });
   });
+
+  const handleKeydown = (e) => {
+    if (e.key === 'Escape' && el.isConnected) {
+      appState.clearTimeoutRef('notificationTimer');
+      hide();
+    }
+  };
 
   const cleanup = () => {
     document.removeEventListener('keydown', handleKeydown);
@@ -290,6 +343,9 @@ function showNotification(message, type = 'info', time = 3000) {
         el.remove();
         cleanup();
         appState.clearTimeoutRef('notificationTimer');
+        if (activeNotification === el) {
+          activeNotification = null;
+        }
       }
     }, 400);
   };
@@ -297,14 +353,8 @@ function showNotification(message, type = 'info', time = 3000) {
   el.addEventListener('click', () => {
     appState.clearTimeoutRef('notificationTimer');
     hide();
-  });
+  }, { once: true }); // Use 'once' option for automatic cleanup
 
-  const handleKeydown = (e) => {
-    if (e.key === 'Escape' && el.isConnected) {
-      appState.clearTimeoutRef('notificationTimer');
-      hide();
-    }
-  };
   document.addEventListener('keydown', handleKeydown);
 
   const timer = setTimeout(hide, time);
@@ -334,16 +384,18 @@ function showErrorToUser(message) {
       <p class="text-sm">${message}</p>
    </div>
    <button onclick="this.parentElement.parentElement.remove()" class="ml-auto">
-   <i class="fas fa-times"></i>
+      <i class="fas fa-times"></i>
    </button>
-</div>
-`;
+</div>`;
   document.body.appendChild(errorDiv);
+
   setTimeout(() => {
-    errorDiv.style.opacity = '0';
-    setTimeout(() => errorDiv.remove(), 350);
+    if (errorDiv.isConnected) {
+      errorDiv.remove();
+    }
   }, PLAYBACK_CONSTANTS.PLAYER_READY_TIMEOUT);
 }
+
 
 
 /**
@@ -1245,7 +1297,7 @@ class ChannelLoader {
 
   updateChannelUI(name, image, description, number) {
     const map = {
-      'content-image': (el) => el.src = prepareImageUrl(image),
+      'content-image': (el) => el.src = fixImageUrl(image),
       'video-title': (el) => el.textContent = name || 'Unknown Channel',
       'channel-description': (el) => el.textContent = description || '',
       'channel-number': (el) => el.textContent = number ? `${number}.` : '',
@@ -1515,7 +1567,7 @@ class ChannelLoader {
       if (isOnline) {
         showNotification(
           '<i class="fas fa-spinner fa-spin"></i> Buffering...',
-          'general'
+          'info'
         );
       } else {
         console.warn(
@@ -2161,7 +2213,7 @@ function createChannelItem(channel) {
   thumb.className = 'thumb-wrapper';
 
   const img = document.createElement('img');
-  const imageUrl = prepareImageUrl(channel.image);
+  const imageUrl = fixImageUrl(channel.image);
 
   img.dataset.src = imageUrl;
 
@@ -4533,28 +4585,37 @@ document.addEventListener("visibilitychange", () => {
 });
 
 
-function prepareImageUrl(imageUrl, width = 160) {
-  if (!imageUrl) return 'placeholder.png';
+function fixImageUrl(imageUrl, { width = 200, quality = 80 } = {}) {
+  const PLACEHOLDER = 'placeholder.png';
 
-  // Already optimized via weserv.nl
-  if (imageUrl.startsWith('https://images.weserv.nl/')) {
+  // 1. Guard against null, undefined, or non-string inputs
+  if (!imageUrl || typeof imageUrl !== 'string') return PLACEHOLDER;
+
+  // 2. RELIABILITY: If it's already HTTPS, return it as-is.
+  // This ensures thumbnails from strict CDNs don't break.
+  if (imageUrl.startsWith('https://')) {
     return imageUrl;
   }
 
-  // Handle HTTPS input
-  if (imageUrl.startsWith('https://')) {
-    const cleanUrl = imageUrl.replace('https://', '');
-    return `https://images.weserv.nl/?url=${encodeURIComponent(cleanUrl)}&w=${width}&fit=cover&a=attention`;
-  }
-
-  // Handle HTTP input
+  // 3. PERFORMANCE: If it's HTTP, proxy and optimize it.
+  // This fixes "Mixed Content" warnings and speeds up your site.
   if (imageUrl.startsWith('http://')) {
-    const cleanUrl = imageUrl.replace('http://', '');
-    return `https://images.weserv.nl/?url=${encodeURIComponent(cleanUrl)}&w=${width}&fit=cover&a=attention`;
+    const cleanUrl = imageUrl.replace(/^http:\/\//, '');
+    
+    const params = new URLSearchParams({
+      url: cleanUrl,
+      w: width,
+      q: quality,
+      fit: 'cover',
+      a: 'attention', // Smart-crops to faces/subjects
+      default: PLACEHOLDER // If the source HTTP image is 404, Weserv shows this
+    });
+
+    return `https://images.weserv.nl/?${params.toString()}`;
   }
 
-  // Fallback: return as-is
-  return imageUrl;
+  // 4. FALLBACK: Return the input (useful for local paths like /assets/logo.png)
+  return imageUrl || PLACEHOLDER;
 }
 
 
@@ -4677,8 +4738,8 @@ function navigateChannel(direction = 1) {
   });
   appState.set('ui.lastFocusedElement', target);
 
-  const icon = direction === -1 ? "⏮️" : "⏭️";
-  showNotification(`${icon} ${name}`, "info");
+  //const icon = direction === -1 ? "⏮️" : "⏭️";
+  //showNotification(`${icon} ${name}`, "info");
 }
 
 function navigateToPreviousChannel() {
@@ -5483,27 +5544,39 @@ function predictiveCleanup() {
 }
 
 /**
- * Initialize global lazy load observer
+ * Optimized lazy loading with better resource management
  */
 function initializeLazyLoading() {
-  if (window.lazyLoadObserver) {
-    return window.lazyLoadObserver;
+  if (!('IntersectionObserver' in window)) {
+    console.warn('IntersectionObserver not supported - loading all images immediately');
+    document.querySelectorAll('img[data-src]').forEach(loadImage);
+    return null;
   }
 
-  const observer = new IntersectionObserver((entries) => {
+  // Disconnect existing observer if present
+  if (window.lazyLoadObserver) {
+    window.lazyLoadObserver.disconnect();
+  }
+
+  const options = {
+    root: null,
+    rootMargin: '50px', // Preload slightly before visible
+    threshold: 0.01
+  };
+
+  const observer = new IntersectionObserver((entries, obs) => {
     entries.forEach(entry => {
       if (entry.isIntersecting) {
         const img = entry.target;
-        if (img.dataset.src && !img.classList.contains('loaded')) {
-          loadImage(img);
-          observer.unobserve(img);
-        }
+        loadImage(img);
+        obs.unobserve(img); // Stop observing after loading
       }
     });
-  }, {
-    root: null,
-    rootMargin: '100px',
-    threshold: [0, 0.1, 0.5, 1]
+  }, options);
+
+  // Observe all lazy images
+  document.querySelectorAll('img[data-src]').forEach(img => {
+    observer.observe(img);
   });
 
   window.lazyLoadObserver = observer;
@@ -5517,11 +5590,11 @@ function initializeLazyLoading() {
 }
 
 /**
- * Load image from data-src to src
+ * Load image from data-src to src with better error handling
  */
 function loadImage(img) {
   const src = img.dataset.src;
-  if (!src) return;
+  if (!src || img.src === src) return; // Prevent duplicate loads
 
   img.classList.add('loading');
 
@@ -5531,6 +5604,7 @@ function loadImage(img) {
     img.src = src;
     img.classList.remove('loading');
     img.classList.add('loaded');
+    delete img.dataset.src; // Clean up data attribute
   };
 
   tempImg.onerror = () => {
@@ -5610,62 +5684,61 @@ function addSkipLinks() {
     font-size: 14px;
     text-decoration: none;
   `;
-  skipNav.addEventListener('focus', () => {
-    skipNav.style.top = '0';
-  });
-  skipNav.addEventListener('blur', () => {
-    skipNav.style.top = '-40px';
-  });
+  
+  const handleFocus = () => skipNav.style.top = '0';
+  const handleBlur = () => skipNav.style.top = '-40px';
+  
+  skipNav.addEventListener('focus', handleFocus);
+  skipNav.addEventListener('blur', handleBlur);
   document.body.insertBefore(skipNav, document.body.firstChild);
 }
 
 /**
- * Deduplicates concurrent API requests
+ * Optimized request deduplication with better memory management
  */
 function deduplicateRequest(key, requestFn, options = {}) {
   const {
     ttl = 0, timeout = 15000, force = false
   } = options;
 
-  if (pendingRequests.has(key) && !force) {
+  if (!force && pendingRequests.has(key)) {
     const entry = pendingRequests.get(key);
-    if (entry && entry.resolved && (ttl <= 0 || (Date.now() - entry.resolvedAt) < ttl)) {
+    
+    // Return cached value if still fresh
+    if (entry?.resolved && (ttl <= 0 || (Date.now() - entry.resolvedAt) < ttl)) {
       return Promise.resolve(entry.value);
     }
-    if (entry && entry.promise) return entry.promise;
+    
+    // Return pending promise if exists
+    if (entry?.promise) return entry.promise;
   }
 
   const controller = new AbortController();
   const signal = controller.signal;
-  let timedOut = false;
 
   const p = (async () => {
     try {
       const result = await Promise.race([
-        (typeof requestFn === 'function') ? requestFn({
-          signal
-        }) : Promise.reject(new Error('requestFn not a function')),
+        typeof requestFn === 'function' 
+          ? requestFn({ signal }) 
+          : Promise.reject(new Error('requestFn not a function')),
         new Promise((_, rej) => setTimeout(() => {
-          timedOut = true;
           controller.abort();
-          rej(new Error('timeout'));
+          rej(new Error('Request timeout'));
         }, timeout))
       ]);
+      
       pendingRequests.set(key, {
         resolved: true,
         resolvedAt: Date.now(),
         value: result,
         promise: Promise.resolve(result)
       });
+      
       return result;
     } catch (err) {
       pendingRequests.delete(key);
       throw err;
-    } finally {
-      const cur = pendingRequests.get(key);
-      if (cur && !cur.resolved) {
-        pendingRequests.delete(key);
-      }
     }
   })();
 
@@ -5673,10 +5746,13 @@ function deduplicateRequest(key, requestFn, options = {}) {
     resolved: false,
     promise: p
   });
+  
   p.abortController = controller;
   return p;
 }
 
+// Optimize error log with circular buffer
+const MAX_ERROR_LOG_SIZE = 50;
 const errorLog = [];
 
 function logErrorToService(error) {
@@ -5690,33 +5766,30 @@ function logErrorToService(error) {
 
   errorLog.push(entry);
 
-  if (errorLog.length > 50) {
-    errorLog.shift();
+  // More efficient than shift() for large arrays
+  if (errorLog.length > MAX_ERROR_LOG_SIZE) {
+    errorLog.splice(0, errorLog.length - MAX_ERROR_LOG_SIZE);
   }
 
-  try { } catch (e) { }
+  // Add error logging service call here if needed
 }
 
 function fetchWithTimeout(url, options = {}) {
-  const {
-    timeout = 15000
-  } = options;
+  const { timeout = 15000, ...fetchOptions } = options;
 
   const controller = new AbortController();
-  const id = setTimeout(() => controller.abort(), timeout);
+  const timeoutId = setTimeout(() => controller.abort(), timeout);
 
-  const cleanOptions = {
-    ...options
-  };
-  delete cleanOptions.json;
-  cleanOptions.signal = controller.signal;
-
-  return fetch(url, cleanOptions)
-    .finally(() => clearTimeout(id));
+  return fetch(url, {
+    ...fetchOptions,
+    signal: controller.signal
+  }).finally(() => clearTimeout(timeoutId));
 }
 
 
+
 // ======================================================================
+// GLOBAL ERROR HANDLERS - Optimized to avoid duplicate registration
 // ======================================================================
 
 (function setupGlobalErrorHandlers() {
@@ -5726,23 +5799,14 @@ function fetchWithTimeout(url, options = {}) {
   window.addEventListener("error", (event) => {
     try {
       const error = event.error || event.message || "Unknown error";
-
       console.error("GLOBAL ERROR:", error);
 
-      try {
-        logErrorToService?.(error);
-      } catch { }
+      logErrorToService?.(error);
+      showNotification?.("Unexpected error occurred", "error");
 
-      try {
-        showNotification?.("Unexpected error occurred", "error");
-      } catch { }
-
-      try {
-        if (typeof canRecover === "function" && canRecover(error)) {
-          attemptRecovery?.();
-        }
-      } catch { }
-
+      if (typeof canRecover === "function" && canRecover(error)) {
+        attemptRecovery?.();
+      }
     } catch (handlerErr) {
       console.warn("Global error handler failed:", handlerErr);
     }
@@ -5751,23 +5815,16 @@ function fetchWithTimeout(url, options = {}) {
   window.addEventListener("unhandledrejection", (event) => {
     try {
       const reason = event.reason || "Unknown async error";
-
       console.error("UNHANDLED REJECTION:", reason);
 
       event.preventDefault();
 
-      try {
-        showNotification?.("Failed to complete operation", "error");
-      } catch { }
-      try {
-        logErrorToService?.(reason);
-      } catch { }
-
+      showNotification?.("Failed to complete operation", "error");
+      logErrorToService?.(reason);
     } catch (handlerErr) {
       console.warn("Rejection handler failed:", handlerErr);
     }
   });
-
 })();
 
 
@@ -5793,11 +5850,12 @@ window.addEventListener('unhandledrejection', (ev) => {
 });
 
 
-const __iptv = {
+// Public API - Frozen for better performance and immutability
+const __iptv = Object.freeze({
   appState,
   get channelLoader() {
     return channelLoader;
-  }, // Getter to ensure it's available
+  },
 
   // Channel functions
   selectChannel,
@@ -5831,13 +5889,12 @@ const __iptv = {
   updateStorageDisplay,
 
   // Debug functions
-  getErrorLog: () => Array.isArray(errorLog) ? [...errorLog] : [],
+  getErrorLog: () => [...errorLog],
 
   // Fullscreen prompt reference
   get fullscreenPrompt() {
     return window.fullscreenPrompt;
   }
-};
+});
 
-
-window.__iptv = Object.freeze(__iptv);
+window.__iptv = __iptv;
