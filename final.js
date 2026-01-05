@@ -135,13 +135,13 @@ const STORAGE_CACHE_TTL = 5000; // 5 seconds
 
 function getAvailableSpace() {
   const now = Date.now();
-  
+
   // Use cached value if available and fresh
   if (cachedStorageUsage && (now - storageUsageCacheTime) < STORAGE_CACHE_TTL) {
     const available = MAX_BYTES - cachedStorageUsage.totalBytes;
     return available > 0 ? available : 0;
   }
-  
+
   const usage = getStorageUsage();
 
   if (!usage || typeof usage.totalBytes !== "number") {
@@ -235,7 +235,7 @@ function debounce(fn, wait = DEBOUNCE_MS, options = {}) {
     const shouldInvokeLeading = leading && !timeout;
 
     if (timeout) clearTimeout(timeout);
-    
+
     timeout = setTimeout(() => {
       if (trailing) invoke();
     }, wait);
@@ -250,7 +250,7 @@ function debounce(fn, wait = DEBOUNCE_MS, options = {}) {
       lastArgs = lastThis = null;
     }
   };
-  
+
   debounced.flush = () => {
     if (timeout) {
       clearTimeout(timeout);
@@ -294,16 +294,12 @@ let activeNotification = null;
 function showNotification(message, type = 'info', time = 3000) {
   appState.clearTimeoutRef('notificationTimer');
 
-  // Remove any existing notifications efficiently
-  if (activeNotification && activeNotification.isConnected) {
-    activeNotification.classList.remove('visible');
+  document.querySelectorAll('.iptv-notification').forEach(n => {
+    n.classList.remove('visible');
     setTimeout(() => {
-      if (activeNotification && activeNotification.isConnected) {
-        activeNotification.remove();
-      }
-      activeNotification = null;
+      if (n.isConnected) n.remove();
     }, 400);
-  }
+  });
 
   const el = document.createElement('div');
   el.className = `iptv-notification notification-${type}`;
@@ -312,24 +308,13 @@ function showNotification(message, type = 'info', time = 3000) {
   el.setAttribute('aria-live', type === 'error' ? 'assertive' : 'polite');
   el.setAttribute('aria-atomic', 'true');
 
-  el.innerHTML = message;
+  el.textContent = message;
 
   document.body.appendChild(el);
-  activeNotification = el;
 
-  // Use RAF for smoother animation
   requestAnimationFrame(() => {
-    requestAnimationFrame(() => {
-      el.classList.add('visible');
-    });
+    el.classList.add('visible');
   });
-
-  const handleKeydown = (e) => {
-    if (e.key === 'Escape' && el.isConnected) {
-      appState.clearTimeoutRef('notificationTimer');
-      hide();
-    }
-  };
 
   const cleanup = () => {
     document.removeEventListener('keydown', handleKeydown);
@@ -343,9 +328,6 @@ function showNotification(message, type = 'info', time = 3000) {
         el.remove();
         cleanup();
         appState.clearTimeoutRef('notificationTimer');
-        if (activeNotification === el) {
-          activeNotification = null;
-        }
       }
     }, 400);
   };
@@ -353,8 +335,14 @@ function showNotification(message, type = 'info', time = 3000) {
   el.addEventListener('click', () => {
     appState.clearTimeoutRef('notificationTimer');
     hide();
-  }, { once: true }); // Use 'once' option for automatic cleanup
+  });
 
+  const handleKeydown = (e) => {
+    if (e.key === 'Escape' && el.isConnected) {
+      appState.clearTimeoutRef('notificationTimer');
+      hide();
+    }
+  };
   document.addEventListener('keydown', handleKeydown);
 
   const timer = setTimeout(hide, time);
@@ -367,10 +355,7 @@ function showNotification(message, type = 'info', time = 3000) {
     }
   });
 
-  return {
-    hide,
-    cleanup
-  };
+  return { hide, cleanup };
 }
 
 function showErrorToUser(message) {
@@ -702,8 +687,8 @@ function createStreamConfig(url, opts = {}) {
     const proxiedUrl = proxy + url;
 
     showNotification(
-      "⚠ HTTP stream blocked on HTTPS. Using secure proxy fallback...",
-      "warning"
+      "HTTP stream blocked on HTTPS. Using secure proxy fallback...",
+      " `"
     );
 
     return {
@@ -932,179 +917,89 @@ class ChannelLoader {
   constructor(opts = {}) {
     this.currentOperation = null;
     this.currentOperationId = null;
-
-    this.playerRef = null;
-
     this.playerInstance = null;
-
     this.eventCleanupCallbacks = [];
 
-    this.cleanupRegistry = new FinalizationRegistry((cleanup) => {
-      try {
-        cleanup();
-      } catch (e) {
-        console.warn("Finalizer cleanup error:", e);
-      }
-    });
-
-    this.config = Object.assign({
+    this.config = {
       playerContainerId: "player-container",
-      persistDelay: 100
-    }, opts);
+      persistDelay: 100,
+      ...opts
+    };
 
-    if (typeof appState !== "undefined" && typeof appState.addCleanup === "function") {
-      appState.addCleanup(() => {
-        try {
-          this.cleanupPlayer(true);
-        } catch (e) {
-          console.warn(e);
-        }
-      });
-    }
+    this.setupGlobalCleanup();
   }
 
-  _bindPlayerEvent(player, event, handler) {
-    try {
-      if (typeof player.addEventListener === "function") {
-        player.addEventListener(event, handler);
-      } else if (typeof player.on === "function") {
-        player.on(event, handler);
-      } else if (typeof player.addListener === "function") {
-        player.addListener(event, handler);
-      }
-    } catch (e) {
-      /* ignore */
-    }
-
-    try {
-      if (!player._boundEvents) player._boundEvents = [];
-      player._boundEvents.push({
-        event,
-        handler
-      });
-
-      this.cleanupRegistry.register(player, () => {
-        try {
-          if (typeof player.removeEventListener === "function") {
-            player.removeEventListener(event, handler);
-          } else if (typeof player.off === "function") {
-            player.off(event, handler);
-          } else if (typeof player.removeListener === "function") {
-            player.removeListener(event, handler);
-          }
-        } catch (e) { }
-      });
-    } catch (e) {
-      /* ignore */
+  /**
+   * Sets up global cleanup handler
+   */
+  setupGlobalCleanup() {
+    if (typeof appState?.addCleanup === "function") {
+      appState.addCleanup(() => this.cleanupPlayer(true));
     }
   }
 
   /**
-   * Safely disposes video.js player with HLS cleanup
-   * @private
-   * @param {Object} player - Video.js player instance
-   * @returns {Promise<void>}
+   * Binds event with automatic cleanup
    */
-  async _disposeVideoJS(player) {
+  bindEvent(player, event, handler) {
+    if (!player) return;
+
     try {
-      if (!player) return;
-
-      try {
-        player.pause?.();
-      } catch (e) { }
-
-      try {
-        if (typeof player.off === "function") {
-          try {
-            player.off();
-          } catch (e) { }
-        } else if (typeof player.removeEventListener === "function") {
-          const events = player._boundEvents;
-          if (events && typeof events.forEach === "function") {
-            try {
-              events.forEach(({
-                event,
-                handler
-              }) => {
-                try {
-                  player.removeEventListener(event, handler);
-                } catch (e) { }
-              });
-            } catch (e) { }
-            try {
-              events.clear?.();
-            } catch (e) { }
-          }
-        }
-      } catch (e) { }
-
-      try {
-        const tech = player.tech_ || (typeof player.tech === "function" && player.tech(true)) || null;
-        const hls = tech?.hls || tech?.vhs || tech?.hlsHandler || tech?.vhsHandler;
-        if (hls) {
-          try {
-            typeof hls.dispose === "function" && hls.dispose();
-          } catch (e) { }
-          try {
-            typeof hls.destroy === "function" && hls.destroy();
-          } catch (e) { }
-        }
-      } catch (e) { }
-
-      try {
-        if (typeof player.dispose === "function") {
-          try {
-            player.dispose();
-          } catch (e) {
-            console.warn("player.dispose() error:", e);
-          }
-        }
-      } catch (e) { }
-
-      try {
-        if (typeof player.destroy === "function") {
-          try {
-            await player.destroy();
-          } catch (e) { }
-        }
-      } catch (e) { }
-
-      try {
-        const el = (typeof player.el === "function") ? player.el() : player.element || null;
-        if (el && el.parentNode) {
-          try {
-            el.parentNode.removeChild(el);
-          } catch (e) { }
-        }
-
-        const container = document.getElementById(this.config.playerContainerId);
-        if (container) {
-          container.querySelectorAll("video, .video-js, .vjs-tech, .vjs-video").forEach(node => {
-            try {
-              node.remove();
-            } catch (e) { }
-          });
-        }
-      } catch (e) { }
-    } catch (outer) {
-      console.warn("Video.js disposal outer error:", outer);
+      player.on?.(event, handler);
+      
+      this.eventCleanupCallbacks.push(() => {
+        player.off?.(event, handler);
+      });
+    } catch (e) {
+      console.warn("Event binding failed:", e);
     }
   }
 
-  async cleanupPlayer(force = false) {
+  /**
+   * Disposes video.js player with HLS cleanup
+   */
+  async disposePlayer(player) {
+    if (!player) return;
+
     try {
-      stopWatching?.();
-    } catch { }
+      // Stop playback first
+      player.pause?.();
 
-    const player = this.playerRef?.deref?.() || this.playerInstance;
+      // Clean up HLS/VHS if present
+      const tech = player.tech?.({ IWillNotUseThisInPlugins: true });
+      const hls = tech?.hls || tech?.vhs;
+      
+      if (hls) {
+        hls.dispose?.();
+        hls.destroy?.();
+      }
 
-    if (player) {
-      await this._disposeVideoJS(player);
+      // Dispose player
+      player.dispose?.();
+      await player.destroy?.();
+
+      // Remove DOM elements
+      const container = document.getElementById(this.config.playerContainerId);
+      if (container) {
+        container.querySelectorAll("video, .video-js").forEach(node => node.remove());
+      }
+    } catch (e) {
+      console.warn("Player disposal error:", e);
+    }
+  }
+
+  /**
+   * Clean up current player instance
+   */
+  async cleanupPlayer(force = false) {
+    stopWatching?.();
+
+    if (this.playerInstance) {
+      await this.disposePlayer(this.playerInstance);
     }
 
-    this.playerRef = null;
     this.playerInstance = null;
-    this.eventCleanupCallbacks = [];
+    this.cleanupEventListeners();
 
     const container = document.getElementById(this.config.playerContainerId);
     if (container) container.innerHTML = '';
@@ -1116,116 +1011,67 @@ class ChannelLoader {
     }
   }
 
+  /**
+   * Initialize Video.js player
+   */
   async initializePlayer(url, name, isLive, token) {
     const container = await this.waitForElement("player-container");
     token.throwIfCancelled();
 
     const streamConfig = createStreamConfig(url);
-    const metadata = {
-      isLive: !!isLive
-    };
-
     const videoId = `player-${Date.now()}`;
-    const videoElement = this.createVideoElement(videoId);
 
+    // Create and setup video element
     container.innerHTML = "";
-    container.appendChild(videoElement);
+    container.appendChild(this.createVideoElement(videoId));
 
     await this.waitForElement(videoId);
     token.throwIfCancelled();
 
-    const playerConfig = buildPlayerOptions(streamConfig, metadata);
+    // Initialize player
+    const playerConfig = buildPlayerOptions(streamConfig, { isLive: !!isLive });
     console.log('🎬 Initializing Video.js player...');
 
-    let player;
     try {
-      player = videojs(videoElement, playerConfig);
-      this.playerInstance = player;
-      appState.set("player.instance", player);
+      this.playerInstance = videojs(videoId, playerConfig);
+      appState.set("player.instance", this.playerInstance);
     } catch (e) {
       console.error("❌ Player init failed:", e);
       throw e;
     }
 
     token.throwIfCancelled();
-    if (!player) throw new Error("Player failed to initialize");
+    if (!this.playerInstance) throw new Error("Player failed to initialize");
 
-    try {
-      this.playerRef = new WeakRef(player);
-    } catch {
-      this.playerRef = {
-        deref: () => player
-      };
-    }
-
-    if (!player._boundEvents) {
-      player._boundEvents = new Set();
-    }
-
-    try {
-      this._bindPlayerEvent(player, "error", (e) => {
-        try {
-          console.warn("⚠️ Player error event:", e);
-        } catch { }
-      });
-      this._bindPlayerEvent(player, "ended", () => {
-        try {
-          console.log("ℹ️ Playback ended");
-        } catch { }
-      });
-      this._bindPlayerEvent(player, "timeupdate", () => {
-        try {
-          /* analytics hook */
-        } catch { }
-      });
-    } catch (e) {
-      console.warn("Event binding failed:", e);
-    }
-
-    try {
-      this.cleanupRegistry.register(player, () => {
-        try {
-          this._disposeVideoJS(player);
-        } catch { }
-      });
-    } catch (e) {
-      console.warn("Cleanup registry failed:", e);
-    }
-
-    try {
-      if (streamConfig.type === "hls" && player.tech({
-        IWillNotUseThisInPlugins: true
-      })) {
-        this.setupHLSErrorRecovery();
-      }
-    } catch (e) {
-      console.warn("HLS recovery setup failed:", e);
-    }
-
-    appState.set('player.instance', player);
-
+    // Setup player events and features
     this.setupPlayerEvents(name, isLive, streamConfig.type === 'youtube', token);
-    if (streamConfig.type === 'youtube') this.setupYouTubeQualityMonitoring(token);
+    
+    if (streamConfig.type === 'hls') {
+      this.setupHLSErrorRecovery();
+    }
+    if (streamConfig.type === 'youtube') {
+      this.setupYouTubeQualityMonitoring(token);
+    }
 
     await this.waitForPlayerReady(token);
-    token.throwIfCancelled();
-
     showChannelInfoOverlay();
     await this.attemptAutoplay();
     this.setupFullscreenCloseButton();
 
-    return player;
+    return this.playerInstance;
   }
 
+  /**
+   * Cancel current loading operation
+   */
   cancelOperation() {
-    try {
-      if (this.currentOperation) {
-        this.currentOperation.cancel?.("New channel selected");
-        this.currentOperation = null;
-      }
-    } catch (e) { }
+    this.currentOperation?.cancel?.("New channel selected");
+    this.currentOperation = null;
   }
 
+  /**
+   * Verify operation is still current
+   */
   verifyOperation(expectedId, token) {
     token.throwIfCancelled();
     if (this.currentOperationId !== expectedId) {
@@ -1234,15 +1080,7 @@ class ChannelLoader {
   }
 
   /**
-   * Loads a channel with race-condition protection and cleanup
-   * @param {string} url - Stream URL (HLS/DASH/YouTube)
-   * @param {string} name - Channel display name
-   * @param {string} image - Channel thumbnail URL
-   * @param {string} description - Channel description
-   * @param {number} number - Channel number for direct access
-   * @param {boolean} isLive - Whether channel is live stream
-   * @returns {Promise<void>}
-   * @throws {Error} If player initialization fails
+   * Load channel with race-condition protection
    */
   async loadChannel(url, name, image, description, number, isLive) {
     if (!url) return;
@@ -1254,11 +1092,10 @@ class ChannelLoader {
     const opId = Date.now() + Math.random();
     this.currentOperationId = opId;
 
-    console.log(`🚀 Loading channel: ${name} (OpID: ${opId})`);
+    console.log(`🚀 Loading channel: ${name}`);
 
     try {
       this.verifyOperation(opId, token);
-
       appState.set("ui.isModalOpen", true);
 
       this.updateChannelUI(name, image, description, number);
@@ -1271,12 +1108,7 @@ class ChannelLoader {
 
       this.verifyOperation(opId, token);
       appState.set("player.currentChannel", {
-        url,
-        name,
-        image,
-        description,
-        number,
-        isLive
+        url, name, image, description, number, isLive
       });
       appState.set("player.isPlaying", true);
 
@@ -1284,533 +1116,461 @@ class ChannelLoader {
       if (!token.isCancelled()) {
         console.error(`❌ Failed to load channel ${name}:`, err);
         showErrorToUser(`Failed to load ${name}: ${err.message}`);
-      } else {
-        console.log(`⏹️ Channel load cancelled: ${name}`);
       }
     } finally {
       if (this.currentOperationId === opId) {
         this.currentOperation = null;
       }
-
     }
   }
 
+  /**
+   * Update channel UI elements
+   */
   updateChannelUI(name, image, description, number) {
-    const map = {
-      'content-image': (el) => el.src = fixImageUrl(image),
-      'video-title': (el) => el.textContent = name || 'Unknown Channel',
-      'channel-description': (el) => el.textContent = description || '',
-      'channel-number': (el) => el.textContent = number ? `${number}.` : '',
-      'video-quality': (el) => el.textContent = ''
+    const updates = {
+      'content-image': el => el.src = fixImageUrl(image),
+      'video-title': el => el.textContent = name || 'Unknown Channel',
+      'channel-description': el => el.textContent = description || '',
+      'channel-number': el => el.textContent = number ? `${number}.` : '',
+      'video-quality': el => el.textContent = ''
     };
-    for (const id in map) {
+
+    for (const [id, updateFn] of Object.entries(updates)) {
       const el = document.getElementById(id);
       if (el) {
         try {
-          map[id](el);
+          updateFn(el);
         } catch (e) {
-          console.warn(e);
+          console.warn(`Failed to update ${id}:`, e);
         }
       }
     }
+
     appState.set('ui.lastFocusedElement', document.activeElement);
   }
 
+  /**
+   * Setup HLS error recovery
+   */
   setupHLSErrorRecovery() {
     if (!this.playerInstance) return;
+
     try {
-      const tech = this.playerInstance.tech ? this.playerInstance.tech({
-        IWillNotUseThisInPlugins: true
-      }) : null;
-      if (!tech || !tech.vhs) return;
+      const tech = this.playerInstance.tech?.({ IWillNotUseThisInPlugins: true });
+      if (!tech?.vhs) return;
+
       let errorCount = 0;
       const maxErrors = 3;
-      const vhsErrorHandler = () => {
+
+      const errorHandler = () => {
         errorCount++;
         console.warn(`⚠️ HLS error detected (${errorCount}/${maxErrors})`);
+        
         if (errorCount < maxErrors) {
           setTimeout(() => {
-            try {
-              tech.vhs.playlists.trigger('loadedplaylist');
-            } catch (e) { }
+            tech.vhs.playlists.trigger?.('loadedplaylist');
           }, 1000);
-        } else {
-          console.error('Max HLS errors reached');
         }
       };
-      tech.vhs.on('error', vhsErrorHandler);
-      this.eventCleanupCallbacks.push(() => {
-        try {
-          if (tech && tech.vhs) tech.vhs.off('error', vhsErrorHandler);
-        } catch (e) { }
-      });
+
+      tech.vhs.on('error', errorHandler);
+      this.eventCleanupCallbacks.push(() => tech.vhs.off?.('error', errorHandler));
     } catch (e) {
-      console.warn(e);
+      console.warn("HLS recovery setup failed:", e);
     }
   }
 
+  /**
+   * Create video element
+   */
   createVideoElement(id) {
     const video = document.createElement('video');
     video.id = id;
     video.className = 'video-js vjs-default-skin';
     video.controls = false;
     video.preload = 'auto';
-    video.setAttribute('playsinline', '');
-    video.setAttribute('webkit-playsinline', '');
-    video.setAttribute('crossorigin', 'anonymous');
+    video.setAttribute("data-setup", "{}");
     return video;
   }
 
-  waitForElement(id) {
+  /**
+   * Wait for element to appear in DOM
+   */
+  waitForElement(id, timeout = PLAYBACK_CONSTANTS?.MAX_ELEMENT_WAIT_TIME || 5000) {
     return new Promise((resolve, reject) => {
       const existing = document.getElementById(id);
       if (existing) return resolve(existing);
 
-      let tid = null;
-      const obs = new MutationObserver(() => {
+      const observer = new MutationObserver(() => {
         const el = document.getElementById(id);
         if (el) {
-          try {
-            obs.disconnect();
-          } catch (_) { }
-          if (tid) clearTimeout(tid);
+          observer.disconnect();
+          clearTimeout(timer);
           resolve(el);
         }
       });
 
-      obs.observe(document.body, {
-        childList: true,
-        subtree: true
-      });
+      observer.observe(document.body, { childList: true, subtree: true });
 
-      tid = setTimeout(() => {
-        try {
-          obs.disconnect();
-        } catch (_) { }
+      const timer = setTimeout(() => {
+        observer.disconnect();
         reject(new Error(`Element ${id} not found`));
-      }, PLAYBACK_CONSTANTS.MAX_ELEMENT_WAIT_TIME);
+      }, timeout);
     });
   }
 
-  async waitForPlayerReady(token) {
+  /**
+   * Wait for player to be ready
+   */
+  async waitForPlayerReady(token, timeout = PLAYBACK_CONSTANTS?.PLAYER_READY_TIMEOUT || 10000) {
+    if (!this.playerInstance) {
+      throw new Error('No player instance');
+    }
+
     return new Promise((resolve, reject) => {
-      if (!this.playerInstance) return reject(new Error('No player instance'));
-      let done = false;
+      let isComplete = false;
+
       const timeoutId = setTimeout(() => {
-        if (!done) {
-          done = true;
+        if (!isComplete) {
+          isComplete = true;
           reject(new Error('Player ready timeout'));
         }
-      }, PLAYBACK_CONSTANTS.PLAYER_READY_TIMEOUT);
+      }, timeout);
 
       this.playerInstance.ready(() => {
-        if (done) return;
+        if (isComplete) return;
         clearTimeout(timeoutId);
+        
         if (token.isCancelled()) {
-          done = true;
-          return reject(new Error('Cancelled'));
+          isComplete = true;
+          reject(new Error('Cancelled'));
+          return;
         }
-        done = true;
-        resolve();
-      });
 
-      this.playerInstance.one && this.playerInstance.one('error', () => {
-        if (done) return;
-        clearTimeout(timeoutId);
-        done = true;
-        const err = this.playerInstance.error ? this.playerInstance.error() : null;
-        reject(new Error(`Player error init: ${err ? err.code : 'unknown'}`));
+        isComplete = true;
+        resolve();
       });
     });
   }
 
+  /**
+   * Attempt autoplay with fallback
+   */
   async attemptAutoplay() {
     if (!this.playerInstance) return;
+
     try {
-      const p = this.playerInstance.play();
-      if (p !== undefined) await p;
+      await this.playerInstance.play();
     } catch (e) {
-      console.warn('⚠️ Autoplay blocked:', e.message || e);
+      console.warn('⚠️ Autoplay blocked:', e.message);
       this.showPlayButton();
     }
   }
 
-  setupPlayerEvents(channel, isLive, isYouTube, token) {
+  /**
+   * Setup player event handlers
+   */
+  setupPlayerEvents(channelName, isLive, isYouTube, token) {
     if (!this.playerInstance) return;
 
-    try {
-      this.playerInstance.off && this.playerInstance.off();
-    } catch (e) { }
+    // Clear existing events
+    this.playerInstance.off?.();
 
-    const errorHandler = () => {
-      if (token.isCancelled()) return;
-
-      const error = this.playerInstance.error();
-
-      const isNetworkError =
-        error?.code === 2 ||
-        error?.message?.toLowerCase().includes('network') ||
-        error?.message?.toLowerCase().includes('fetch');
-
-      console.error('🚨 Player error details:', {
-        code: error?.code,
-        message: error?.message,
-        type: error?.type,
-        metadata: error?.metadata,
-        isNetworkError
-      });
-
-      /* --------------------------------------------------
-         YOUTUBE ERROR 1150 (NEW, SAFE ADDITION)
-      -------------------------------------------------- */
-      if (isYouTube && error?.code === 1150) {
-        console.warn('⚠️ YouTube Error 1150 detected - Video restricted/unavailable');
-
-        const channelId =
-          resolveYouTubePlayback(this.playerInstance);
-
-        if (channelId) {
-          liveRetryManager.recordFailure(
-            channelId,
-            'YouTube error 1150'
-          );
-          console.log(`🔁 Queued channel for retry: ${channelId}`);
-        } else {
-          console.warn('⚠️ Failed to resolve channelId for 1150');
-        }
-
-        showErrorToUser(
-          'This live stream is temporarily unavailable. It will be retried automatically.'
-        );
-
-        if (this.playerInstance && !this.playerInstance.paused()) {
-          this.playerInstance.pause();
-        }
-
-        stopWatching();
-        return;
-      }
-
-      /* --------------------------------------------------
-         EXISTING ERROR HANDLING (UNCHANGED)
-      -------------------------------------------------- */
-      if (error) {
-        switch (error.code) {
-          case 1:
-            console.warn('⚠️ Media loading aborted');
-            break;
-
-          case 2:
-            console.warn('⚠️ Network error - attempting recovery...');
-
-            if (!navigator.onLine) {
-              showNotification(
-                'Network offline. Please check connection.',
-                'error'
-              );
-              return;
-            }
-
-            const networkQuality =
-              appState.get('settings.networkQuality');
-
-            if (networkQuality === 'poor') {
-              showNotification(
-                'Poor network quality. Trying lower quality...',
-                'warning'
-              );
-            }
-
-            setTimeout(() => {
-              if (this.playerInstance && !token.isCancelled()) {
-                console.log('🔄 Attempting to reload stream...');
-                const currentSrc = this.playerInstance.currentSrc();
-
-                this.playerInstance.src(currentSrc);
-                this.playerInstance.play().catch(e => {
-                  console.error('❌ Reload failed:', e);
-                  showErrorToUser(
-                    'Stream failed to load. Please check network connection.'
-                  );
-                });
-              }
-            }, PLAYBACK_CONSTANTS.MAX_ELEMENT_WAIT_TIME);
-            return;
-
-          case 3:
-            console.error('❌ Decoding error - stream format issue');
-            showErrorToUser('Stream format not supported');
-            break;
-
-          case 4:
-            console.error('❌ Source not supported');
-            showErrorToUser('Stream format not supported');
-            break;
-
-          default:
-            console.error('❌ Unknown player error:', error.code);
-        }
-      }
-
-      stopWatching();
+    const handlers = {
+      error: (e) => this.handlePlayerError(e, channelName, isYouTube, token),
+      waiting: () => this.handlePlayerWaiting(token),
+      playing: () => this.handlePlayerPlaying(channelName, token),
+      pause: () => this.handlePlayerPause(token),
+      ended: () => this.handlePlayerEnded(token),
+      loadedmetadata: () => this.handleMetadataLoaded(isLive, isYouTube)
     };
 
-    /* --------------------------------------------------
-       WAITING / BUFFERING
-    -------------------------------------------------- */
-    const waitingHandler = () => {
-      if (token.isCancelled()) return;
-
-      console.log('⏱ Buffering...');
-      const isOnline = appState.get('settings.isOnline');
-
-      if (isOnline) {
-        showNotification(
-          '<i class="fas fa-spinner fa-spin"></i> Buffering...',
-          'info'
-        );
-      } else {
-        console.warn(
-          'Player waiting while network is reported as offline. Waiting for network recovery...'
-        );
-      }
-    };
-
-    /* --------------------------------------------------
-       PLAY STATE HANDLERS
-    -------------------------------------------------- */
-    const playingHandler = () => {
-      if (token.isCancelled()) return;
-      startWatching(channel);
-    };
-
-    const pauseHandler = () => {
-      if (token.isCancelled()) return;
-      stopWatching();
-    };
-
-    const endedHandler = () => {
-      if (token.isCancelled()) return;
-      console.log('ℹ️ Playback ended');
-      stopWatching();
-      navigateToNextChannel();
-
-    };
-
-    /* --------------------------------------------------
-       METADATA / CONTROLS
-    -------------------------------------------------- */
-    const metadataHandler = () => {
-      if (token.isCancelled()) return;
-
-      try {
-        this.updateQualityDisplay &&
-          this.updateQualityDisplay();
-      } catch (e) { }
-
-      const channelLive =
-        isLive === true || isLive === 'true';
-
-      if (!channelLive && !isYouTube) {
-        try {
-          this.playerInstance.controls(true);
-        } catch (e) { }
-      } else {
-        try {
-          this.playerInstance.controls(false);
-        } catch (e) { }
-      }
-    };
-
-    /* --------------------------------------------------
-       EVENT BINDINGS
-    -------------------------------------------------- */
-    this.playerInstance.on &&
-      this.playerInstance.on('error', errorHandler);
-
-    this.playerInstance.on &&
-      this.playerInstance.on('waiting', waitingHandler);
-
-    this.playerInstance.on &&
-      this.playerInstance.on('playing', playingHandler);
-
-    this.playerInstance.on &&
-      this.playerInstance.on('pause', pauseHandler);
-
-    this.playerInstance.on &&
-      this.playerInstance.on('ended', endedHandler);
-
-    this.playerInstance.on &&
-      this.playerInstance.on(
-        'loadedmetadata',
-        metadataHandler
-      );
-
-    this.playerInstance.on &&
-      this.playerInstance.on(
-        'retryplaylist',
-        () => console.log('🔄 Attempting HLS recovery...')
-      );
-
-    /* --------------------------------------------------
-       CLEANUP
-    -------------------------------------------------- */
-    this.eventCleanupCallbacks.push(() => {
-      try {
-        if (!this.playerInstance) return;
-
-        this.playerInstance.off &&
-          this.playerInstance.off('error', errorHandler);
-
-        this.playerInstance.off &&
-          this.playerInstance.off('waiting', waitingHandler);
-
-        this.playerInstance.off &&
-          this.playerInstance.off('playing', playingHandler);
-
-        this.playerInstance.off &&
-          this.playerInstance.off('pause', pauseHandler);
-
-        this.playerInstance.off &&
-          this.playerInstance.off('ended', endedHandler);
-
-        this.playerInstance.off &&
-          this.playerInstance.off(
-            'loadedmetadata',
-            metadataHandler
-          );
-      } catch (e) {
-        console.warn(e);
-      }
+    // Bind events
+    Object.entries(handlers).forEach(([event, handler]) => {
+      this.bindEvent(this.playerInstance, event, handler);
     });
   }
 
-  setupYouTubeQualityMonitoring(token) {
-    let attempts = 0;
-    const maxAttempts = 30;
-    const check = () => {
-      if (token.isCancelled()) return;
-      attempts++;
-      if (attempts > maxAttempts) return;
-      try {
-        const tech = this.playerInstance.tech && this.playerInstance.tech({
-          IWillNotUseThisInPlugins: true
+  /**
+   * Handle player error
+   */
+  handlePlayerError(e, channelName, isYouTube, token) {
+    if (token.isCancelled()) return;
+
+    const error = this.playerInstance.error();
+    console.error('🚨 Player error:', error);
+
+    // Handle YouTube specific error
+    if (isYouTube && error?.code === 1150) {
+      this.handleYouTubeError1150(channelName);
+      return;
+    }
+
+    // Handle generic errors
+    switch (error?.code) {
+      case 2: // Network error
+        this.handleNetworkError();
+        break;
+      case 3: // Decoding error
+      case 4: // Source not supported
+        showErrorToUser('Stream format not supported');
+        break;
+    }
+
+    stopWatching();
+  }
+
+  /**
+   * Handle YouTube error 1150
+   */
+  handleYouTubeError1150(channelName) {
+    console.warn('⚠️ YouTube Error 1150 detected');
+    
+    const channelId = resolveYouTubePlayback?.(this.playerInstance);
+    if (channelId) {
+      liveRetryManager?.recordFailure(channelId, 'YouTube error 1150');
+    }
+
+    showErrorToUser('This live stream is temporarily unavailable. It will be retried automatically.');
+    this.playerInstance.pause?.();
+    stopWatching();
+  }
+
+  /**
+   * Handle network error
+   */
+  handleNetworkError() {
+    console.warn('⚠️ Network error - attempting recovery...');
+
+    if (!navigator.onLine) {
+      showNotification('Network offline. Please check connection.', 'error');
+      return;
+    }
+
+    setTimeout(() => {
+      if (this.playerInstance) {
+        console.log('🔄 Attempting to reload stream...');
+        this.playerInstance.src(this.playerInstance.currentSrc());
+        this.playerInstance.play().catch(e => {
+          console.error('❌ Reload failed:', e);
+          showErrorToUser('Stream failed to load. Please check network connection.');
         });
-        if (!tech || !tech.ytPlayer) return setTimeout(check, PLAYBACK_CONSTANTS.YOUTUBE_READY_CHECK_INTERVAL);
-        const qualityChangeHandler = (event) => {
+      }
+    }, PLAYBACK_CONSTANTS?.MAX_ELEMENT_WAIT_TIME || 2000);
+  }
+
+  /**
+   * Handle player waiting/buffering
+   */
+  handlePlayerWaiting(token) {
+    if (token.isCancelled()) return;
+    showNotification('Buffering...', 'info');
+  }
+
+  /**
+   * Handle player playing
+   */
+  handlePlayerPlaying(channelName, token) {
+    if (token.isCancelled()) return;
+    startWatching(channelName);
+  }
+
+  /**
+   * Handle player pause
+   */
+  handlePlayerPause(token) {
+    if (token.isCancelled()) return;
+    stopWatching();
+  }
+
+  /**
+   * Handle player ended
+   */
+  handlePlayerEnded(token) {
+    if (token.isCancelled()) return;
+    stopWatching();
+    navigateToNextChannel?.();
+  }
+
+  /**
+   * Handle metadata loaded
+   */
+  handleMetadataLoaded(isLive, isYouTube) {
+    try {
+      this.updateQualityDisplay?.();
+      
+      // Show controls for non-live, non-YouTube content
+      const showControls = !isLive && !isYouTube;
+      this.playerInstance.controls(showControls);
+    } catch (e) {
+      // Ignore
+    }
+  }
+
+  /**
+   * Setup YouTube quality monitoring
+   */
+  setupYouTubeQualityMonitoring(token, maxAttempts = 30) {
+    let attempts = 0;
+
+    const check = () => {
+      if (token.isCancelled() || attempts >= maxAttempts) return;
+
+      attempts++;
+      
+      try {
+        const tech = this.playerInstance.tech?.({ IWillNotUseThisInPlugins: true });
+        if (!tech?.ytPlayer) {
+          setTimeout(check, PLAYBACK_CONSTANTS?.YOUTUBE_READY_CHECK_INTERVAL || 500);
+          return;
+        }
+
+        const handler = (event) => {
           const qEl = document.getElementById('video-quality');
           if (qEl) qEl.textContent = event.data || 'auto';
         };
-        try {
-          tech.ytPlayer.addEventListener('onPlaybackQualityChange', qualityChangeHandler);
-        } catch (e) { }
+
+        tech.ytPlayer.addEventListener('onPlaybackQualityChange', handler);
         this.eventCleanupCallbacks.push(() => {
-          try {
-            if (tech && tech.ytPlayer) tech.ytPlayer.removeEventListener('onPlaybackQualityChange', qualityChangeHandler);
-          } catch (e) { }
+          tech.ytPlayer.removeEventListener?.('onPlaybackQualityChange', handler);
         });
       } catch (e) {
-        console.warn(e);
-        setTimeout(check, PLAYBACK_CONSTANTS.YOUTUBE_READY_CHECK_INTERVAL);
+        setTimeout(check, PLAYBACK_CONSTANTS?.YOUTUBE_READY_CHECK_INTERVAL || 500);
       }
     };
+
     check();
   }
 
+  /**
+   * Update quality display
+   */
   updateQualityDisplay() {
-    if (!this.playerInstance) return;
     const qEl = document.getElementById('video-quality');
-    if (!qEl) return;
+    if (!qEl || !this.playerInstance) return;
+
     try {
-      const h = this.playerInstance.videoHeight ? this.playerInstance.videoHeight() : 0;
-      qEl.textContent = h ? `${h}p` : 'Auto';
-    } catch (e) { }
+      const height = this.playerInstance.videoHeight?.() || 0;
+      qEl.textContent = height ? `${height}p` : 'Auto';
+    } catch (e) {
+      // Ignore
+    }
   }
 
+  /**
+   * Show play button fallback
+   */
   showPlayButton() {
     const existing = document.querySelector('.play-fallback-overlay');
-    if (existing && existing.parentNode) existing.parentNode.removeChild(existing);
+    existing?.remove();
+
     const overlay = document.createElement('div');
     overlay.className = 'play-fallback-overlay';
-    overlay.style.cssText = 'position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.7);z-index:100;cursor:pointer;';
+    overlay.style.cssText = `
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(0,0,0,0.7);
+      z-index: 100;
+      cursor: pointer;
+    `;
+
     const button = document.createElement('button');
     button.className = 'play-button';
     button.textContent = '▶️ Click to Play';
-    button.style.cssText = 'padding:12px 20px;background:#e74c3c;color:#fff;border-radius:8px;border:0;font-weight:700;font-size:16px;cursor:pointer;';
+    button.style.cssText = `
+      padding: 12px 20px;
+      background: #e74c3c;
+      color: #fff;
+      border-radius: 8px;
+      border: 0;
+      font-weight: 700;
+      font-size: 16px;
+      cursor: pointer;
+    `;
+
     overlay.appendChild(button);
+
     const clickHandler = async (e) => {
       e.stopPropagation();
       if (!this.playerInstance) return;
+
       try {
         await this.playerInstance.play();
-        if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
+        overlay.remove();
       } catch (err) {
         showErrorToUser('Could not start playback');
       }
     };
+
     overlay.addEventListener('click', clickHandler);
+
     const container = document.getElementById('player-container');
     if (container) container.appendChild(overlay);
+
     this.eventCleanupCallbacks.push(() => {
-      try {
-        overlay.removeEventListener('click', clickHandler);
-        if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
-      } catch (e) { }
+      overlay.removeEventListener('click', clickHandler);
+      overlay.remove();
     });
   }
 
+  /**
+   * Clean up event listeners
+   */
   cleanupEventListeners() {
     this.eventCleanupCallbacks.forEach(fn => {
       try {
         fn();
       } catch (e) {
-        console.warn(e);
+        // Ignore cleanup errors
       }
     });
     this.eventCleanupCallbacks = [];
   }
 
-  getPlayer() {
-    return this.playerInstance;
-  }
   /**
-   * Sets up a dynamic close button that appears ONLY when the player is in Video.js fullscreen mode.
-   * This is necessary because Video.js creates a new stacking context that overlays the main modal's close button.
+   * Setup fullscreen close button
    */
   setupFullscreenCloseButton() {
     if (!this.playerInstance) return;
-    try {
-      const playerEl = this.playerInstance.el ? this.playerInstance.el() : null;
-      if (!playerEl) return;
-      const closeBtn = document.createElement('button');
-      closeBtn.id = 'fullscreenCloseBtn';
-      closeBtn.className = 'fullscreen-close-button';
-      closeBtn.innerHTML = '<i class="fas fa-compress"></i>';
-      closeBtn.style.display = 'none';
-      closeBtn.onclick = () => toggleFullscreen();
-      playerEl.appendChild(closeBtn);
-      const update = () => {
-        try {
-          closeBtn.style.display = (this.playerInstance && this.playerInstance.isFullscreen && this.playerInstance.isFullscreen()) ? 'flex' : 'none';
-        } catch (e) {
-          closeBtn.style.display = 'none';
-        }
-      };
-      this.playerInstance.on && this.playerInstance.on('fullscreenchange', update);
-      document.addEventListener('fullscreenchange', update);
-      this.eventCleanupCallbacks.push(() => {
-        try {
-          this.playerInstance.off && this.playerInstance.off('fullscreenchange', update);
-          document.removeEventListener('fullscreenchange', update);
-          closeBtn.remove();
-        } catch (e) { }
-      });
-    } catch (e) {
-      console.warn(e);
-    }
+
+    const playerEl = this.playerInstance.el?.();
+    if (!playerEl) return;
+
+    const closeBtn = document.createElement('button');
+    closeBtn.id = 'fullscreenCloseBtn';
+    closeBtn.className = 'fullscreen-close-button';
+    closeBtn.innerHTML = '<i class="fas fa-compress"></i>';
+    closeBtn.style.display = 'none';
+    closeBtn.onclick = () => toggleFullscreen?.();
+
+    playerEl.appendChild(closeBtn);
+
+    const updateVisibility = () => {
+      closeBtn.style.display = this.playerInstance?.isFullscreen?.() ? 'flex' : 'none';
+    };
+
+    this.bindEvent(this.playerInstance, 'fullscreenchange', updateVisibility);
+    document.addEventListener('fullscreenchange', updateVisibility);
+
+    this.eventCleanupCallbacks.push(() => {
+      document.removeEventListener('fullscreenchange', updateVisibility);
+      closeBtn.remove();
+    });
+  }
+
+  /**
+   * Get current player instance
+   */
+  getPlayer() {
+    return this.playerInstance;
   }
 }
 
+// Export singleton instance
 const channelLoader = new ChannelLoader();
 
 // ============================================
@@ -2068,7 +1828,7 @@ function startWatching(channelId) {
 
   if (!channelId) {
     console.warn("⚠️ No channel name provided to start watching");
-    showNotification("❌ Cannot start watching: missing channel name", "error");
+    showNotification("Cannot start watching: missing channel name", "error");
     return;
   }
 
@@ -3572,7 +3332,7 @@ async function loadAllChannelFeeds() {
 
     if (!success) {
       console.warn("⚠️ Channels loaded but not saved to storage");
-      showNotification("⚠️ Channels loaded (not saved due to storage limits)", "warning");
+      showNotification("Channels loaded (not saved due to storage limits)", "warning");
     }
 
     _updateUI(channels);
@@ -3638,7 +3398,7 @@ async function checkAndProcessRetries() {
       if (success) {
         console.log('✅ Updated channels saved after retry');
         _updateUI(channels);
-        showNotification('🔁 Retried feeds updated successfully', 'success');
+        showNotification('Retried feeds updated successfully', 'success');
       } else {
         console.warn('⚠️ Failed to save retried channels to storage');
       }
@@ -4304,12 +4064,12 @@ function setupAPIKeyModalEvents() {
     else appState.set('settings.apiKey', apiKey);
 
     hideAPIKeyModal();
-    showNotification("✅ API Key saved successfully!", "success");
+    showNotification("API Key saved successfully!", "success");
   };
 
   const handleSkip = () => {
     hideAPIKeyModal();
-    showNotification("⭕️ Live channels update skipped", "info");
+    showNotification("Live channels update skipped", "info");
     console.log("ℹ️ User skipped API key configuration");
   };
 
@@ -4601,7 +4361,7 @@ function fixImageUrl(imageUrl, { width = 200, quality = 80 } = {}) {
   // This fixes "Mixed Content" warnings and speeds up your site.
   if (imageUrl.startsWith('http://')) {
     const cleanUrl = imageUrl.replace(/^http:\/\//, '');
-    
+
     const params = new URLSearchParams({
       url: cleanUrl,
       w: width,
@@ -4667,7 +4427,7 @@ function handleTouchEnd(e) {
         else showFullscreenPrompt();
       } else {
         window.toggleFullscreen();
-        showNotification("Exit fullscreen. Double‑tap again!", "success");
+        showNotification("Exit fullscreen. Doubletap again!", "success");
       }
       appState.set('ui.lastTapTime', 0);
       return;
@@ -4879,13 +4639,13 @@ function exportAllData() {
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
 
-    showNotification("✅ Backup exported successfully", "success");
+    showNotification("Backup exported successfully", "success");
     console.log("✅ Backup exported:", data);
 
     return true;
   } catch (error) {
     console.error("❌ Export failed:", error);
-    showNotification("❌ Failed to export backup", "error");
+    showNotification("Failed to export backup", "error");
     return false;
   }
 }
@@ -4895,12 +4655,12 @@ function exportAllData() {
  */
 async function importBackupData(file) {
   if (!file) {
-    showNotification('❌ No file selected', 'error');
+    showNotification('No file selected', 'error');
     return false;
   }
 
   if (!file.name.endsWith('.json')) {
-    showNotification('❌ Please select a valid JSON backup file', 'error');
+    showNotification('Please select a valid JSON backup file', 'error');
     return false;
   }
 
@@ -4909,13 +4669,13 @@ async function importBackupData(file) {
     const data = JSON.parse(text);
 
     if (!validateBackupData(data)) {
-      showNotification('❌ Invalid backup file format', 'error');
+      showNotification('Invalid backup file format', 'error');
       return false;
     }
 
     const confirmed = await showImportConfirmation(data);
     if (!confirmed) {
-      showNotification('ℹ️ Import cancelled', 'info');
+      showNotification('Import cancelled', 'info');
       return false;
     }
 
@@ -4925,7 +4685,7 @@ async function importBackupData(file) {
 
   } catch (error) {
     console.error('❌ Import failed:', error);
-    showNotification('❌ Failed to import backup: ' + error.message, 'error');
+    showNotification('Failed to import backup: ' + error.message, 'error');
     return false;
   }
 }
@@ -5189,7 +4949,7 @@ async function performImport(data) {
     }
 
     showNotification(
-      `✅ Import successful! ${mergeMode ? "Data merged" : "Data restored"}`,
+      `Import successful! ${mergeMode ? "Data merged" : "Data restored"}`,
       "success"
     );
     console.log("✅ Import completed successfully");
@@ -5197,7 +4957,7 @@ async function performImport(data) {
     hideSettingsModal();
   } catch (error) {
     console.error("❌ Import failed:", error);
-    showNotification("❌ Import failed: " + error.message, "error");
+    showNotification("Import failed: " + error.message, "error");
     throw error;
   }
 }
@@ -5437,17 +5197,17 @@ function checkStorageHealth() {
   const percentUsed = (usage.totalBytes / (MAX_MB * 1024 * 1024)) * 100;
 
   if (percentUsed > 80) {
-    showNotification('⚠️ Storage 80% full - consider exporting data', 'warning');
+    showNotification('Storage 80% full - consider exporting data', 'warning');
     const res = predictiveCleanup();
     if (res.freedBytes > 0) {
-      showNotification(`🧹 Auto-cleaned ${Math.round(res.freedBytes / 1024)} KB`, 'info');
+      showNotification(`Auto-cleaned ${Math.round(res.freedBytes / 1024)} KB`, 'info');
     } else {
       clearOldStorageData();
     }
   }
 
   if (percentUsed > 95) {
-    showNotification('🚨 Storage critical - forcing cleanup', 'error');
+    showNotification('Storage critical - forcing cleanup', 'error');
     const res = predictiveCleanup();
     if (res.freedBytes <= 0) {
       localStorage.removeItem(LS_KEYS.WATCH_TIME);
@@ -5684,10 +5444,10 @@ function addSkipLinks() {
     font-size: 14px;
     text-decoration: none;
   `;
-  
+
   const handleFocus = () => skipNav.style.top = '0';
   const handleBlur = () => skipNav.style.top = '-40px';
-  
+
   skipNav.addEventListener('focus', handleFocus);
   skipNav.addEventListener('blur', handleBlur);
   document.body.insertBefore(skipNav, document.body.firstChild);
@@ -5703,12 +5463,12 @@ function deduplicateRequest(key, requestFn, options = {}) {
 
   if (!force && pendingRequests.has(key)) {
     const entry = pendingRequests.get(key);
-    
+
     // Return cached value if still fresh
     if (entry?.resolved && (ttl <= 0 || (Date.now() - entry.resolvedAt) < ttl)) {
       return Promise.resolve(entry.value);
     }
-    
+
     // Return pending promise if exists
     if (entry?.promise) return entry.promise;
   }
@@ -5719,22 +5479,22 @@ function deduplicateRequest(key, requestFn, options = {}) {
   const p = (async () => {
     try {
       const result = await Promise.race([
-        typeof requestFn === 'function' 
-          ? requestFn({ signal }) 
+        typeof requestFn === 'function'
+          ? requestFn({ signal })
           : Promise.reject(new Error('requestFn not a function')),
         new Promise((_, rej) => setTimeout(() => {
           controller.abort();
           rej(new Error('Request timeout'));
         }, timeout))
       ]);
-      
+
       pendingRequests.set(key, {
         resolved: true,
         resolvedAt: Date.now(),
         value: result,
         promise: Promise.resolve(result)
       });
-      
+
       return result;
     } catch (err) {
       pendingRequests.delete(key);
@@ -5746,7 +5506,7 @@ function deduplicateRequest(key, requestFn, options = {}) {
     resolved: false,
     promise: p
   });
-  
+
   p.abortController = controller;
   return p;
 }
