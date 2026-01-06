@@ -818,7 +818,8 @@ function buildPlayerOptions(streamConfig, metadata) {
         mute: 1,
         rel: 0,
         enablejsapi: 1,
-        modestbranding: 1
+        disablekb: 1,
+        origin: 'https://amirabbas95.github.io'
       }
     };
   }
@@ -946,7 +947,7 @@ class ChannelLoader {
 
     try {
       player.on?.(event, handler);
-      
+
       this.eventCleanupCallbacks.push(() => {
         player.off?.(event, handler);
       });
@@ -968,7 +969,7 @@ class ChannelLoader {
       // Clean up HLS/VHS if present
       const tech = player.tech?.({ IWillNotUseThisInPlugins: true });
       const hls = tech?.hls || tech?.vhs;
-      
+
       if (hls) {
         hls.dispose?.();
         hls.destroy?.();
@@ -1045,7 +1046,7 @@ class ChannelLoader {
 
     // Setup player events and features
     this.setupPlayerEvents(name, isLive, streamConfig.type === 'youtube', token);
-    
+
     if (streamConfig.type === 'hls') {
       this.setupHLSErrorRecovery();
     }
@@ -1166,7 +1167,7 @@ class ChannelLoader {
       const errorHandler = () => {
         errorCount++;
         console.warn(`⚠️ HLS error detected (${errorCount}/${maxErrors})`);
-        
+
         if (errorCount < maxErrors) {
           setTimeout(() => {
             tech.vhs.playlists.trigger?.('loadedplaylist');
@@ -1241,7 +1242,7 @@ class ChannelLoader {
       this.playerInstance.ready(() => {
         if (isComplete) return;
         clearTimeout(timeoutId);
-        
+
         if (token.isCancelled()) {
           isComplete = true;
           reject(new Error('Cancelled'));
@@ -1326,7 +1327,7 @@ class ChannelLoader {
    */
   handleYouTubeError1150(channelName) {
     console.warn('⚠️ YouTube Error 1150 detected');
-    
+
     const channelId = resolveYouTubePlayback?.(this.playerInstance);
     if (channelId) {
       liveRetryManager?.recordFailure(channelId, 'YouTube error 1150');
@@ -1399,7 +1400,7 @@ class ChannelLoader {
   handleMetadataLoaded(isLive, isYouTube) {
     try {
       this.updateQualityDisplay?.();
-      
+
       // Show controls for non-live, non-YouTube content
       const showControls = !isLive && !isYouTube;
       this.playerInstance.controls(showControls);
@@ -1418,7 +1419,7 @@ class ChannelLoader {
       if (token.isCancelled() || attempts >= maxAttempts) return;
 
       attempts++;
-      
+
       try {
         const tech = this.playerInstance.tech?.({ IWillNotUseThisInPlugins: true });
         if (!tech?.ytPlayer) {
