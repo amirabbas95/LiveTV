@@ -817,9 +817,7 @@ function buildPlayerOptions(streamConfig, metadata) {
         controls: 1,
         mute: 1,
         rel: 0,
-        enablejsapi: 1,
-        disablekb: 1,
-        origin: 'https://amirabbas95.github.io'
+        disablekb: 1
       }
     };
   }
