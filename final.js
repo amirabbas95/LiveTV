@@ -878,10 +878,9 @@ function resolveYouTubePlayback(player) {
     const videoId = extractYouTubeID(src);
     if (!videoId) return null;
 
-    const liveFeeds = window.safeJSONParse ? window.safeJSONParse(
-      window.LS_KEYS ? window.LS_KEYS.LIVE : "liveChannelsData",
-      []
-    ) : [];
+    const liveKey = window.LS_KEYS ? window.LS_KEYS.LIVE : "liveChannelsData";
+    const liveData = localStorage.getItem(liveKey);
+    const liveFeeds = window.safeJSONParse ? window.safeJSONParse(liveData, []) : [];
 
     const match = liveFeeds.find(feed =>
       feed?.name &&
@@ -3072,6 +3071,11 @@ class RSSProcessor extends FeedProcessor {
       await this._fetchAndProcess(feed, signal, cacheKey);
       results.successful++;
       this.retryManager.recordSuccess(feed.url);
+      
+      // Track update in history
+      if (window.UpdateManager?.updateHistory) {
+        window.UpdateManager.updateHistory.addUpdate(feed.name || 'Unknown RSS Feed', 'rss', 'success');
+      }
     } catch (error) {
       this._handleError(feed, error, results);
     }
@@ -3086,6 +3090,11 @@ class RSSProcessor extends FeedProcessor {
 
     if (this.retryManager._load()[feed.url]) {
       this.retryManager.recordSuccess(feed.url);
+    }
+    
+    // Track update in history
+    if (window.UpdateManager?.updateHistory) {
+      window.UpdateManager.updateHistory.addUpdate(feed.name || 'Unknown RSS Feed', 'rss', 'success');
     }
   }
 
@@ -3109,6 +3118,11 @@ class RSSProcessor extends FeedProcessor {
     results.failed++;
     this.retryManager.recordFailure(feed.url, error?.message || "RSS fetch error", feed.name);
     console.log(`❌ Error loading RSS feed for ${feed.name}:`, error?.message || error);
+    
+    // Track failed update in history
+    if (window.UpdateManager?.updateHistory) {
+      window.UpdateManager.updateHistory.addUpdate(feed.name || 'Unknown RSS Feed', 'rss', 'failed');
+    }
   }
 }
 
@@ -3165,6 +3179,11 @@ class LiveProcessor extends FeedProcessor {
 
     if (this.retryManager._load()[channelId]) {
       this.retryManager.recordSuccess(channelId);
+    }
+    
+    // Track update in history
+    if (window.UpdateManager?.updateHistory) {
+      window.UpdateManager.updateHistory.addUpdate(feed.name || 'Unknown Live Channel', 'live', 'success');
     }
   }
 
@@ -3225,6 +3244,11 @@ class LiveProcessor extends FeedProcessor {
         updateOrAddChannel(channelObj);
         results.successful++;
         console.log(`✅ ${feed.name} Successfully updated`);
+        
+        // Track successful update in history
+        if (window.UpdateManager?.updateHistory) {
+          window.UpdateManager.updateHistory.addUpdate(feed.name || 'Unknown Live Channel', 'live', 'success');
+        }
       } else {
         console.log(`ℹ️ No live stream id for ${feed.name}`);
       }
@@ -3248,6 +3272,11 @@ class LiveProcessor extends FeedProcessor {
     }
 
     console.log(`❌ Error loading live feed for ${feed.name}:`, error?.message || error);
+    
+    // Track failed update in history
+    if (window.UpdateManager?.updateHistory) {
+      window.UpdateManager.updateHistory.addUpdate(feed.name || 'Unknown Live Channel', 'live', 'failed');
+    }
   }
 }
 
@@ -4315,7 +4344,7 @@ window.addEventListener("beforeunload", () => {
   }
 });
 
-document.addEventListener("visibilitychange", () => {
+/* document.addEventListener("visibilitychange", () => {
   const player = channelLoader.getPlayer();
 
   if (document.hidden) {
@@ -4342,7 +4371,7 @@ document.addEventListener("visibilitychange", () => {
     }
   }
 });
-
+ */
 
 function fixImageUrl(imageUrl, { width = 200, quality = 80 } = {}) {
   const PLACEHOLDER = 'placeholder.png';
