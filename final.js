@@ -1534,6 +1534,8 @@ class ChannelLoader {
 // Export singleton instance
 const channelLoader = new ChannelLoader();
 
+// ============================================
+// ============================================
 
 /**
  * Resolve YouTube playback errors
@@ -1561,6 +1563,7 @@ function resolveYouTubePlayback(player) {
   }
 }
 
+
 /**
  * Extract YouTube ID from URL
  */
@@ -1569,6 +1572,7 @@ function extractYouTubeID(url) {
   const match = url.match(/(?:youtube\.com\/(?:.*v=|live\/|embed\/)|youtu\.be\/)([^&?/]+)/i);
   return match ? match[1] : null;
 }
+
 
 // ============================================
 // CHANNEL SELECTION & PLAYBACK
