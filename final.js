@@ -868,43 +868,6 @@ function buildPlayerOptions(streamConfig, metadata) {
 }
 
 /**
- * Resolve YouTube playback errors
- */
-function resolveYouTubePlayback(player) {
-  try {
-    const src = player?.currentSrc?.();
-    if (!src) return null;
-
-    const videoId = extractYouTubeID(src);
-    if (!videoId) return null;
-
-    const liveKey = window.LS_KEYS ? window.LS_KEYS.LIVE : "liveChannelsData";
-    const liveData = localStorage.getItem(liveKey);
-    const liveFeeds = window.safeJSONParse ? window.safeJSONParse(liveData, []) : [];
-
-    const match = liveFeeds.find(feed =>
-      feed?.name &&
-      document.body.textContent.includes(feed.name)
-    );
-
-    return match ? window.extractChannelId ? window.extractChannelId(match.url) : null : null;
-  } catch {
-    return null;
-  }
-}
-
-
-/**
- * Extract YouTube ID from URL
- */
-function extractYouTubeID(url) {
-  if (!url) return null;
-  const match = url.match(/(?:youtube\.com\/(?:.*v=|live\/|embed\/)|youtu\.be\/)([^&?/]+)/i);
-  return match ? match[1] : null;
-}
-
-
-/**
  * Manages video player lifecycle with race condition protection
  * @class ChannelLoader
  * @param {Object} opts - Configuration options
@@ -1570,6 +1533,42 @@ class ChannelLoader {
 
 // Export singleton instance
 const channelLoader = new ChannelLoader();
+
+
+/**
+ * Resolve YouTube playback errors
+ */
+function resolveYouTubePlayback(player) {
+  try {
+    const src = player?.currentSrc?.();
+    if (!src) return null;
+
+    const videoId = extractYouTubeID(src);
+    if (!videoId) return null;
+
+    const liveKey = window.LS_KEYS ? window.LS_KEYS.LIVE : "liveChannelsData";
+    const liveData = localStorage.getItem(liveKey);
+    const liveFeeds = window.safeJSONParse ? window.safeJSONParse(liveData, []) : [];
+
+    const match = liveFeeds.find(feed =>
+      feed?.name &&
+      document.body.textContent.includes(feed.name)
+    );
+
+    return match ? window.extractChannelId ? window.extractChannelId(match.url) : null : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Extract YouTube ID from URL
+ */
+function extractYouTubeID(url) {
+  if (!url) return null;
+  const match = url.match(/(?:youtube\.com\/(?:.*v=|live\/|embed\/)|youtu\.be\/)([^&?/]+)/i);
+  return match ? match[1] : null;
+}
 
 // ============================================
 // CHANNEL SELECTION & PLAYBACK
