@@ -382,7 +382,7 @@ VIDEO PLAYER & MODAL
 
 #videoModal.fullscreen,
 .vjs-fullscreen {
-  z-index: 999999 !important;
+  /* z-index: 999999 !important; */
   position: fixed !important;
 }
 
@@ -390,7 +390,6 @@ VIDEO PLAYER & MODAL
   position: relative;
   width: 100%;
   padding-top: 56.25%;
-  background-color: #000;
 }
 
 #player,
@@ -408,9 +407,8 @@ VIDEO PLAYER & MODAL
   left: 0 !important;
   width: 100vw !important;
   height: 100vh !important;
-  z-index: 9999 !important;
+  /* z-index: 9999 !important; */
   margin: 0 !important;
-  background-color: #000 !important;
 }
 
 body.modal-open {
