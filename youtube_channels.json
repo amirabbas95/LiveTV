@@ -11,28 +11,49 @@
       "name": "BOL News",
       "category": "News",
       "type": "live",
-      "logo": "https://yt3.googleusercontent.com/E0ON7kC9AImxXYGXFUHZEwhPKYwDIZTPiBpyBBSH2MbT5CO3fSMw4qWlqHaHdF7QTrR0SOfilQ=s100-c-k-c0x00ffffff-no-rj"
+      "logo": "https://yt3.googleusercontent.com/E0ON7kC9AImxXYGXFUHZEwhPKYwDIZTPiBpyBBSH2MbT5CO3fSMw4qWlqHaHdF7QTrR0SOfilQ=s900-c-k-c0x00ffffff-no-rj"
     },
     {
       "id": "UCaxR-D8FjZ-2otbU0_Y2grg",
       "name": "DawnNews",
       "category": "News",
       "type": "live",
-      "logo": "https://yt3.ggpht.com/68a9f3o813BKheJgbuzHk0j5x5PUWXlEzYMDY7vYrZTM7DHQfXk8JBfsqlSV5-KFcMOgps9PmxU=s100-c-k-c0x00ffffff-no-rj"
+      "logo": "https://yt3.ggpht.com/68a9f3o813BKheJgbuzHk0j5x5PUWXlEzYMDY7vYrZTM7DHQfXk8JBfsqlSV5-KFcMOgps9PmxU=s900-c-k-c0x00ffffff-no-rj"
     },
     {
-      "id": "UCBcRF18a7Qf58cCRy5xuWwQ",
-      "name": "NASA Live",
-      "category": "Science & Space",
+      "id": "UCTur7oM6mLL0rM2k0znuZpQ",
+      "name": "Express News",
+      "category": "News",
       "type": "live",
-      "logo": "https://yt3.ggpht.com/your-nasa-logo.jpg"
+      "logo": "https://yt3.googleusercontent.com/HX-gJr-bzFqAggAIG9CveFfy7rXb7VO2iX7loGmQ4kw8E9qZDkdIANtWA11z2zTLu5OqqDj-WQ=s900-c-k-c0x00ffffff-no-rj"
     },
+    {
+      "id": "UC35KuZBNIj4S5Ls0yjY-UHQ",
+      "name": "GNN",
+      "category": "News",
+      "type": "live",
+      "logo": "https://yt3.googleusercontent.com/S-QNL_LfvS1fCeAy9CQSTeDeba-EWVM3qJAE9nKjquAxREd_2l8RxwpGbSoGj395ftrYbQT9SjA=s900-c-k-c0x00ffffff-no-rj"
+    },
+    {
+      "id": "UC0Um3pnZ2WGBEeoA3BX2sKw",
+      "name": "HUM News",
+      "category": "News",
+      "type": "live",
+      "logo": "https://yt3.googleusercontent.com/vWX8AOFpGu5CnChzKxfkGhz7zTi3NOcBH1B56fgRhcZBZFGePGGfZtAmsRekdIjuODRRcLm2=s900-c-k-c0x00ffffff-no-rj"
+    },   
     {
       "id": "UCXQiJKknQM14uQakw0evifw",
       "name": "Dr Shahbaz Gill",
       "category": "Education",
       "type": "rss",
-      "logo": "https://yt3.googleusercontent.com/NZHbdxy6aVOEWxjb8RT3yZEmoGnFX0HIPC8TRcmmLQ363PnVKZ91X0WpVz0eFj0Z-gfLeolz1g=s100-c-k-c0x00ffffff-no-rj"
+      "logo": "https://yt3.googleusercontent.com/NZHbdxy6aVOEWxjb8RT3yZEmoGnFX0HIPC8TRcmmLQ363PnVKZ91X0WpVz0eFj0Z-gfLeolz1g=s900-c-k-c0x00ffffff-no-rj"
+    },
+    {
+      "id": "UCaszgR2TH3qNw_CxLHAd2SQ",
+      "name": "Imran Riaz Khan",
+      "category": "Education",
+      "type": "rss",
+      "logo": "https://yt3.googleusercontent.com/KrrtRyGDP6h2wWObxzqPBFqtgxri00qVBYeYrzHQ550S7NJ5Cluy9JkPb2fOD03mqpRdNqP-5Q=s900-c-k-c0x00ffffff-no-rj"
     }
   ]
 }
