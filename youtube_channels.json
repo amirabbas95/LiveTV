@@ -1,0 +1,31 @@
+{
+  "version": 1,
+  "settings": {
+    "update_threshold_hours": 6,
+    "rss2json_api_key": "",
+    "youtube_api_key": ""
+  },
+  "channels": [
+    {
+      "id": "UCVHFbw7woebKtfgTkzwhXvA",
+      "name": "TED",
+      "category": "Education",
+      "type": "rss",
+      "logo": "https://yt3.ggpht.com/your-ted-logo.jpg"
+    },
+    {
+      "id": "UCBcRF18a7Qf58cCRy5xuWwQ",
+      "name": "NASA Live",
+      "category": "Science & Space",
+      "type": "live",
+      "logo": "https://yt3.ggpht.com/your-nasa-logo.jpg"
+    },
+    {
+      "id": "UC295-Dw4tztdk9Ej4sTCYCg",
+      "name": "Khan Academy",
+      "category": "Education",
+      "type": "rss",
+      "logo": ""
+    }
+  ]
+}
