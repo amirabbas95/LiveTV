@@ -7,11 +7,18 @@
   },
   "channels": [
     {
-      "id": "UCVHFbw7woebKtfgTkzwhXvA",
-      "name": "TED",
-      "category": "Education",
-      "type": "rss",
-      "logo": "https://yt3.ggpht.com/your-ted-logo.jpg"
+      "id": "UCz2yxQJZgiB_5elTzqV7FiQ",
+      "name": "BOL News",
+      "category": "News",
+      "type": "live",
+      "logo": "https://yt3.googleusercontent.com/E0ON7kC9AImxXYGXFUHZEwhPKYwDIZTPiBpyBBSH2MbT5CO3fSMw4qWlqHaHdF7QTrR0SOfilQ=s100-c-k-c0x00ffffff-no-rj"
+    },
+    {
+      "id": "UCaxR-D8FjZ-2otbU0_Y2grg",
+      "name": "DawnNews",
+      "category": "News",
+      "type": "live",
+      "logo": "https://yt3.ggpht.com/68a9f3o813BKheJgbuzHk0j5x5PUWXlEzYMDY7vYrZTM7DHQfXk8JBfsqlSV5-KFcMOgps9PmxU=s100-c-k-c0x00ffffff-no-rj"
     },
     {
       "id": "UCBcRF18a7Qf58cCRy5xuWwQ",
@@ -21,11 +28,11 @@
       "logo": "https://yt3.ggpht.com/your-nasa-logo.jpg"
     },
     {
-      "id": "UC295-Dw4tztdk9Ej4sTCYCg",
-      "name": "Khan Academy",
+      "id": "UCXQiJKknQM14uQakw0evifw",
+      "name": "Dr Shahbaz Gill",
       "category": "Education",
       "type": "rss",
-      "logo": ""
+      "logo": "https://yt3.googleusercontent.com/NZHbdxy6aVOEWxjb8RT3yZEmoGnFX0HIPC8TRcmmLQ363PnVKZ91X0WpVz0eFj0Z-gfLeolz1g=s100-c-k-c0x00ffffff-no-rj"
     }
   ]
 }
