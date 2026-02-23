@@ -40,7 +40,42 @@
       "category": "News",
       "type": "live",
       "logo": "https://yt3.googleusercontent.com/vWX8AOFpGu5CnChzKxfkGhz7zTi3NOcBH1B56fgRhcZBZFGePGGfZtAmsRekdIjuODRRcLm2=s900-c-k-c0x00ffffff-no-rj"
-    },   
+    },
+    {
+      "id": "UCVFRuO5SJ45-pu8PMLKzS2Q",
+      "name": "Neo News Live",
+      "category": "News",
+      "type": "live",
+      "logo": "https://yt3.googleusercontent.com/aZAQq9Po-m-UXHRx1OKX5M26dwyH9RRjTqItIqiKUpiVu_OYbw7v1JQ8ucAOIhkA1HRaclYu=s900-c-k-c0x00ffffff-no-rj"
+    },
+    {
+      "id": "UCElJZvY_RVra6qjD8WSQYog",
+      "name": "Public News",
+      "category": "News",
+      "type": "live",
+      "logo": "https://yt3.googleusercontent.com/I0rRWnohHx4TSJgLIfUOUU_yl2QrodBoRyvaTFovwi3v54AhKzya9_CdFw5fvA-mEfn6UHim=s900-c-k-c0x00ffffff-no-rj"
+    },
+    {
+      "id": "UCJekW1Vj5fCVEGdye_mBN6Q",
+      "name": "SAMAA TV",
+      "category": "News",
+      "type": "live",
+      "logo": "https://yt3.googleusercontent.com/tTXEQKei5Aknpq66juIUMMOGsU9iGNzMcWyeYau6bnxMLxN_i7THGsFS1AtQ09OARSklaMZ6_w=s900-c-k-c0x00ffffff-no-rj"
+    },
+    {
+      "id": "UCGDSwfnAdRKtsQEX6QaGznw",
+      "name": "ZONA QURAN",
+      "category": "News",
+      "type": "live",
+      "logo": "https://yt3.googleusercontent.com/WWrzFy2FM3YepwAv9fg8HqPBv23O6B0mD62x9aW5flxeuj66SZZCQbEs3hXeGoUnYt-bMPLU=s900-c-k-c0x00ffffff-no-rj"
+    },
+    {
+      "id": "UCu59yAFE8fM0sVNTipR4edw",
+      "name": "Masha and The Bear",
+      "category": "News",
+      "type": "live",
+      "logo": "https://yt3.googleusercontent.com/plbYMBlbSJHXOLEqCE4tCFPkw-WwoZ5y-oI4M1l5dljjOFMrQj9g_ZYTb5Fu8t_y8weRNR4iHQ=s900-c-k-c0x00ffffff-no-rj"
+    },
     {
       "id": "UCXQiJKknQM14uQakw0evifw",
       "name": "Dr Shahbaz Gill",
@@ -54,6 +89,13 @@
       "category": "Imran Riaz Khan",
       "type": "rss",
       "logo": "https://yt3.googleusercontent.com/KrrtRyGDP6h2wWObxzqPBFqtgxri00qVBYeYrzHQ550S7NJ5Cluy9JkPb2fOD03mqpRdNqP-5Q=s900-c-k-c0x00ffffff-no-rj"
+    },
+    {
+      "id": "UClDtMswg3muouH60XTKlVEw",
+      "name": "Mansoor Ali Khan",
+      "category": "Imran Riaz Khan",
+      "type": "rss",
+      "logo": "https://yt3.googleusercontent.com/tNQ2RgaQmLGkOFNgIMhmIibmH43-KniIHoqAnQoe0ozm3V_wDRI7iXBQUGP9wX7FkzE0TaBr=s900-c-k-c0x00ffffff-no-rj"
     }
   ]
 }
