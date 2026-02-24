@@ -4,14 +4,71 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
   <meta name="referrer" content="strict-origin-when-cross-origin">
   <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; background: #000; }
-    html, body { width: 100%; height: 100%; overflow: hidden; }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
 
-    .video-js {
-      width: 100% !important;
-      height: 100% !important;
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #000;
+    }
+
+    /* Make VideoJS container truly fullscreen */
+    #player {
       position: absolute;
       top: 0; left: 0;
+      width: 100% !important;
+      height: 100% !important;
+      background: transparent !important;
+    }
+
+    /* VideoJS overrides — remove black overlays */
+    .video-js {
+      position: absolute !important;
+      top: 0; left: 0;
+      width: 100% !important;
+      height: 100% !important;
+      background-color: transparent !important;
+    }
+
+    /* The actual video element inside VideoJS */
+    .video-js video,
+    .video-js iframe,
+    .vjs-tech {
+      position: absolute !important;
+      top: 0 !important; left: 0 !important;
+      width: 100% !important;
+      height: 100% !important;
+      background: transparent !important;
+      object-fit: fill !important;
+    }
+
+    /* Hide the black poster/loading overlay */
+    .vjs-poster {
+      background-color: transparent !important;
+      display: none !important;
+    }
+
+    /* Hide the loading spinner black background */
+    .vjs-loading-spinner {
+      display: none !important;
+    }
+
+    /* Remove black background from control bar area */
+    .vjs-control-bar {
+      background: linear-gradient(transparent, rgba(0,0,0,0.5)) !important;
+    }
+
+    /* Hide big play button black circle */
+    .vjs-big-play-button {
+      background-color: rgba(0,0,0,0.4) !important;
+      border: none !important;
+    }
+
+    /* YouTube iframe inside VideoJS — must be transparent */
+    .vjs-youtube iframe,
+    .vjs-tech iframe {
+      background: transparent !important;
     }
 
     #status {
@@ -23,37 +80,35 @@
       font-family: sans-serif;
       font-size: 14px;
       pointer-events: none;
+      z-index: 999;
     }
   </style>
 
-  <!-- VideoJS core -->
   <link href="https://cdnjs.cloudflare.com/ajax/libs/video.js/8.6.1/video-js.min.css" rel="stylesheet">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/video.js/8.6.1/video.min.js"></script>
-
-  <!-- VideoJS YouTube plugin -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/videojs-youtube/3.0.1/Youtube.min.js"></script>
 </head>
 <body>
 
-  <video
-    id="player"
-    class="video-js vjs-default-skin vjs-big-play-centered"
-    controls
-    autoplay
-    playsinline>
-  </video>
+<video
+        id="player"
+        class="video-js vjs-default-skin"
+        controls
+        autoplay
+        playsinline
+        preload="auto">
+</video>
 
-  <div id="status"></div>
+<div id="status"></div>
 
-  <script>
+<script>
     var player;
-    var retryCount  = 0;
-    var maxRetries  = 3;
+    var retryCount       = 0;
+    var maxRetries       = 3;
     var currentVideoId   = '';
     var currentChannelId = '';
-    var isLive = false;
+    var isLive           = false;
 
-    // ── Called from Android to initialise playback ────────────────────────────
     function loadVideo(videoId, channelId, live) {
       currentVideoId   = videoId;
       currentChannelId = channelId;
@@ -65,94 +120,95 @@
     function startPlayer(videoId, channelId, live) {
       setStatus('Loading...');
 
-      // Destroy previous player instance cleanly
       if (player) {
         try { player.dispose(); } catch(e) {}
         player = null;
 
-        // Re-create the video element (dispose() removes it from DOM)
         var newVideo = document.createElement('video');
         newVideo.id        = 'player';
-        newVideo.className = 'video-js vjs-default-skin vjs-big-play-centered';
+        newVideo.className = 'video-js vjs-default-skin';
         newVideo.setAttribute('controls', '');
         newVideo.setAttribute('autoplay', '');
         newVideo.setAttribute('playsinline', '');
+        newVideo.setAttribute('preload', 'auto');
         document.body.insertBefore(newVideo, document.getElementById('status'));
       }
 
-      // Build YouTube src URL
-      // For live streams: use the /live URL if no videoId available
       var ytUrl = videoId
         ? 'https://www.youtube.com/watch?v=' + videoId
         : 'https://www.youtube.com/channel/' + channelId + '/live';
 
       player = videojs('player', {
-        techOrder: ['youtube'],
-        sources: [{
-          type: 'video/youtube',
-          src:  ytUrl
-        }],
+        techOrder:  ['youtube'],
+        sources: [{ type: 'video/youtube', src: ytUrl }],
         youtube: {
-          iv_load_policy:  3,     // hide annotations
-          modestbranding:  1,
-          rel:             0,
-          endscreen:       0,
-          controls:        1,
-          ytControls:      1,
-          autoplay:        1,
-          // Tells YouTube which domain is embedding — critical for live streams
-          origin: 'https://www.youtube.com'
+          iv_load_policy: 3,
+          modestbranding: 1,
+          rel:            0,
+          autoplay:       1,
+          origin:         'https://www.youtube.com',
+          // KEY FIX: disable ytControls so VideoJS controls sit on top cleanly
+          ytControls:     0
         },
-        autoplay:   true,
-        controls:   true,
-        fluid:      false,
-        responsive: false
+        autoplay:    true,
+        controls:    true,
+        fluid:       false,
+        responsive:  false,
+        // KEY FIX: no black fill behind video
+        fill:        true,
+        aspectRatio: undefined
       });
 
-      // ── Event handlers ──────────────────────────────────────────────────────
-
       player.ready(function() {
+        // KEY FIX: force iframe background transparent after player is ready
+        setTimeout(function() {
+          var iframe = document.querySelector('.vjs-tech');
+          if (iframe) {
+            iframe.style.background      = 'transparent';
+            iframe.style.backgroundColor = 'transparent';
+            iframe.setAttribute('allowtransparency', 'true');
+          }
+          // Also remove any black div overlays VideoJS injects
+          var overlays = document.querySelectorAll('.vjs-poster, .vjs-overlay');
+          overlays.forEach(function(el) { el.style.display = 'none'; });
+        }, 500);
+
         player.play().catch(function() {});
       });
 
       player.on('playing', function() {
         setStatus('');
+        // Hide any remaining overlays once video actually plays
+        var overlays = document.querySelectorAll('.vjs-poster, .vjs-loading-spinner');
+        overlays.forEach(function(el) { el.style.display = 'none'; });
         AndroidBridge.onPlaying();
       });
 
       player.on('error', function() {
-        var err = player.error();
+        var err  = player.error();
         var code = err ? err.code : -1;
         handleError('error_code_' + code);
       });
 
-      // Stalled for 10s = treat as error on live streams
       player.on('stalled', function() {
         if (isLive) {
           setTimeout(function() {
-            if (player && player.paused()) {
-              handleError('stalled');
-            }
+            if (player && player.paused()) handleError('stalled');
           }, 10000);
         }
       });
 
-      // Waiting too long = retry
       player.on('waiting', function() {
         if (isLive) {
           setTimeout(function() {
-            if (player && player.readyState() < 3) {
-              handleError('waiting_timeout');
-            }
+            if (player && player.readyState() < 3) handleError('waiting_timeout');
           }, 15000);
         }
       });
     }
 
-    // ── Error handling & retry ────────────────────────────────────────────────
     function handleError(reason) {
       if (!isLive) {
-        // For regular videos just report — no retry
         AndroidBridge.onPlayerError(reason);
         return;
       }
@@ -160,16 +216,11 @@
       if (retryCount < maxRetries) {
         retryCount++;
         setStatus('Reconnecting... (' + retryCount + '/' + maxRetries + ')');
-
-        // Ask Android for a fresh videoId, then retry after 3s
         setTimeout(function() {
           var freshId = AndroidBridge.getFreshVideoId(currentChannelId);
-          if (freshId && freshId.length > 0) {
-            currentVideoId = freshId;
-          }
+          if (freshId && freshId.length > 0) currentVideoId = freshId;
           startPlayer(currentVideoId, currentChannelId, true);
         }, 3000);
-
       } else {
         setStatus('');
         AndroidBridge.onPlayerError('max_retries_reached');
