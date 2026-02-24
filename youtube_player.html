@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+  <meta name="referrer" content="strict-origin-when-cross-origin">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; background: #000; }
+    html, body { width: 100%; height: 100%; overflow: hidden; }
+
+    .video-js {
+      width: 100% !important;
+      height: 100% !important;
+      position: absolute;
+      top: 0; left: 0;
+    }
+
+    #status {
+      position: absolute;
+      bottom: 30px;
+      left: 0; right: 0;
+      text-align: center;
+      color: #aaa;
+      font-family: sans-serif;
+      font-size: 14px;
+      pointer-events: none;
+    }
+  </style>
+
+  <!-- VideoJS core -->
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/video.js/8.6.1/video-js.min.css" rel="stylesheet">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/video.js/8.6.1/video.min.js"></script>
+
+  <!-- VideoJS YouTube plugin -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/videojs-youtube/3.0.1/Youtube.min.js"></script>
+</head>
+<body>
+
+  <video
+    id="player"
+    class="video-js vjs-default-skin vjs-big-play-centered"
+    controls
+    autoplay
+    playsinline>
+  </video>
+
+  <div id="status"></div>
+
+  <script>
+    var player;
+    var retryCount  = 0;
+    var maxRetries  = 3;
+    var currentVideoId   = '';
+    var currentChannelId = '';
+    var isLive = false;
+
+    // ── Called from Android to initialise playback ────────────────────────────
+    function loadVideo(videoId, channelId, live) {
+      currentVideoId   = videoId;
+      currentChannelId = channelId;
+      isLive           = live;
+      retryCount       = 0;
+      startPlayer(videoId, channelId, live);
+    }
+
+    function startPlayer(videoId, channelId, live) {
+      setStatus('Loading...');
+
+      // Destroy previous player instance cleanly
+      if (player) {
+        try { player.dispose(); } catch(e) {}
+        player = null;
+
+        // Re-create the video element (dispose() removes it from DOM)
+        var newVideo = document.createElement('video');
+        newVideo.id        = 'player';
+        newVideo.className = 'video-js vjs-default-skin vjs-big-play-centered';
+        newVideo.setAttribute('controls', '');
+        newVideo.setAttribute('autoplay', '');
+        newVideo.setAttribute('playsinline', '');
+        document.body.insertBefore(newVideo, document.getElementById('status'));
+      }
+
+      // Build YouTube src URL
+      // For live streams: use the /live URL if no videoId available
+      var ytUrl = videoId
+        ? 'https://www.youtube.com/watch?v=' + videoId
+        : 'https://www.youtube.com/channel/' + channelId + '/live';
+
+      player = videojs('player', {
+        techOrder: ['youtube'],
+        sources: [{
+          type: 'video/youtube',
+          src:  ytUrl
+        }],
+        youtube: {
+          iv_load_policy:  3,     // hide annotations
+          modestbranding:  1,
+          rel:             0,
+          endscreen:       0,
+          controls:        1,
+          ytControls:      1,
+          autoplay:        1,
+          // Tells YouTube which domain is embedding — critical for live streams
+          origin: 'https://www.youtube.com'
+        },
+        autoplay:   true,
+        controls:   true,
+        fluid:      false,
+        responsive: false
+      });
+
+      // ── Event handlers ──────────────────────────────────────────────────────
+
+      player.ready(function() {
+        player.play().catch(function() {});
+      });
+
+      player.on('playing', function() {
+        setStatus('');
+        AndroidBridge.onPlaying();
+      });
+
+      player.on('error', function() {
+        var err = player.error();
+        var code = err ? err.code : -1;
+        handleError('error_code_' + code);
+      });
+
+      // Stalled for 10s = treat as error on live streams
+      player.on('stalled', function() {
+        if (isLive) {
+          setTimeout(function() {
+            if (player && player.paused()) {
+              handleError('stalled');
+            }
+          }, 10000);
+        }
+      });
+
+      // Waiting too long = retry
+      player.on('waiting', function() {
+        if (isLive) {
+          setTimeout(function() {
+            if (player && player.readyState() < 3) {
+              handleError('waiting_timeout');
+            }
+          }, 15000);
+        }
+      });
+    }
+
+    // ── Error handling & retry ────────────────────────────────────────────────
+    function handleError(reason) {
+      if (!isLive) {
+        // For regular videos just report — no retry
+        AndroidBridge.onPlayerError(reason);
+        return;
+      }
+
+      if (retryCount < maxRetries) {
+        retryCount++;
+        setStatus('Reconnecting... (' + retryCount + '/' + maxRetries + ')');
+
+        // Ask Android for a fresh videoId, then retry after 3s
+        setTimeout(function() {
+          var freshId = AndroidBridge.getFreshVideoId(currentChannelId);
+          if (freshId && freshId.length > 0) {
+            currentVideoId = freshId;
+          }
+          startPlayer(currentVideoId, currentChannelId, true);
+        }, 3000);
+
+      } else {
+        setStatus('');
+        AndroidBridge.onPlayerError('max_retries_reached');
+      }
+    }
+
+    function setStatus(msg) {
+      var el = document.getElementById('status');
+      if (el) el.innerText = msg;
+    }
+  </script>
+
+</body>
+</html>
